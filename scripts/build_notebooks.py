@@ -226,6 +226,52 @@ def build_quickstart() -> None:
         pd.DataFrame({"entity": [str(e) for e in single.entities()[:5]]})
         """),
         md("""
+        ## 5. What else was happening?
+
+        Each `Match` carries `(clip_id, entity, interval)`. Given that
+        interval, `ds.context_for(match)` returns a `ContextWindow`
+        snapshot of every entity in the clip whose annotated time
+        range overlaps the match: visible agents (with the actions
+        they were doing at the time), ego actions, environments,
+        conditions, traffic-light states, and persistent traffic
+        objects.
+
+        Temporal operators like `while` tighten each match's interval
+        to the intersection, so the context window is the actual
+        moment both conditions held.
+        """),
+        code("""
+        matches = ds.find("agent.type = ped while ego.action = decel")
+        m = matches.matches[0]
+        ctx = ds.context_for(m)
+
+        pd.DataFrame([
+            ("clip_id",        ctx.clip_id),
+            ("window",         f"{m.interval.start:.2f}–{m.interval.end:.2f}s"),
+            ("agents",         len(ctx.agents)),
+            ("ego actions",    [ea.type for ea in ctx.ego_actions]),
+            ("environments",   [e.type for e in ctx.environments]),
+            ("light states",   len(ctx.light_states)),
+            ("traffic objects", [o.type for o in ctx.traffic_objects]),
+        ], columns=["field", "value"])
+        """),
+        md("""
+        Drill into the agents — each `AgentInWindow` carries the agent
+        itself, its visibility window clipped to the match, and the
+        actions of that agent that were active in the window.
+        """),
+        code("""
+        pd.DataFrame([
+            {
+                "id":         a.agent.id,
+                "type":       a.agent.type,
+                "visible":    f"{a.visibility.start:.2f}–{a.visibility.end:.2f}s",
+                "actions":    [ax.action_type for ax in a.actions],
+            }
+            for a in ctx.agents
+        ])
+        """),
+        md("""
         ## Where to next
 
         - `02_query_dsl_tour.ipynb` — every DSL operator with examples.

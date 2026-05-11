@@ -98,6 +98,7 @@ Runnable Python scripts under `examples/`:
 | `02_query_operators.py` | tour of every DSL operator |
 | `03_statistics.py` | count / group-by aggregations |
 | `04_scenarios.py` | 20 driving scenarios encoded as DSL queries |
+| `05_context.py` | inspect what else was happening during each match |
 
 Run any of them with:
 
