@@ -825,11 +825,154 @@ def build_scenarios() -> None:
     save(cells, NOTEBOOKS_DIR / "04_scenario_catalog.ipynb")
 
 
+# ---------------------------------------------------------------------------
+# 05 — Video inspection: query → match → download → view frames
+# ---------------------------------------------------------------------------
+
+def build_video_inspection() -> None:
+    cells = [
+        md("""
+        # Inspecting matches in video
+
+        The DSL tells you *where* in the corpus a scenario happens.
+        This notebook closes the loop: given a match, pull the
+        original video from the Physical AI AV Dataset on HuggingFace,
+        decode frames over the match's interval, and view them
+        alongside the `ContextWindow` snapshot.
+
+        Pipeline:
+
+        1. Run a DSL query and pick a match.
+        2. Prefetch the clip's video and egomotion from HF with
+           `ds.download_clips`.
+        3. Build a `Sequence` and decode frames sampled across the
+           match interval.
+        4. Show what else was annotated during the window.
+
+        > Requires the optional `hf` extra (`uv sync --extra hf`) plus
+        > the notebook tooling (`--group notebooks`). The first
+        > download pulls a few hundred MB per clip and can take
+        > 5–15 seconds depending on your link.
+        """),
+        md("## Setup"),
+        code("""
+        import os
+        from pathlib import Path
+
+        import numpy as np
+
+        from causal_ai_av.dataset import CausalAVDataset
+        """ + STYLING),
+        code("""
+        ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
+        print(f"corpus loaded — {len(ds)} clips")
+        """),
+        md("""
+        ## 1. Find a match
+
+        Pick a scenario with a tight temporal window. `while` and
+        `then` produce matches whose interval is the actual moment
+        both conditions held — ideal for video inspection.
+        """),
+        code("""
+        query = "agent.type = ped while ego.action = decel"
+        matches = ds.find(query)
+        print(f"{len(matches)} matches for: {query}")
+
+        m = matches.matches[0]
+        print(f"chosen match: clip {m.clip_id}  "
+              f"window {m.interval.start:.2f}–{m.interval.end:.2f}s")
+        """),
+        md("""
+        ## 2. Prefetch the clip from HuggingFace
+
+        `ds.download_clips` accepts an iterable of clip ids and pulls
+        the canonical camera plus egomotion (the minimum needed to
+        build a `Sequence`). Files are cached locally — re-running
+        is a no-op.
+        """),
+        code("""
+        ds.download_clips([m.clip_id])
+        """),
+        md("""
+        ## 3. Decode frames across the match window
+
+        `seq.video.decode_images_from_timestamps` takes microsecond
+        timestamps as an `int64` array. We sample uniformly across
+        the match interval.
+        """),
+        code("""
+        seq = ds.get_sequence(m.clip_id)
+        print(f"clip duration: {seq.duration_s:.2f}s   fps: {seq.fps}")
+
+        n_frames = 6
+        t_seconds = np.linspace(m.interval.start, m.interval.end, n_frames)
+        t_us = (t_seconds * 1_000_000).astype(np.int64)
+        images, _ = seq.video.decode_images_from_timestamps(t_us)
+
+        fig, axes = plt.subplots(2, 3, figsize=(13, 6.5))
+        for ax, img, t in zip(axes.ravel(), images, t_seconds):
+            ax.imshow(img)
+            ax.set_title(f"t = {t:.2f}s", fontsize=11)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.grid(False)
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+        fig.suptitle(
+            f"{query}  —  clip {m.clip_id[:8]}…  window "
+            f"{m.interval.start:.2f}–{m.interval.end:.2f}s",
+            fontsize=12, fontweight="semibold",
+        )
+        plt.tight_layout()
+        plt.show()
+        """),
+        md("""
+        ## 4. What else was happening?
+
+        Pair the frames with `ds.context_for(m)` — the same window
+        seen through the annotation lens.
+        """),
+        code("""
+        ctx = ds.context_for(m)
+
+        pd.DataFrame([
+            ("clip_id",        ctx.clip_id),
+            ("window",         f"{ctx.interval.start:.2f}–{ctx.interval.end:.2f}s"),
+            ("agents",         len(ctx.agents)),
+            ("ego actions",    [ea.type for ea in ctx.ego_actions]),
+            ("environments",   [e.type for e in ctx.environments]),
+            ("light states",   len(ctx.light_states)),
+            ("traffic objects", [o.type for o in ctx.traffic_objects]),
+        ], columns=["field", "value"])
+        """),
+        code("""
+        pd.DataFrame([
+            {
+                "id":         a.agent.id,
+                "type":       a.agent.type,
+                "visible":    f"{a.visibility.start:.2f}–{a.visibility.end:.2f}s",
+                "actions":    [ax.action_type for ax in a.actions],
+            }
+            for a in ctx.agents
+        ])
+        """),
+        md("""
+        ## Inspect another scenario
+
+        Swap the query, re-run the cells above. The flow is the same
+        for any match: find → download → decode → contextualise.
+        """),
+    ]
+    save(cells, NOTEBOOKS_DIR / "05_video_inspection.ipynb")
+
+
 def main() -> None:
     build_quickstart()
     build_dsl_tour()
     build_statistics()
     build_scenarios()
+    build_video_inspection()
 
 
 if __name__ == "__main__":

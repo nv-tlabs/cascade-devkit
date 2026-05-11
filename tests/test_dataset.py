@@ -50,7 +50,7 @@ def test_non_dir_path_raises_file_not_found(tmp_path: Path) -> None:
 def test_local_dir_construction(patched_parent: None) -> None:
     ds = CausalAVDataset(CORPUS)
     assert len(ds.list_sequences()) > 0
-    assert ds.annotation_camera == "CAMERA_FRONT_WIDE_120FOV"
+    assert ds.annotation_camera == "camera_front_wide_120fov"
 
 
 def test_sequence_from_annotation_round_trip(patched_parent: None) -> None:

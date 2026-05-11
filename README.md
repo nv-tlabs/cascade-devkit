@@ -107,13 +107,30 @@ CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \
     uv run python examples/01_quickstart.py
 ```
 
-Matching Jupyter notebooks under `notebooks/` cover the same ground
-with richer narrative and charts. Launch JupyterLab with:
+Jupyter notebooks under `notebooks/` cover the same ground with
+richer narrative and charts, plus `05_video_inspection.ipynb` which
+pulls the original camera video from HuggingFace and renders frames
+across a match's interval. Launch JupyterLab with:
 
 ```bash
 CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \
     uv run --all-extras --group notebooks jupyter lab notebooks/
 ```
+
+## Working with the video data
+
+The annotation bundles are paired with the original Physical AI AV
+Dataset videos hosted on HuggingFace. Prefetch a batch of clips so
+they're cached locally before you start iterating:
+
+```python
+ds.download_clips(["clip-id-1", "clip-id-2"])         # canonical camera + egomotion
+ds.download_clips()                                    # every clip in the corpus
+ds.download_clips(["…"], features=["camera_rear_left_70fov"])  # extra cameras
+```
+
+Then `ds.get_sequence(clip_id).video` returns a `SeekVideoReader`
+you can index by microsecond timestamp.
 
 ## Project layout
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 import warnings
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -63,7 +63,7 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
 
 # Default canonical-camera feature name. Match the parent dataset's feature
 # string for the wide-FOV front camera.
-DEFAULT_ANNOTATION_CAMERA = "CAMERA_FRONT_WIDE_120FOV"
+DEFAULT_ANNOTATION_CAMERA = "camera_front_wide_120fov"
 
 
 # -----------------------------------------------------------------------------
@@ -301,6 +301,41 @@ class CausalAVDataset(PhysicalAIAVDatasetInterface):
     def histogram(self, dsl: str, key: str) -> dict[object, int]:
         """Alias of `group_by` (kept for API symmetry per spec §4.3)."""
         return group_by_on_dataset(self, dsl, key)
+
+    DEFAULT_DOWNLOAD_FEATURES: ClassVar[tuple[str, ...]] = (
+        "egomotion",
+    )
+    """Always pulled in addition to the annotation camera — `get_sequence`
+    reads egomotion in its constructor."""
+
+    def download_clips(
+        self,
+        clip_ids: Iterable[str] | None = None,
+        *,
+        features: Iterable[str] | None = None,
+    ) -> None:
+        """Prefetch clip features from HuggingFace.
+
+        `clip_ids` defaults to every clip in the dataset; `features`
+        defaults to the canonical annotation camera plus the egomotion
+        feature — the minimum required for `get_sequence` to succeed.
+        Pass an explicit `features` list to widen (e.g. extra cameras
+        or LiDAR).
+
+        Delegates to the parent `download_clip_features`, which
+        downloads in parallel via huggingface_hub.
+        """
+        ids = list(clip_ids) if clip_ids is not None else self.list_sequences()
+        unknown = [c for c in ids if c not in self._by_clip]
+        if unknown:
+            shown = ", ".join(unknown[:3])
+            more = f" (+{len(unknown) - 3} more)" if len(unknown) > 3 else ""
+            raise KeyError(f"clip_ids not in dataset: {shown}{more}")
+        if features is None:
+            feats = [self.annotation_camera, *self.DEFAULT_DOWNLOAD_FEATURES]
+        else:
+            feats = list(features)
+        self.download_clip_features(ids, features=feats)
 
     def context_for(self, match: Match) -> ContextWindow:
         """Everything else annotated in the clip during `match`'s window.
