@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useStore } from './lib/store'
 import { getBundle, getHealth, listClips } from './lib/api'
+import { saveCurrentBundle } from './lib/save'
 import { Sidebar } from './components/Sidebar'
 import { Timeline } from './components/Timeline'
 import { RightPanel } from './components/RightPanel'
@@ -63,6 +64,34 @@ export default function App() {
       .catch(() => { if (!cancelled) setBundle(null) })
     return () => { cancelled = true }
   }, [selectedClipId, clipLoadKey, setBundle])
+
+  // Cmd/Ctrl+S → save (subject to dirty + unlocked + server-writable).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isSave = (e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')
+      if (!isSave) return
+      const s = useStore.getState()
+      if (!s.dirty || s.locked || s.serverReadOnly) return
+      e.preventDefault()
+      saveCurrentBundle()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // beforeunload → browser native "unsaved changes" prompt when dirty.
+  const dirty = useStore(s => s.dirty)
+  useEffect(() => {
+    if (!dirty) return
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      // Older Chromium requires a string return; modern browsers ignore it.
+      e.returnValue = ''
+      return ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty])
 
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-[#0c0c1a]">

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,6 +40,10 @@ class ClipEntry:
     kind: ClipKind = "unlabelled"
     # Internal: list of duplicate JSON paths dropped during indexing.
     _dropped_paths: list[Path] = field(default_factory=list)
+    # Internal: True after the server has taken a `.bak` snapshot of `path`
+    # this session. The snapshot is taken once, on the first save, so an
+    # accidental overwrite or corrupted bundle can be recovered.
+    _bak_written: bool = False
 
 
 def _classify(path: Path) -> Literal["annotation", "video"] | None:
@@ -145,13 +150,19 @@ def build_clip_index(sources: list[Path]) -> dict[str, ClipEntry]:
 def make_empty_bundle(clip_id: str) -> AnnotationBundle:
     """Construct a minimum-valid `AnnotationBundle` for a brand-new clip.
 
+    Explicitly sets `schema_version` and `status` so fresh-clip JSONs are
+    self-describing on disk — `exclude_unset=True` in save_file would
+    otherwise drop them along with any other field still at its default.
+
     Video metadata (fps, duration_s) defaults to the schema defaults
     (`30.0` / `0.0`) because Phase 1 does not probe the video file. Phase 3
     will revisit this with real probing.
     """
     return AnnotationBundle(
+        schema_version="2.0.0",
         video=VideoMeta(clip_id=clip_id),
         annotation=SilAvAnnotation(),
+        status="annotating",
     )
     # TODO(phase-3): probe the video file for real fps / duration / num_frames.
 
@@ -176,11 +187,18 @@ def save_bundle(
     creates `<destination_dir>/<clip_id>.json` and mutates the entry to
     `kind="annotated"` with its new path.
 
+    On the *first* save for a clip in this server session, the current
+    on-disk file (if any) is copied to a sibling `<path>.bak`. This gives
+    the user a single-shot recovery option in case the new save introduces
+    a regression; subsequent saves in the same session do not re-stamp the
+    backup, so the user's original input is preserved.
+
     Raises `ValueError` if `entry.path` is unset and `destination_dir` is
     `None`.
     """
     if entry.kind == "annotated":
         assert entry.path is not None
+        _maybe_write_bak(entry)
         save_file(bundle, entry.path)
         return entry.path
 
@@ -199,4 +217,23 @@ def save_bundle(
     save_file(bundle, target_path)
     entry.path = target_path
     entry.kind = "annotated"
+    # Fresh clips have no prior content to back up — mark _bak_written so a
+    # later save in this same session also skips the .bak step.
+    entry._bak_written = True
     return target_path
+
+
+def _maybe_write_bak(entry: ClipEntry) -> None:
+    """Take a one-shot `.bak` snapshot of the existing file."""
+    if entry._bak_written:
+        return
+    if entry.path is None or not entry.path.is_file():
+        entry._bak_written = True
+        return
+    bak_path = entry.path.with_suffix(entry.path.suffix + ".bak")
+    try:
+        shutil.copy2(entry.path, bak_path)
+    except OSError as exc:  # noqa: BLE001
+        # Don't block a save if the snapshot fails — log and move on.
+        LOG.warning("failed to write .bak for %s: %s", entry.path, exc)
+    entry._bak_written = True

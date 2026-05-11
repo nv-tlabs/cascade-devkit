@@ -194,38 +194,121 @@ def test_put_annotations_url_clip_id_mismatch_422(corpus_copy: Path) -> None:
     assert r.status_code == 422
 
 
-def test_get_bbox_round_trip(corpus_copy: Path) -> None:
+def test_get_bbox_round_trip(bbox_corpus_copy: Path) -> None:
     """Regression: ensure bbox frames survive load → dump → reload.
 
     The upstream tool's frontend had a `stripLegacyBboxes` step that
     silently dropped bbox lists; we deliberately do not carry that bug. If
     a future change reintroduces stripping, this test catches it.
+
+    The `bbox_corpus_copy` fixture guarantees a bbox-bearing source file —
+    no skip path — so a regression that drops bboxes will fail loudly.
     """
-    bundle = load_file(corpus_copy)
+    bundle = load_file(bbox_corpus_copy)
     clip_id = bundle.video.clip_id
 
-    # Find any agent with a non-empty bbox list (or skip if the corpus
-    # fixture happens not to have one).
     bbox_agents = [a for a in bundle.annotation.agents if a.bounding_boxes]
-    if not bbox_agents:
-        pytest.skip("smoke-fixture has no agents with bbox frames")
+    assert bbox_agents, "bbox fixture invariant violated: no agent has bboxes"
     sample_agent = bbox_agents[0]
     expected_bbox_count = sum(len(f.bounding_boxes) for f in sample_agent.bounding_boxes)
     assert expected_bbox_count > 0
 
-    client = _client(corpus_copy.parent)
+    client = _client(bbox_corpus_copy.parent)
     r = client.get(f"/api/clips/{clip_id}/annotations")
     assert r.status_code == 200
     payload = r.json()
 
-    # Round-trip: PUT it back, then GET it, then reload from disk.
+    # Round-trip: PUT it back, then reload from disk.
     put = client.put(f"/api/clips/{clip_id}/annotations", json=payload)
     assert put.status_code == 200, put.text
 
-    reloaded = load_file(corpus_copy)
+    reloaded = load_file(bbox_corpus_copy)
     reloaded_agent = next(a for a in reloaded.annotation.agents if a.id == sample_agent.id)
     actual_bbox_count = sum(len(f.bounding_boxes) for f in reloaded_agent.bounding_boxes)
     assert actual_bbox_count == expected_bbox_count
+
+
+# -----------------------------------------------------------------------------
+# .bak snapshot (taken once per clip per server session)
+# -----------------------------------------------------------------------------
+
+def test_put_creates_bak_on_first_save_in_session(corpus_copy: Path) -> None:
+    bundle = load_file(corpus_copy)
+    clip_id = bundle.video.clip_id
+    payload = bundle.model_dump(by_alias=True, exclude_unset=True, mode="json")
+    bak_path = corpus_copy.with_suffix(corpus_copy.suffix + ".bak")
+    pre_bytes = corpus_copy.read_bytes()
+    assert not bak_path.exists()
+
+    client = _client(corpus_copy.parent)
+
+    # First save → .bak with the original bytes appears.
+    r1 = client.put(f"/api/clips/{clip_id}/annotations", json=payload)
+    assert r1.status_code == 200, r1.text
+    assert bak_path.is_file()
+    assert bak_path.read_bytes() == pre_bytes
+
+    # Mutate the .bak so we can detect whether it gets re-stamped.
+    sentinel = b'{"sentinel": "do-not-overwrite"}'
+    bak_path.write_bytes(sentinel)
+
+    # Second save (same session) → .bak is *not* re-written.
+    payload["status"] = (
+        "needs_revision" if payload.get("status") != "needs_revision" else "approved"
+    )
+    r2 = client.put(f"/api/clips/{clip_id}/annotations", json=payload)
+    assert r2.status_code == 200, r2.text
+    assert bak_path.read_bytes() == sentinel, ".bak should only stamp once per session"
+
+
+def test_put_fresh_clip_does_not_write_bak(tmp_path: Path) -> None:
+    """An unlabelled clip's first save creates the new file; no `.bak` to write."""
+    video = tmp_path / "freshclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    seed = client.get("/api/clips/freshclip/annotations").json()
+    r = client.put("/api/clips/freshclip/annotations", json=seed)
+    assert r.status_code == 200
+
+    expected_path = tmp_path / "freshclip.json"
+    assert expected_path.is_file()
+    assert not expected_path.with_suffix(".json.bak").exists()
+
+
+# -----------------------------------------------------------------------------
+# make_empty_bundle self-descriptive on disk
+# -----------------------------------------------------------------------------
+
+def test_make_empty_bundle_includes_schema_and_status(tmp_path: Path) -> None:
+    """A fresh-clip JSON written through the server keeps schema_version + status.
+
+    `exclude_unset=True` in save_file would otherwise drop the defaults, so
+    `make_empty_bundle` must mark them as set. This test exercises the end-to-end
+    flow (GET unlabelled → PUT back → reload from disk) and asserts the
+    persisted JSON is self-describing.
+    """
+    import json as _json
+
+    video = tmp_path / "newclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    seed = client.get("/api/clips/newclip/annotations").json()
+    assert seed.get("schema_version") == "2.0.0"
+    assert seed.get("status") == "annotating"
+
+    r = client.put("/api/clips/newclip/annotations", json=seed)
+    assert r.status_code == 200, r.text
+
+    saved_path = tmp_path / "newclip.json"
+    on_disk = _json.loads(saved_path.read_text())
+    assert on_disk.get("schema_version") == "2.0.0"
+    assert on_disk.get("status") == "annotating"
 
 
 # -----------------------------------------------------------------------------

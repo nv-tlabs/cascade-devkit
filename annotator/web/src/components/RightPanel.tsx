@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useStore } from '../lib/store'
-import { saveBundle } from '../lib/api'
+import { saveCurrentBundle } from '../lib/save'
 import { annotationToSegments, applySegmentTimeUpdate, clampToAvoidOverlap, syncInfluencedAgentIds, addSignalHeadToLight, addPhysicalContainmentToLight, addContainmentToEgo, addContainmentToAgent, addContainmentToObject, addInfluenceToEgo, addInfluenceToAgent, addPropertyToAgent, addPropertyToEgo, addConditionToEnv, parseTs, cleanupDeletedIds, cleanupDeletedEnv } from '../lib/timeline-utils'
 import {
   ENVIRONMENT_TYPES, EGO_ACTION_TYPES, TRAFFIC_OBJECT_TYPES,
@@ -602,18 +602,12 @@ export function RightPanel() {
   }
 
   // ---- Handlers ----
-  // Step 4 stub. Step 6 wires the real save flow: PUT /api/clips/{id}/annotations,
-  // clearDirty() on success, surface 422 via store.saveError.
+  // The single save entry-point. saveCurrentBundle() lives in lib/save.ts so
+  // the Cmd+S keybinding and the Sidebar clip-switch dialog hit identical
+  // dirty-clearing, error-surfacing, and lock-policy logic.
   const save = async () => {
-    if (!selectedClipId || !bundle) return
     setSaving(true)
-    try {
-      const saved = await saveBundle(selectedClipId, bundle)
-      updateBundle(saved)
-      useStore.getState().clearDirty()
-    } catch (e) {
-      useStore.getState().setSaveError(e instanceof Error ? e.message : String(e))
-    }
+    await saveCurrentBundle()
     setSaving(false)
   }
   const loadJsonRef = useRef<HTMLInputElement>(null)

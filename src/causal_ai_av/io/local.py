@@ -26,6 +26,8 @@ def save_file(bundle: AnnotationBundle, path: str | Path, *, indent: int = 2) ->
     serialize with their on-disk names, and `exclude_unset=True` so absent
     optional fields stay absent (preserving the input's field set).
 
+    Creates parent directories if missing.
+
     The write is atomic: the payload is written to a temp file in the same
     directory, fsynced, and renamed over the target. Concurrent readers will
     see either the old bytes or the new bytes — never a truncated file.

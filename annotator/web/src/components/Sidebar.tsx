@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useStore } from '../lib/store'
+import { saveCurrentBundle } from '../lib/save'
 import { Search, Film, FileText } from 'lucide-react'
 
 /**
@@ -8,18 +9,24 @@ import { Search, Film, FileText } from 'lucide-react'
  * (`annotated` / `unlabelled`). Clicking a clip selects it; if the current
  * bundle is dirty, we prompt before switching.
  *
- * Step 4 stub: the dialog's Save button currently discards too (real save
- * wires up in Step 6). The Cancel path already works.
+ * The dialog Save button is disabled while the bundle is locked (you can't
+ * save without unlocking first); user gets only Cancel / Discard in that
+ * state, matching the Step 6 contract.
  */
 export function Sidebar() {
   const clips = useStore(s => s.clips)
   const selectedClipId = useStore(s => s.selectedClipId)
   const selectClip = useStore(s => s.selectClip)
   const dirty = useStore(s => s.dirty)
+  const locked = useStore(s => s.locked)
+  const serverReadOnly = useStore(s => s.serverReadOnly)
   const currentClipId = useStore(s => s.selectedClipId)
 
   const [filter, setFilter] = useState('')
   const [pendingClipId, setPendingClipId] = useState<string | null>(null)
+  const [savingInDialog, setSavingInDialog] = useState(false)
+
+  const saveDisabled = locked || serverReadOnly
 
   const q = filter.trim().toLowerCase()
   const filtered = q
@@ -40,10 +47,13 @@ export function Sidebar() {
     setPendingClipId(null)
   }
 
-  // Step 4 stub: clicking "Save" in the dialog currently behaves like Discard.
-  // Step 6 replaces this with a real save+switch.
-  const confirmSaveAndSwitch = () => {
-    if (pendingClipId) selectClip(pendingClipId)
+  const confirmSaveAndSwitch = async () => {
+    if (!pendingClipId) return
+    setSavingInDialog(true)
+    const ok = await saveCurrentBundle()
+    setSavingInDialog(false)
+    if (!ok) return  // saveError already populated; keep the dialog open.
+    selectClip(pendingClipId)
     setPendingClipId(null)
   }
 
@@ -123,9 +133,11 @@ export function Sidebar() {
               </button>
               <button
                 onClick={confirmSaveAndSwitch}
-                className="px-3 py-1.5 rounded-lg text-xs bg-blue-500/20 text-blue-300 border border-blue-500/40 hover:bg-blue-500/30"
+                disabled={saveDisabled || savingInDialog}
+                title={saveDisabled ? 'Unlock the bundle first to enable Save' : 'Save then switch'}
+                className="px-3 py-1.5 rounded-lg text-xs bg-blue-500/20 text-blue-300 border border-blue-500/40 hover:bg-blue-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Save
+                {savingInDialog ? 'Saving…' : 'Save'}
               </button>
             </div>
           </Dialog.Content>

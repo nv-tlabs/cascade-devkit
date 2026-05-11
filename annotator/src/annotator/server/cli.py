@@ -133,8 +133,11 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_browser:
         url = f"http://{args.host}:{args.port}/"
         # Fire the browser open ~1s after uvicorn.run starts so the server is
-        # ready by the time the browser sends its first GET.
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        # ready by the time the browser sends its first GET. Daemonized so a
+        # quick Ctrl-C before the timer fires doesn't block shutdown.
+        timer = threading.Timer(1.0, lambda: webbrowser.open(url))
+        timer.daemon = True
+        timer.start()
 
     import uvicorn
 
