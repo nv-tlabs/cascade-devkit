@@ -1,61 +1,49 @@
 import { create } from 'zustand'
-import type { AnnotationBundle, UiConfig, VideoListItem, SilAvAnnotation } from './types'
+import type { AnnotationBundle, UiConfig, SilAvAnnotation } from './types'
 import { autoAssignOverlappingTracks, migrateIdsToString } from './timeline-utils'
-import type { AuthUser } from './auth'
-import type { WorkTask, FeedbackEntry, TrackReviewEntry, ReviewDraftState } from './api'
+import type { ClipEntry } from './api'
 
 
 const MAX_UNDO = 10
 
 
 interface AppState {
-  // Auth
-  currentUser: AuthUser | null
-  // Work manager
-  currentTask: WorkTask | null
-  myTasks: WorkTask[]
-  // Existing state
-  videos: VideoListItem[]
+  // Clip catalog
+  clips: ClipEntry[]
   selectedClipId: string | null
   bundle: AnnotationBundle | null
+  // Playback / selection
   playheadTime: number
   duration: number
   selectedPath: string | null
   zoomLevel: number
   scrollOffset: number
+  // Track counts (derived from bundle on load, persisted via _ui_config)
   envTrackCount: number
   objectTrackCount: number
   lightTrackCount: number
   agentTrackCount: number
   egoContTrackCount: number
-  feedback: FeedbackEntry[]
-  trackReviews: TrackReviewEntry[]
-  // Shared review-draft state for the current (annotation, round). The top
-  // Save button in RightPanel hits this when the reviewer is mid-review;
-  // ReviewSection mirrors it into UI controls. ``reviewDraftVersion === 0``
-  // means "no server-side draft yet for this round".
-  reviewDraft: ReviewDraftState
-  reviewDraftVersion: number
-  readOnly: boolean
-  viewingUserId: string | null
-  // When true, reviewer/admin/owner is editing the annotation they're reviewing.
-  // Saves are routed to the annotator's row via the target_user_id query param.
-  // Resets to false on clip / viewing-user change so the toggle never leaks
-  // across contexts.
-  reviewEditMode: boolean
+  // Lock policy
+  // `locked` is the per-clip soft lock that the LockBar toggles. Default true:
+  // every clip switch re-locks so accidental edits are impossible.
+  locked: boolean
+  // `serverReadOnly` mirrors /api/health.read_only — if the server was launched
+  // without write access we permanently hide the unlock button.
+  serverReadOnly: boolean
+  // Dirty tracking for the explicit Save flow (Step 6 wires the save itself).
+  dirty: boolean
+  saveError: string | null
+  // Per-clip reload signal; bumped by selectClip so effects re-fetch.
   clipLoadKey: number
+  // Keypoint overlay toggle.
   keypointsVisible: boolean
   arrowTypes: { becauseOf: boolean; linkTo: boolean; containedIn: boolean; influencedBy: boolean; actionTarget: boolean }
   _undoStack: SilAvAnnotation[]
   _isUndoing: boolean
 
-  // Auth actions
-  setCurrentUser: (u: AuthUser | null) => void
-  // Work manager actions
-  setCurrentTask: (t: WorkTask | null) => void
-  setMyTasks: (tasks: WorkTask[]) => void
-  // Existing actions
-  setVideos: (v: VideoListItem[]) => void
+  // Catalog / selection actions
+  setClips: (c: ClipEntry[]) => void
   selectClip: (id: string | null) => void
   setBundle: (b: AnnotationBundle | null) => void
   updateBundle: (b: AnnotationBundle) => void
@@ -71,14 +59,16 @@ interface AppState {
   setLightTrackCount: (n: number) => void
   setAgentTrackCount: (n: number) => void
   setEgoContTrackCount: (n: number) => void
-  setFeedback: (f: FeedbackEntry[]) => void
-  setTrackReviews: (r: TrackReviewEntry[]) => void
-  setReviewDraft: (d: ReviewDraftState) => void
-  setReviewDraftVersion: (v: number) => void
-  resetReviewDraft: () => void
-  setReadOnly: (v: boolean) => void
-  setViewingUserId: (id: string | null) => void
-  setReviewEditMode: (v: boolean) => void
+  // Lock + dirty actions
+  lock: () => void
+  unlock: () => void
+  setServerReadOnly: (v: boolean) => void
+  markDirty: () => void
+  clearDirty: () => void
+  setSaveError: (msg: string | null) => void
+  // Returns true when edits to the bundle are currently blocked. Identical to
+  // `locked` today; kept as a helper because ~35 sites across the timeline /
+  // right-panel / video-player call it as `editsBlocked()`.
   editsBlocked: () => boolean
   toggleKeypointsVisible: () => void
   toggleArrowType: (type: keyof AppState['arrowTypes']) => void
@@ -99,26 +89,13 @@ function deriveTrackCounts(b: AnnotationBundle | null): { env: number; obj: numb
   return { env: Math.max(1, maxEnv), obj: Math.max(1, maxObj), light: Math.max(1, maxLight), agent: Math.max(1, maxAgent) }
 }
 
-function stripLegacyBboxes(ann: SilAvAnnotation): void {
-  const drop = (e: Record<string, unknown>) => { delete e.bounding_boxes }
-  for (const a of ann.agents || []) drop(a as unknown as Record<string, unknown>)
-  for (const o of ann.traffic_objects || []) drop(o as unknown as Record<string, unknown>)
-  for (const l of ann.traffic_lights || []) drop(l as unknown as Record<string, unknown>)
-  delete (ann as unknown as Record<string, unknown>).bounding_box_sequence
-}
-
 function applyBundle(b: AnnotationBundle | null, s: AppState, initialLoad = false) {
   if (initialLoad && b?.annotation) {
     migrateIdsToString(b.annotation)
-    stripLegacyBboxes(b.annotation)
     autoAssignOverlappingTracks(b.annotation)
   }
   const dataCounts = deriveTrackCounts(b)
   const ui = b?._ui_config
-  // Track counts must reflect the bundle being loaded — never carry over from
-  // the previous bundle's count. Otherwise switching between annotations on
-  // the same clip (e.g., reviewer viewing different annotators) leaves phantom
-  // empty rows from the prior, "richer" bundle.
   return {
     bundle: b,
     duration: b?.video?.duration_s || s.duration,
@@ -132,10 +109,7 @@ function applyBundle(b: AnnotationBundle | null, s: AppState, initialLoad = fals
 }
 
 export const useStore = create<AppState>((set, get) => ({
-  currentUser: null,
-  currentTask: null,
-  myTasks: [],
-  videos: [],
+  clips: [],
   selectedClipId: null,
   bundle: null,
   playheadTime: 0,
@@ -148,38 +122,30 @@ export const useStore = create<AppState>((set, get) => ({
   lightTrackCount: 1,
   agentTrackCount: 1,
   egoContTrackCount: 1,
-  feedback: [],
-  trackReviews: [],
-  reviewDraft: { rows: {}, general_comment: '', missing_per_group: {} },
-  reviewDraftVersion: 0,
+  locked: true,
+  serverReadOnly: false,
+  dirty: false,
+  saveError: null,
   clipLoadKey: 0,
-  readOnly: false,
-  viewingUserId: null,
-  reviewEditMode: false,
   keypointsVisible: true,
   arrowTypes: { becauseOf: true, linkTo: true, containedIn: true, influencedBy: true, actionTarget: true },
   _undoStack: [],
   _isUndoing: false,
 
-  setCurrentUser: (u) => set({ currentUser: u }),
-  setCurrentTask: (t) => set({ currentTask: t }),
-  setMyTasks: (tasks) => set((s) => {
-    let currentTask = s.currentTask
-    if (currentTask) {
-      const fresh = tasks.find(t => t.id === currentTask!.id)
-      currentTask = fresh && fresh.status === 'in_progress' ? fresh : null
-    }
-    return { myTasks: tasks, currentTask }
-  }),
-  setVideos: (v) => set({ videos: v }),
+  setClips: (c) => set({ clips: c }),
 
   selectClip: (id) => set((s) => ({
-    selectedClipId: id, bundle: null, playheadTime: 0, selectedPath: null,
+    selectedClipId: id,
+    bundle: null,
+    playheadTime: 0,
+    selectedPath: null,
     envTrackCount: 1, objectTrackCount: 1, lightTrackCount: 1, agentTrackCount: 1, egoContTrackCount: 1,
     zoomLevel: 1, scrollOffset: 0,
-    feedback: [], trackReviews: [],
-    reviewDraft: { rows: {}, general_comment: '', missing_per_group: {} }, reviewDraftVersion: 0,
-    clipLoadKey: s.clipLoadKey + 1, readOnly: false, viewingUserId: null, reviewEditMode: false,
+    // Auto-lock on every clip switch.
+    locked: true,
+    dirty: false,
+    saveError: null,
+    clipLoadKey: s.clipLoadKey + 1,
     _undoStack: [], _isUndoing: false,
   })),
 
@@ -199,6 +165,7 @@ export const useStore = create<AppState>((set, get) => ({
       ...applyBundle(b, s),
       _undoStack: stack,
       _isUndoing: false,
+      dirty: true,
     }
   }),
 
@@ -212,6 +179,7 @@ export const useStore = create<AppState>((set, get) => ({
       _undoStack: stack,
       _isUndoing: true,
       selectedPath: null,
+      dirty: true,
     }
   }),
 
@@ -231,26 +199,15 @@ export const useStore = create<AppState>((set, get) => ({
   setLightTrackCount: (n) => set({ lightTrackCount: Math.max(1, n) }),
   setAgentTrackCount: (n) => set({ agentTrackCount: Math.max(1, n) }),
   setEgoContTrackCount: (n) => set({ egoContTrackCount: Math.max(1, n) }),
-  setFeedback: (f) => set({ feedback: f }),
-  setTrackReviews: (r) => set({ trackReviews: r }),
-  setReviewDraft: (d) => set({ reviewDraft: d }),
-  setReviewDraftVersion: (v) => set({ reviewDraftVersion: v }),
-  resetReviewDraft: () => set({ reviewDraft: { rows: {}, general_comment: '', missing_per_group: {} }, reviewDraftVersion: 0 }),
-  setReadOnly: (v) => set({ readOnly: v }),
-  setViewingUserId: (id) => set((s) => ({
-    viewingUserId: id,
-    reviewEditMode: id !== s.viewingUserId ? false : s.reviewEditMode,
-  })),
-  setReviewEditMode: (v) => set({ reviewEditMode: v }),
 
-  // Convenience: returns true when edits to the bundle are currently blocked.
-  // Edits are allowed when not readOnly, OR when readOnly but the reviewer
-  // has flipped Edit Mode on (saves route to the annotator's row via
-  // target_user_id).
-  editsBlocked: () => {
-    const s = get()
-    return s.readOnly && !s.reviewEditMode
-  },
+  lock: () => set({ locked: true }),
+  unlock: () => set((s) => (s.serverReadOnly ? s : { locked: false })),
+  setServerReadOnly: (v) => set({ serverReadOnly: v }),
+  markDirty: () => set({ dirty: true }),
+  clearDirty: () => set({ dirty: false, saveError: null }),
+  setSaveError: (msg) => set({ saveError: msg }),
+
+  editsBlocked: () => get().locked,
   toggleKeypointsVisible: () => set((s) => ({ keypointsVisible: !s.keypointsVisible })),
   toggleArrowType: (type) => set((s) => ({ arrowTypes: { ...s.arrowTypes, [type]: !s.arrowTypes[type] } })),
 

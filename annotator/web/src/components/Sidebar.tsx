@@ -1,133 +1,57 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
 import { useStore } from '../lib/store'
-import { api } from '../lib/api'
-import type { DownloadProgress } from '../lib/api'
-import { Download, Search, Film, CheckCircle, XCircle, Clock, Loader2, Star, User as UserIcon, AlertTriangle } from 'lucide-react'
-import type { ClipAnnotationEntry } from '../lib/api'
+import { Search, Film, FileText } from 'lucide-react'
 
-function StatusIcon({ status }: { status: string }) {
-  switch (status) {
-    case 'approved':
-      return <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-    case 'disapproved':
-      return <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-    case 'needs_revision':
-      return <AlertTriangle className="w-4 h-4 text-orange-400 flex-shrink-0" />
-    case 'annotating':
-      return <Loader2 className="w-4 h-4 text-blue-500 animate-spin flex-shrink-0" />
-    default:
-      return <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />
-  }
-}
+/**
+ * Clip list. One entry per clip from /api/clips, with a kind badge
+ * (`annotated` / `unlabelled`). Clicking a clip selects it; if the current
+ * bundle is dirty, we prompt before switching.
+ *
+ * Step 4 stub: the dialog's Save button currently discards too (real save
+ * wires up in Step 6). The Cancel path already works.
+ */
+export function Sidebar() {
+  const clips = useStore(s => s.clips)
+  const selectedClipId = useStore(s => s.selectedClipId)
+  const selectClip = useStore(s => s.selectClip)
+  const dirty = useStore(s => s.dirty)
+  const currentClipId = useStore(s => s.selectedClipId)
 
-export function Sidebar({ reviewerMode = false }: { reviewerMode?: boolean }) {
-  const { videos, setVideos, selectClip, selectedClipId, currentUser, setReadOnly, setViewingUserId, viewingUserId, feedback } = useStore()
   const [filter, setFilter] = useState('')
-  const [downloading, setDownloading] = useState(false)
-  const [progress, setProgress] = useState<DownloadProgress | null>(null)
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [clipAnnotations, setClipAnnotations] = useState<Record<string, ClipAnnotationEntry[]>>({})
-  const isReviewer = reviewerMode || currentUser?.role === 'reviewer'
-
-  useEffect(() => {
-    api.listVideos().then(setVideos).catch(() => setVideos([]))
-  }, [setVideos, refreshKey])
-
-  useEffect(() => {
-    const interval = setInterval(() => setRefreshKey(k => k + 1), 5000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Poll download progress while active
-  useEffect(() => {
-    if (!downloading) { setProgress(null); return }
-    let cancelled = false
-    const poll = async () => {
-      while (!cancelled) {
-        try {
-          const status = await api.downloadStatus()
-          if (cancelled) break
-          setProgress(status)
-          if (status.done) {
-            setDownloading(false)
-            setRefreshKey(k => k + 1)
-            break
-          }
-        } catch { /* ignore */ }
-        await new Promise(r => setTimeout(r, 2000))
-      }
-    }
-    poll()
-    return () => { cancelled = true }
-  }, [downloading])
-
-  useEffect(() => {
-    if (!isReviewer || !selectedClipId) return
-    api.listClipAnnotations(selectedClipId)
-      .then(entries => setClipAnnotations({ [selectedClipId]: entries }))
-      .catch(() => {})
-  }, [isReviewer, selectedClipId, feedback.length])
+  const [pendingClipId, setPendingClipId] = useState<string | null>(null)
 
   const q = filter.trim().toLowerCase()
   const filtered = q
-    ? videos.filter((v) => v.filename.toLowerCase().includes(q) || v.clip_id.toLowerCase().includes(q))
-    : videos
+    ? clips.filter(c => c.clip_id.toLowerCase().includes(q))
+    : clips
 
-  const handleDownloadGoldenSet = async () => {
-    setDownloading(true)
-    try {
-      await api.downloadGoldenSet()
-    } catch (e) {
-      alert('Download failed: ' + (e instanceof Error ? e.message : String(e)))
-      setDownloading(false)
+  const requestSelect = (clipId: string) => {
+    if (clipId === selectedClipId) return
+    if (dirty) {
+      setPendingClipId(clipId)
+      return
     }
+    selectClip(clipId)
+  }
+
+  const confirmDiscardAndSwitch = () => {
+    if (pendingClipId) selectClip(pendingClipId)
+    setPendingClipId(null)
+  }
+
+  // Step 4 stub: clicking "Save" in the dialog currently behaves like Discard.
+  // Step 6 replaces this with a real save+switch.
+  const confirmSaveAndSwitch = () => {
+    if (pendingClipId) selectClip(pendingClipId)
+    setPendingClipId(null)
   }
 
   return (
     <aside className="flex flex-col h-full bg-[#13132a] border-r border-[#2a2a45] overflow-x-hidden overflow-y-hidden">
       <header className="shrink-0 p-3 border-b border-[#2a2a45]">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-[#e0e0e0] font-semibold text-sm">SIL-AV Annotator</h1>
-            <p className="text-[10px] text-[#8888aa] mt-0.5">Golden Set</p>
-          </div>
-        </div>
-        {downloading && progress ? (
-          <div className="w-full mt-3 p-3 bg-[#1e1e3a] border border-[#2a2a45] rounded text-xs">
-            <div className="flex items-center justify-between text-[#e0e0e0] mb-2">
-              <span className="flex items-center gap-1.5">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Downloading...
-              </span>
-              <span className="text-[#8888aa]">{progress.completed}/{progress.total}</span>
-            </div>
-            <div className="w-full h-1.5 bg-[#0a0a1a] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all duration-500"
-                style={{ width: `${progress.total ? (progress.completed / progress.total) * 100 : 0}%` }}
-              />
-            </div>
-            {progress.current_clip_id && (
-              <p className="mt-1.5 text-[10px] text-[#8888aa] truncate">
-                {progress.current_clip_id.slice(0, 8)}...
-              </p>
-            )}
-            {progress.failed.length > 0 && (
-              <p className="mt-1 text-[10px] text-red-400">
-                {progress.failed.length} failed
-              </p>
-            )}
-          </div>
-        ) : (
-          <button
-            onClick={handleDownloadGoldenSet}
-            disabled={downloading}
-            className="w-full mt-3 py-2 px-3 flex items-center justify-center gap-2 text-xs bg-[#1e1e3a] text-[#e0e0e0] border border-[#2a2a45] rounded hover:bg-[#252550] disabled:opacity-50 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Download All
-          </button>
-        )}
+        <h1 className="text-[#e0e0e0] font-semibold text-sm">causal-av-annotator</h1>
+        <p className="text-[10px] text-[#8888aa] mt-0.5">{clips.length} clip{clips.length === 1 ? '' : 's'}</p>
       </header>
 
       <div className="px-3 py-2 border-b border-[#2a2a45]">
@@ -144,78 +68,69 @@ export function Sidebar({ reviewerMode = false }: { reviewerMode?: boolean }) {
       </div>
 
       <ul className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-0.5">
-        {filtered.map((v) => {
-          const selected = v.clip_id === selectedClipId
+        {filtered.map((c) => {
+          const selected = c.clip_id === selectedClipId
+          const Icon = c.kind === 'annotated' ? FileText : Film
+          const badge = c.kind === 'annotated'
+            ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+            : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
           return (
-            <li key={v.clip_id}>
+            <li key={c.clip_id}>
               <button
-                onClick={() => selectClip(v.clip_id)}
+                onClick={() => requestSelect(c.clip_id)}
                 className={`w-full text-left p-2 rounded transition-colors flex items-center gap-2.5 ${
                   selected
                     ? 'bg-[#2a2a50] border-l-[3px] border-l-blue-500'
                     : 'bg-transparent border-l-[3px] border-l-transparent hover:bg-[#222245]'
                 }`}
               >
-                <Film className="w-4 h-4 text-[#666] flex-shrink-0" />
+                <Icon className="w-4 h-4 text-[#666] flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <code className="block text-[11px] font-mono text-[#e0e0e0] truncate">
-                    {v.clip_id.slice(0, 8)}
+                    {c.clip_id.length > 16 ? c.clip_id.slice(0, 8) + '…' : c.clip_id}
                   </code>
-                  {!isReviewer && v.has_annotation && (
-                    <span className="text-[10px] text-[#8888aa] mt-0.5 inline-block">
-                      {v.env_count} env · {v.agent_count} agents{v.ego_action_count > 0 ? ` · ${v.ego_action_count} ego` : ''}
-                    </span>
-                  )}
                 </div>
-                {!isReviewer && <StatusIcon status={v.status} />}
+                <span className={`text-[9px] px-1.5 py-0.5 rounded border ${badge}`}>{c.kind}</span>
               </button>
-              {selected && isReviewer && clipAnnotations[v.clip_id] && (
-                <div className="ml-6 mt-1 mb-1 space-y-0.5">
-                  <button
-                    onClick={() => {
-                      setViewingUserId(null)
-                      setReadOnly(false)
-                    }}
-                    className={`w-full text-left px-2 py-1 rounded text-[10px] flex items-center gap-1.5 ${
-                      !viewingUserId
-                        ? 'bg-yellow-900/40 text-yellow-300'
-                        : 'bg-yellow-900/20 text-yellow-400/70 hover:bg-yellow-900/30'
-                    }`}
-                  >
-                    <Star className="w-3 h-3" />
-                    Golden (you)
-                  </button>
-                  {clipAnnotations[v.clip_id]
-                    .filter(a => a.user_id !== currentUser?.id)
-                    .map(a => (
-                      <button
-                        key={a.user_id}
-                        onClick={() => {
-                          setViewingUserId(a.user_id)
-                          setReadOnly(true)
-                        }}
-                        className={`w-full text-left px-2 py-1 rounded text-[10px] flex items-center gap-1.5 ${
-                          viewingUserId === a.user_id
-                            ? 'bg-[#2a2a50] text-[#e0e0e0]'
-                            : 'text-[#8888aa] hover:bg-[#222245]'
-                        }`}
-                      >
-                        <UserIcon className="w-3 h-3" />
-                        {a.display_name}
-                        <span className={`ml-auto text-[9px] ${
-                          a.status === 'needs_revision' ? 'text-orange-400' :
-                          a.status === 'approved' ? 'text-green-400' :
-                          a.status === 'submitted' ? 'text-blue-400' :
-                          'opacity-60'
-                        }`}>{a.status === 'needs_revision' ? 'revision requested' : a.status}</span>
-                      </button>
-                    ))}
-                </div>
-              )}
             </li>
           )
         })}
+        {filtered.length === 0 && (
+          <li className="text-[11px] text-[#666] italic px-2 py-3">No clips match.</li>
+        )}
       </ul>
+
+      <Dialog.Root open={pendingClipId !== null} onOpenChange={(open) => { if (!open) setPendingClipId(null) }}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-40" />
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[400px] max-w-[90vw] rounded-2xl border border-[#2a2a50] bg-[#13132a] p-5 shadow-2xl">
+            <Dialog.Title className="text-sm font-semibold text-[#e0e0e0]">Unsaved changes</Dialog.Title>
+            <Dialog.Description className="mt-2 text-xs text-[#8888aa]">
+              Save changes to <code className="text-[#e0e0e0]">{currentClipId ?? '...'}</code> before switching?
+            </Dialog.Description>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setPendingClipId(null)}
+                className="px-3 py-1.5 rounded-lg text-xs bg-[#1a1a35] text-[#8888aa] border border-[#2a2a50] hover:text-[#e0e0e0]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDiscardAndSwitch}
+                className="px-3 py-1.5 rounded-lg text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
+              >
+                Discard
+              </button>
+              <button
+                onClick={confirmSaveAndSwitch}
+                className="px-3 py-1.5 rounded-lg text-xs bg-blue-500/20 text-blue-300 border border-blue-500/40 hover:bg-blue-500/30"
+              >
+                Save
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </aside>
   )
 }

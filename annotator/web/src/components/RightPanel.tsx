@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useStore } from '../lib/store'
-import { api } from '../lib/api'
-import { saveReviewDraft } from '../lib/review-actions'
+import { saveBundle } from '../lib/api'
 import { annotationToSegments, applySegmentTimeUpdate, clampToAvoidOverlap, syncInfluencedAgentIds, addSignalHeadToLight, addPhysicalContainmentToLight, addContainmentToEgo, addContainmentToAgent, addContainmentToObject, addInfluenceToEgo, addInfluenceToAgent, addPropertyToAgent, addPropertyToEgo, addConditionToEnv, parseTs, cleanupDeletedIds, cleanupDeletedEnv } from '../lib/timeline-utils'
 import {
   ENVIRONMENT_TYPES, EGO_ACTION_TYPES, TRAFFIC_OBJECT_TYPES,
@@ -18,8 +17,7 @@ import {
   ACTION_LINK_TO_CONFIG,
 } from '../lib/attribute-cycling'
 import type { SilAvAnnotation, AnnotationBundle } from '../lib/types'
-import { AlertTriangle, Trash2, Link2, BarChart3, FileText, Download, Upload, Save, ChevronDown, ChevronRight, X, CheckCircle, Pencil } from 'lucide-react'
-import { ReviewSection } from './ReviewSection'
+import { AlertTriangle, Trash2, Link2, BarChart3, FileText, Download, Upload, Save, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { checkSegmentCompleteness } from '../lib/completeness'
 
 // --- Shared UI helpers ---
@@ -253,48 +251,11 @@ function unionLen(intervals: { t0: number; t1: number }[]) {
 // ============================================================
 
 export function RightPanel() {
-  const { bundle, selectedClipId, selectedPath, updateBundle, selectPath, playheadTime, readOnly } = useStore()
-  const currentTask = useStore(s => s.currentTask)
-  const setCurrentTask = useStore(s => s.setCurrentTask)
-  const setMyTasks = useStore(s => s.setMyTasks)
-  const setReadOnly = useStore(s => s.setReadOnly)
-  const selectClipAction = useStore(s => s.selectClip)
-  const [submitting, setSubmitting] = useState(false)
-  const viewingUserId = useStore(s => s.viewingUserId)
-  const currentUser = useStore(s => s.currentUser)
-  const trackReviews = useStore(s => s.trackReviews)
-  const hasReviewContent = useStore(s => s.feedback.length > 0 || s.trackReviews.length > 0)
-
-  // Top Save button does double duty: while reviewing an open round it
-  // persists the shared review draft instead of the annotation.
-  const annStatus = bundle?.status ?? 'pending'
-  const reviewRound = Math.max(1, bundle?.review_round ?? 1)
-  const isReviewerOrAdmin = currentUser?.role === 'reviewer' || currentUser?.role === 'admin' || currentUser?.role === 'owner'
-  const reviewableStatus = annStatus === 'submitted' || annStatus === 'needs_revision'
-  const roundSealedForReview = trackReviews.some(r => r.round === reviewRound && r.track_id !== null)
-  const canSaveReviewDraft = !!(readOnly && isReviewerOrAdmin && viewingUserId && reviewableStatus && !roundSealedForReview)
-  const canCommentOnReview = !!(readOnly && isReviewerOrAdmin && viewingUserId && reviewableStatus)
-  const canShowReviewPanel = hasReviewContent || canSaveReviewDraft || canCommentOnReview
-  const reviewEditMode = useStore(s => s.reviewEditMode)
-  const setReviewEditMode = useStore(s => s.setReviewEditMode)
-  // Reviewer/admin can flip to Edit Mode under the same conditions that
-  // permit a review draft. While on, save() writes the bundle directly to
-  // the annotator's annotations row via target_user_id.
-  const canEnterReviewEdit = canSaveReviewDraft
-  // Edits to the bundle are blocked unless the user is the owner OR is a
-  // reviewer who has explicitly opted into Edit Mode for this round.
-  const editsBlocked = readOnly && !reviewEditMode
-  const selectedClipIdForReset = useStore(s => s.selectedClipId)
-  const viewingUserIdForReset = useStore(s => s.viewingUserId)
-  const [reviewTab, setReviewTab] = useState<'review' | 'details'>('review')
-  const reviewActive = !canShowReviewPanel || reviewTab === 'review'
-  const detailsActive = !canShowReviewPanel || reviewTab === 'details'
-
-  // Reset tab when switching clips or users
-  useEffect(() => { setReviewTab(canShowReviewPanel ? 'review' : 'details') }, [selectedClipIdForReset, viewingUserIdForReset, canShowReviewPanel])
-  useEffect(() => {
-    if (reviewEditMode && !canEnterReviewEdit) setReviewEditMode(false)
-  }, [reviewEditMode, canEnterReviewEdit, setReviewEditMode])
+  const { bundle, selectedClipId, selectedPath, updateBundle, selectPath, playheadTime } = useStore()
+  const locked = useStore(s => s.locked)
+  const serverReadOnly = useStore(s => s.serverReadOnly)
+  const dirty = useStore(s => s.dirty)
+  const editsBlocked = locked
   const [briefEdit, setBriefEdit] = useState<string | null>(null)
   const [attrsOpen, setAttrsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -306,7 +267,7 @@ export function RightPanel() {
   const comp = sel && ann ? checkSegmentCompleteness(sel, ann) : null
   const missing = (key: string) => !!(comp?.issues.some(i => i === `Missing: ${key}` || i.startsWith(`Missing: ${key} (`)))
 
-  useEffect(() => { setBecauseOtherMode(false); setBecauseOtherText('') }, [sel?.id, selectedClipId, viewingUserId])
+  useEffect(() => { setBecauseOtherMode(false); setBecauseOtherText('') }, [sel?.id, selectedClipId])
 
   // Auto-follow playhead: when playhead leaves the selected segment, switch to
   // the segment on the same track that contains the playhead time.
@@ -366,26 +327,19 @@ export function RightPanel() {
   }
 
   // ---- Generic persist helper ----
+  // Mutates the in-memory bundle and flags it dirty via updateBundle().
+  // The actual write to disk happens via the explicit Save button (Step 6).
   const persist = async (updated: SilAvAnnotation) => {
     if (!bundle || !selectedClipId || useStore.getState().editsBlocked()) return
     const nb = { ...bundle, annotation: updated }
     updateBundle(nb)
-    try { await guardedSave(selectedClipId, nb) } catch {}
   }
 
   // ---- Guarded save ----
-  // - Normal flow: writes to the caller's own annotation row.
-  // - Reviewer Edit Mode: writes to the annotator's row via target_user_id.
-  // - Pure read-only (review without edit mode): no-op, returns input as-is.
-  const guardedSave = (clipId: string, data: unknown): Promise<AnnotationBundle> => {
-    const s = useStore.getState()
-    if (s.readOnly) {
-      if (s.reviewEditMode && s.viewingUserId) {
-        return api.saveAnnotations(clipId, data, s.viewingUserId)
-      }
-      return Promise.resolve(data) as Promise<AnnotationBundle>
-    }
-    return api.saveAnnotations(clipId, data)
+  // Step 4 stub: edits while unlocked update the in-memory bundle (and flip
+  // dirty) but do not auto-save. Step 6 wires the explicit Save button.
+  const guardedSave = async (_clipId: string, data: unknown): Promise<AnnotationBundle> => {
+    return data as AnnotationBundle
   }
 
   // ---- Generic field updater (mutates a clone, then persists) ----
@@ -648,60 +602,19 @@ export function RightPanel() {
   }
 
   // ---- Handlers ----
+  // Step 4 stub. Step 6 wires the real save flow: PUT /api/clips/{id}/annotations,
+  // clearDirty() on success, surface 422 via store.saveError.
   const save = async () => {
     if (!selectedClipId || !bundle) return
     setSaving(true)
     try {
-      if (reviewEditMode && viewingUserId) {
-        const saved = await api.saveAnnotations(selectedClipId, bundle, viewingUserId)
-        updateBundle(saved)
-      } else if (canSaveReviewDraft) {
-        await saveReviewDraft()
-      } else {
-        await guardedSave(selectedClipId, bundle)
-      }
+      const saved = await saveBundle(selectedClipId, bundle)
+      updateBundle(saved)
+      useStore.getState().clearDirty()
     } catch (e) {
-      if (reviewEditMode) {
-        alert('Failed to save annotation: ' + (e instanceof Error ? e.message : String(e)))
-      } else if (canSaveReviewDraft) {
-        alert('Failed to save review draft: ' + (e instanceof Error ? e.message : String(e)))
-      }
+      useStore.getState().setSaveError(e instanceof Error ? e.message : String(e))
     }
     setSaving(false)
-  }
-  const submitTask = async () => {
-    if (!currentTask) return
-    if (!window.confirm('Submit this task? You will not be able to edit it afterward.')) return
-    setSubmitting(true)
-    try {
-      if (selectedClipId && bundle) {
-        try {
-          const saved = await api.saveAnnotations(selectedClipId, bundle)
-          updateBundle(saved)
-        } catch (e) {
-          alert('Auto-save before submit failed: ' + (e instanceof Error ? e.message : String(e)))
-          return
-        }
-      }
-      try {
-        await api.submitTask(currentTask.id)
-        setCurrentTask(null)
-        setReadOnly(true)
-        const tasks = await api.getMyTasks()
-        setMyTasks(tasks)
-        if (tasks.length > 0) {
-          const switched = await api.switchTask(tasks[0].id)
-          setCurrentTask(switched)
-          selectClipAction(switched.clip_id)
-          const refreshed = await api.getMyTasks()
-          setMyTasks(refreshed)
-        }
-      } catch (e) {
-        alert('Task submit failed after auto-save succeeded: ' + (e instanceof Error ? e.message : String(e)))
-      }
-    } finally {
-      setSubmitting(false)
-    }
   }
   const loadJsonRef = useRef<HTMLInputElement>(null)
   const loadJson = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1518,63 +1431,24 @@ export function RightPanel() {
   return (
     <aside className="h-full flex flex-col bg-[#111128] overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
 
-      {(readOnly || canShowReviewPanel) && (
-        <div className="sticky top-0 z-30 bg-[#111128]">
-          {readOnly && (
-            <div className={`text-xs px-3 py-2 flex items-center justify-center gap-3 font-medium border-b ${reviewEditMode ? 'bg-purple-900/90 text-purple-300 border-purple-700/30' : 'bg-amber-900/90 text-amber-300 border-amber-700/30'}`}>
-              <span>{reviewEditMode ? 'Editing as Reviewer' : 'View Only'}</span>
-              {canEnterReviewEdit && (
-                <button
-                  onClick={() => setReviewEditMode(!reviewEditMode)}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-semibold transition-all ${reviewEditMode ? 'bg-purple-700/40 border-purple-600/40 hover:bg-purple-700/60' : 'bg-amber-700/40 border-amber-600/40 hover:bg-amber-700/60'}`}
-                >
-                  <Pencil className="w-3 h-3" /> {reviewEditMode ? 'Exit Edit Mode' : 'Edit Annotation'}
-                </button>
-              )}
-            </div>
-          )}
-          {canShowReviewPanel && (
-            <div className="border-b border-[#1e1e38] flex gap-3" style={{ padding: '4px 5px' }}>
-              <button
-                onClick={() => setReviewTab('review')}
-                className={`flex-1 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all border ${reviewTab === 'review' ? 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/40' : 'bg-[#1a1a35] text-[#8a8aaa] border-[#2a2a50] hover:bg-[#252540]'}`}
-              >
-                Review
-              </button>
-              <button
-                onClick={() => setReviewTab('details')}
-                className={`flex-1 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all border ${reviewTab === 'details' ? 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/40' : 'bg-[#1a1a35] text-[#8a8aaa] border-[#2a2a50] hover:bg-[#252540]'}`}
-              >
-                Details
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Status + Save + Actions */}
+      {/* Status + Save */}
       <div className="p-4 border-b border-[#1e1e38]">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556]">Status</h3>
           <span className={`px-3 py-1 rounded-full text-[11px] font-semibold border ${statusColor}`}>{status === 'needs_revision' ? 'revision requested' : status}</span>
         </div>
         <div className="flex gap-2 mb-3">
-          <button onClick={save} disabled={!bundle || saving || (readOnly && !canSaveReviewDraft && !reviewEditMode)} className="flex-1 flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/30 text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
+          <button
+            onClick={save}
+            disabled={!bundle || saving || !dirty || locked || serverReadOnly}
+            className="flex-1 flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/30 text-sm font-semibold transition-all disabled:opacity-30 shadow-sm"
+          >
             <Save className="w-5 h-5" /> {saving ? 'Saving...' : 'Save'}
           </button>
-          {currentTask && (
-            <button onClick={submitTask} disabled={submitting} className="flex-1 flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-green-600/20 text-green-400 border border-green-600/30 hover:bg-green-600/30 text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
-              <CheckCircle className="w-5 h-5" /> {submitting ? 'Submitting...' : 'Submit'}
-            </button>
-          )}
         </div>
       </div>
 
-      <div style={{ display: reviewActive ? 'contents' : 'none' }}>
-        <ReviewSection active={reviewActive} />
-      </div>
-
-      <div style={{ display: detailsActive ? 'contents' : 'none' }}>
+      <div>
       {/* === Details view === */}
 
       {/* Relevancy */}
@@ -1899,7 +1773,7 @@ export function RightPanel() {
       </div>
 
       {/* Bottom actions */}
-      <div style={{ display: detailsActive ? 'contents' : 'none' }}>
+      <div>
       <div className="p-5 border-t border-[#1e1e38] space-y-3">
         <button onClick={handleExport} disabled={!selectedClipId || !bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-[#1a1a35] text-[#999] border border-[#2a2a50] hover:bg-[#222245] hover:text-white text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
           <Download className="w-5 h-5" /> Export JSON

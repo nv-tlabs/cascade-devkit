@@ -1,6 +1,5 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
-import { api } from '../lib/api'
 import {
   annotationToSegments,
   buildTrackList,
@@ -34,8 +33,7 @@ import { removeKeypointAt } from '../lib/keypoint-utils'
 import { buildCompletenessMap } from '../lib/completeness'
 import { ACTION_LINK_TO_CONFIG } from '../lib/attribute-cycling'
 import type { TimelineSegment, TrackId, SilAvAnnotation } from '../lib/types'
-import { ZoomIn, ZoomOut, Maximize2, Plus, Minus, ChevronRight, ChevronDown, Check, AlertTriangle } from 'lucide-react'
-import type { TrackGroup, TrackReviewEntry } from '../lib/api'
+import { ZoomIn, ZoomOut, Maximize2, Plus, Minus, ChevronRight, ChevronDown } from 'lucide-react'
 
 const TRACK_HEIGHT = 32
 const ENV_TRACK_HEIGHT = 50
@@ -370,87 +368,6 @@ function drawBecauseOfCurve(ctx: CanvasRenderingContext2D, x1: number, y1: numbe
   ctx.fillText(label, midX, pillY + 9)
 }
 
-/** Map Timeline group name → track review group key. TrafficLights share the "objects" review group. */
-function groupToReviewKey(group: string): TrackGroup | null {
-  switch (group) {
-    case 'Environments': return 'environments'
-    case 'Ego': return 'ego'
-    case 'Objects': case 'TrafficLights': return 'objects'
-    case 'Agents': return 'agents'
-    default: return null
-  }
-}
-
-/** Expected row-level track ids the review UI would produce for a Timeline group.
- *
- * Mirrors buildReviewRows() in ReviewSection: populated categories emit one
- * id per `_track_index`, empty categories emit a single `<kind>_missing`
- * placeholder so a reviewer's "this whole section is missing" decision is
- * reflected in the badge rollup.
- */
-function expectedRowIdsForGroup(timelineGroup: string, ann: SilAvAnnotation | undefined): string[] {
-  if (!ann) return []
-  const ids = (items: readonly { _track_index?: number }[] | undefined, prefix: string) => {
-    const idxs = new Set<number>()
-    for (const it of items || []) idxs.add(it._track_index ?? 0)
-    if (idxs.size === 0) return [`${prefix}_missing`]
-    return [...idxs].sort((a, b) => a - b).map(i => `${prefix}_${i}`)
-  }
-  switch (timelineGroup) {
-    case 'Environments': return ids(ann.environments, 'env')
-    case 'Ego': return ['ego_act']
-    case 'Objects': return ids(ann.traffic_objects, 'obj')
-    case 'TrafficLights': return ids(ann.traffic_lights, 'light')
-    case 'Agents': return ids(ann.agents, 'agent')
-    default: return []
-  }
-}
-
-/** Compute the group-level review badge status.
- *
- * Row-level reviews are rolled up per `track_id`: the badge only goes
- * "approved" once every expected row has an approved entry — partial coverage
- * stays pending rather than flipping the whole group to approved. Legacy
- * group-level entries (track_id NULL) act as a fallback for rows with no
- * row-level review yet.
- */
-function latestReviewStatus(
-  reviews: TrackReviewEntry[],
-  group: TrackGroup,
-  expectedRowIds: string[],
-): 'approved' | 'needs_revision' | null {
-  const forGroup = reviews.filter(r => r.track_group === group)
-  if (forGroup.length === 0) return null
-
-  let legacyLatest: TrackReviewEntry | null = null
-  const rowLatest: Record<string, TrackReviewEntry> = {}
-  for (const r of forGroup) {
-    if (r.track_id) {
-      const prev = rowLatest[r.track_id]
-      if (!prev || new Date(r.created_at) >= new Date(prev.created_at)) rowLatest[r.track_id] = r
-    } else {
-      if (!legacyLatest || new Date(r.created_at) >= new Date(legacyLatest.created_at)) legacyLatest = r
-    }
-  }
-
-  if (expectedRowIds.length === 0) {
-    if (!legacyLatest) return null
-    return legacyLatest.status
-  }
-
-  let anyRejected = false
-  let allApproved = true
-  for (const id of expectedRowIds) {
-    const r = rowLatest[id] ?? legacyLatest
-    if (!r) { allApproved = false; continue }
-    if (r.status === 'needs_revision') anyRejected = true
-    else if (r.status !== 'approved') allApproved = false
-  }
-  if (anyRejected) return 'needs_revision'
-  if (allApproved) return 'approved'
-  return null
-}
-
 export function Timeline() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -458,7 +375,7 @@ export function Timeline() {
     bundle, selectedClipId, duration, playheadTime, selectedPath,
     zoomLevel, scrollOffset,
     envTrackCount, objectTrackCount, lightTrackCount, agentTrackCount, egoContTrackCount,
-    arrowTypes, trackReviews, keypointsVisible,
+    arrowTypes, keypointsVisible,
     setPlayhead, selectPath, updateBundle, undo, setZoom, setScroll,
     setEnvTrackCount, setObjectTrackCount, setLightTrackCount, setAgentTrackCount, setEgoContTrackCount: _setEgoContTrackCount,
   } = useStore()
@@ -509,9 +426,11 @@ export function Timeline() {
     }
   }, [])
 
-  const guardedSave = useCallback((clipId: string, data: unknown) => {
-    if (useStore.getState().editsBlocked()) return Promise.resolve()
-    return api.saveAnnotations(clipId, data)
+  // No-op until Step 6 wires the explicit Save button. `updateBundle` already
+  // flips `dirty` in the store, so callers passing through here just need
+  // their save promise to resolve.
+  const guardedSave = useCallback((_clipId: string, _data: unknown) => {
+    return Promise.resolve()
   }, [])
 
   const [dragState, setDragState] = useState<{
@@ -3407,13 +3326,6 @@ export function Timeline() {
                   >
                     <ChevronRight className="w-3 h-3 flex-shrink-0" style={{ color }} />
                     <span className="uppercase text-[9px] font-bold tracking-wider flex-1" style={{ color }}>{group}</span>
-                    {(() => {
-                      const rk = groupToReviewKey(group)
-                      const rs = rk ? latestReviewStatus(trackReviews, rk, expectedRowIdsForGroup(group, bundle?.annotation)) : null
-                      if (rs === 'approved') return <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                      if (rs === 'needs_revision') return <AlertTriangle className="w-3 h-3 text-orange-400 flex-shrink-0" />
-                      return null
-                    })()}
                   </div>
                 </div>
               )
@@ -3444,13 +3356,6 @@ export function Timeline() {
                       <ChevronDown className="w-3 h-3 flex-shrink-0" style={{ color }} />
                       <span className="uppercase text-[9px] font-bold tracking-wider truncate" style={{ color }}>{group}</span>
                     </div>
-                    {(() => {
-                      const rk = groupToReviewKey(group)
-                      const rs = rk ? latestReviewStatus(trackReviews, rk, expectedRowIdsForGroup(group, bundle?.annotation)) : null
-                      if (rs === 'approved') return <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                      if (rs === 'needs_revision') return <AlertTriangle className="w-3 h-3 text-orange-400 flex-shrink-0" />
-                      return null
-                    })()}
                     <div className="flex-1" />
                     {isDynamic && (
                       <button type="button" onClick={() => handleAddTrack(group as DynamicGroup)}
