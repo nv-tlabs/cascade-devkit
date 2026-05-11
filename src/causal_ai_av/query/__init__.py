@@ -40,6 +40,12 @@ from causal_ai_av.query.api import (
     find_on_dataset,
     group_by_on_dataset,
 )
+from causal_ai_av.query.context import (
+    AgentInWindow,
+    ContextWindow,
+    LightStateInWindow,
+    context_at,
+)
 from causal_ai_av.query.engine import Match, MatchSet, evaluate
 from causal_ai_av.query.index import IdIndex, Subject
 from causal_ai_av.query.spatial import (
@@ -96,6 +102,11 @@ __all__ = [
     "BecauseOf",
     "Within",
     "Expr",
+    # Context windows
+    "AgentInWindow",
+    "ContextWindow",
+    "LightStateInWindow",
+    "context_at",
     "resolve_alias",
     "AgentKind",
     "ActionKind",

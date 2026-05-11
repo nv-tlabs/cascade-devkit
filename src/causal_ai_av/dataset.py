@@ -39,6 +39,8 @@ from causal_ai_av.query.api import (
     find_on_dataset,
     group_by_on_dataset,
 )
+from causal_ai_av.query.context import ContextWindow, context_at
+from causal_ai_av.query.engine import Match
 from causal_ai_av.query.triplets import CausalTriplet
 from causal_ai_av.spec import (
     AnnotationBundle,
@@ -299,6 +301,24 @@ class CausalAVDataset(PhysicalAIAVDatasetInterface):
     def histogram(self, dsl: str, key: str) -> dict[object, int]:
         """Alias of `group_by` (kept for API symmetry per spec §4.3)."""
         return group_by_on_dataset(self, dsl, key)
+
+    def context_for(self, match: Match) -> ContextWindow:
+        """Everything else annotated in the clip during `match`'s window.
+
+        Resolves `match.clip_id` to its bundle and returns a
+        `ContextWindow` of visible agents, ego actions, environments,
+        conditions, traffic-light states, and persistent traffic
+        objects that overlap `match.interval`. Whole-clip matches
+        (`match.interval is None`) widen to the full clip span.
+        """
+        if match.clip_id not in self._by_clip:
+            raise KeyError(f"clip_id not in dataset: {match.clip_id!r}")
+        _path, _batch, bundle = self._by_clip[match.clip_id]
+        if match.interval is None:
+            window = Interval(0.0, max(0.0, bundle.video.duration_s))
+        else:
+            window = match.interval
+        return context_at(bundle, window)
 
 
 # -----------------------------------------------------------------------------
