@@ -1,10 +1,11 @@
 """FastAPI app for the causal-av-annotator local server.
 
-Routes (Phase 1):
+Routes:
   - GET  /api/health
   - GET  /api/clips
   - GET  /api/clips/{clip_id}/annotations
   - PUT  /api/clips/{clip_id}/annotations
+  - GET  /api/clips/{clip_id}/video           (Phase 3)
 
 The frontend dist is mounted at `/` (SPA fallback). If the dist directory
 does not exist, the server logs a warning and only the `/api/*` routes
@@ -18,13 +19,19 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from causal_ai_av.spec import AnnotationBundle
 
 from annotator.server.io_adapter import ClipEntry, load_bundle, save_bundle
+from annotator.server.video import (
+    TranscodeError,
+    VideoNotFound,
+    VideoResolver,
+    VideoToolsMissing,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -39,6 +46,7 @@ def create_app(
     read_only: bool,
     destination_dir: Path,
     dist_dir: Path | None = None,
+    video_resolver: VideoResolver | None = None,
 ) -> FastAPI:
     """Construct the FastAPI app bound to this in-memory clip index."""
     app = FastAPI(title="causal-av-annotator", version="0.1.0")
@@ -109,6 +117,30 @@ def create_app(
                 "bundle": bundle.model_dump(by_alias=True, exclude_unset=True, mode="json"),
             },
         )
+
+    # ----- Video route (Phase 3) -----
+
+    @app.get("/api/clips/{clip_id}/video")
+    def get_video(clip_id: str) -> FileResponse:
+        if clip_id not in clip_index:
+            raise HTTPException(status_code=404, detail=f"unknown clip_id: {clip_id}")
+        if video_resolver is None:
+            raise HTTPException(
+                status_code=503,
+                detail="video source not configured on this server",
+            )
+        try:
+            path = video_resolver.resolve(clip_id)
+        except VideoToolsMissing as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except VideoNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except TranscodeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        # FileResponse populates Content-Length and handles HEAD; HTML5 <video>
+        # in Chrome/Firefox accepts a single full response over the lifetime of
+        # a local playback session, and seeks work via decoded-buffer scrubbing.
+        return FileResponse(path, media_type="video/mp4", filename=path.name)
 
     # ----- Static frontend mount -----
 

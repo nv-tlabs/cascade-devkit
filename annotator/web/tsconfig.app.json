@@ -24,9 +24,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"],
-  "// exclude": "VideoPlayer is wired up in Phase 3 (video routes). Its lingering api.streamUrl/api.saveAnnotations calls are exempt from type-check until then.",
-  "exclude": [
-    "src/components/VideoPlayer.tsx"
-  ]
+  "include": ["src"]
 }

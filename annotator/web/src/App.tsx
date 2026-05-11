@@ -6,6 +6,7 @@ import { Sidebar } from './components/Sidebar'
 import { Timeline } from './components/Timeline'
 import { RightPanel } from './components/RightPanel'
 import { LockBar } from './components/LockBar'
+import { VideoPlayer } from './components/VideoPlayer'
 
 /**
  * Top-level layout: sidebar (clips) | center (LockBar + video + timeline) | right (segment editor).
@@ -105,10 +106,7 @@ export default function App() {
           className="flex-shrink-0"
           style={{ height: `${videoHeight}%`, minHeight: '180px', maxHeight: '70vh' }}
         >
-          {/* Phase 3 will mount VideoPlayer here. */}
-          <div className="h-full flex items-center justify-center bg-[#0a0a18] text-[#444] text-base">
-            {selectedClipId ? 'Video — Phase 3' : 'Select a clip from the sidebar'}
-          </div>
+          <VideoPlayer />
         </div>
         <div
           onMouseDown={onSplitterMouseDown}

@@ -1,6 +1,5 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import { useStore } from '../lib/store'
-import { api } from '../lib/api'
 import { Play, Pause, SkipBack, SkipForward, ChevronsLeft, ChevronsRight, MapPin, Maximize } from 'lucide-react'
 import { parseTs, annotationToSegments } from '../lib/timeline-utils'
 import { interpolateKeypoint, upsertKeypoint, moveKeypointAt, removeKeypointAt, EXACT_SNAP_SECONDS } from '../lib/keypoint-utils'
@@ -151,7 +150,7 @@ export function VideoPlayer() {
   const requestScrubFlushRef = useRef<() => void>(() => {})
   const {
     selectedClipId, setDuration, setPlayhead, playheadTime, duration, bundle,
-    updateBundle, selectedPath, selectPath, keypointsVisible, toggleKeypointsVisible,
+    updateBundle, markDirty, selectedPath, selectPath, keypointsVisible, toggleKeypointsVisible,
     arrowTypes, toggleArrowType,
   } = useStore()
 
@@ -196,7 +195,7 @@ export function VideoPlayer() {
       v.load()
       return
     }
-    v.src = api.streamUrl(selectedClipId)
+    v.src = `/api/clips/${encodeURIComponent(selectedClipId)}/video`
   }, [selectedClipId])
 
   const highlightedEntity = useMemo((): { kind: EntityKind; idx: number; subIdx: number } | null => {
@@ -567,7 +566,7 @@ export function VideoPlayer() {
 
       const nextBundle = { ...currentBundle, annotation: ann }
       updateBundle(nextBundle)
-      if (selectedClipId) api.saveAnnotations(selectedClipId, nextBundle)
+      markDirty()
       e.preventDefault()
     }
 
@@ -628,7 +627,7 @@ export function VideoPlayer() {
       assignKeypoints(ann, entityKind, entityIdx, entitySubIdx, updated)
       const nextBundle = { ...currentBundle, annotation: ann }
       updateBundle(nextBundle)
-      if (selectedClipId) api.saveAnnotations(selectedClipId, nextBundle)
+      markDirty()
       e.preventDefault()
     }
 
@@ -650,7 +649,7 @@ export function VideoPlayer() {
       assignKeypoints(ann, hit.entityKind, hit.entityIdx, hit.entitySubIdx, updated)
       const nextBundle = { ...currentBundle, annotation: ann }
       updateBundle(nextBundle)
-      if (selectedClipId) api.saveAnnotations(selectedClipId, nextBundle)
+      markDirty()
     }
 
     canvas.addEventListener('mousedown', onMouseDown)
@@ -663,7 +662,7 @@ export function VideoPlayer() {
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
     }
-  }, [selectedClipId, applyZoomTransform, clampPan, keypointsVisible, redrawOverlay, selectPath, setPlayhead, updateBundle])
+  }, [selectedClipId, applyZoomTransform, clampPan, keypointsVisible, redrawOverlay, selectPath, setPlayhead, updateBundle, markDirty])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

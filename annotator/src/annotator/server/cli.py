@@ -60,13 +60,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "--video-source",
         choices=("auto", "hf", "local"),
         default="auto",
-        help="Where to source video frames (Phase 3 — currently a placeholder).",
+        help=(
+            "Where to source video bytes. 'local' reads from --video-dir; "
+            "'hf' streams from the Physical AI AV dataset (requires the [hf] "
+            "extra); 'auto' (default) tries hf first and falls back to local."
+        ),
     )
     parser.add_argument(
         "--video-dir",
         type=Path,
         default=None,
         help="When --video-source=local, the directory containing video files.",
+    )
+    parser.add_argument(
+        "--hf-source",
+        type=str,
+        default=None,
+        help=(
+            "Optional annotations directory or repo for the HF dataset, passed "
+            "to CausalAVDataset. If omitted, the parent dataset interface is "
+            "used directly (video-only access)."
+        ),
     )
     parser.add_argument(
         "--verbose",
@@ -110,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     # Defer heavy imports until past argparse so `--help` stays snappy.
     from annotator.server.app import create_app
     from annotator.server.io_adapter import build_clip_index
+    from annotator.server.video import VideoResolver
 
     try:
         clip_index = build_clip_index(args.sources)
@@ -124,10 +139,22 @@ def main(argv: list[str] | None = None) -> int:
         destination_dir,
     )
 
+    try:
+        video_resolver = VideoResolver(
+            mode=args.video_source,
+            video_dir=args.video_dir,
+            hf_source=args.hf_source,
+        )
+    except (ValueError, ImportError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    logging.info("video source: %s", video_resolver.describe())
+
     app = create_app(
         clip_index,
         read_only=args.read_only,
         destination_dir=destination_dir,
+        video_resolver=video_resolver,
     )
 
     if not args.no_browser:
