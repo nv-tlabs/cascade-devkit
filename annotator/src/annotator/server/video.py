@@ -262,6 +262,11 @@ class VideoResolver:
             VideoToolsMissing: ffmpeg/ffprobe are absent from PATH.
             TranscodeError: ffmpeg ran but returned non-zero.
         """
+        # ffprobe is needed on every path (codec detection), so check tools
+        # up front — otherwise the HF mode would burn a chunk-zip download
+        # before discovering ffmpeg/ffprobe are missing.
+        _require_tools()
+
         # 1. Locate the source file.
         if self.mode == "local":
             src = self._resolve_local(clip_id)
@@ -283,8 +288,7 @@ class VideoResolver:
                     "(install the [hf] extra or pass --video-dir)"
                 )
 
-        # 2. If it's already H.264, serve as-is. Otherwise check / transcode.
-        _require_tools()
+        # 2. If it's already H.264, serve as-is. Otherwise transcode.
         codec = _probe_codec(src)
         if codec is None:
             # ffprobe could read the file but found no stream — surface a clean

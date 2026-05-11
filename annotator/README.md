@@ -7,22 +7,41 @@ no database, no admin layer.
 
 ## Install
 
+Three steps. All three are required for the full experience; only the
+first two are needed if you don't care about video playback.
+
+**1. System packages — `ffmpeg` + `ffprobe`.** The corpus is HEVC and
+browsers can't play HEVC natively, so the annotator transcodes to H.264
+on first request. `ffprobe` is also used to detect codec on every video
+request, so both binaries must be on PATH.
+
 ```bash
-# From the repo root:
+sudo apt install -y ffmpeg     # Ubuntu / Debian (Horde DGXC VMs)
+brew install ffmpeg            # macOS
+```
+
+If ffmpeg is missing, JSON editing still works; only `/api/clips/{id}/video`
+degrades and the player shows a "Video unavailable" overlay with the
+install hint.
+
+**2. Python dependencies.** From the repo root:
+
+```bash
 uv sync --extra annotator
+```
+
+For HuggingFace-sourced video (the default), also install the `[hf]`
+extra so the parent Physical AI dataset is reachable:
+
+```bash
+uv sync --extra annotator --extra hf
+```
+
+**3. Frontend build.** One-time; rebuild after pulling UI changes:
+
+```bash
 cd annotator/web && npm install && npm run build
 ```
-
-For HEVC video playback you also need `ffmpeg` + `ffprobe` on PATH:
-
-```bash
-sudo apt install ffmpeg     # Ubuntu/Debian
-brew install ffmpeg         # macOS
-```
-
-Without ffmpeg, the JSON editing flow still works in full; only video
-playback degrades (the `/api/clips/{id}/video` route 503s and the
-`<video>` element stays blank).
 
 ## Launch
 

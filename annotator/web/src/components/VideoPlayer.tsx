@@ -161,6 +161,7 @@ export function VideoPlayer() {
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [zoomLevel, setZoomLevel] = useState(1)
+  const [videoError, setVideoError] = useState<string | null>(null)
 
   const applyZoomTransform = useCallback(() => {
     const w = wrapperRef.current
@@ -190,12 +191,34 @@ export function VideoPlayer() {
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
+    setVideoError(null)
     if (!selectedClipId) {
       v.removeAttribute('src')
       v.load()
       return
     }
     v.src = `/api/clips/${encodeURIComponent(selectedClipId)}/video`
+  }, [selectedClipId])
+
+  const onVideoError = useCallback(async () => {
+    if (!selectedClipId) return
+    try {
+      const r = await fetch(`/api/clips/${encodeURIComponent(selectedClipId)}/video`)
+      if (r.ok) {
+        setVideoError('video element failed to decode the response')
+        return
+      }
+      let detail: string
+      try {
+        const body = await r.json() as { detail?: string }
+        detail = body.detail ?? `HTTP ${r.status}`
+      } catch {
+        detail = `HTTP ${r.status}`
+      }
+      setVideoError(detail)
+    } catch (err) {
+      setVideoError(err instanceof Error ? err.message : String(err))
+    }
   }, [selectedClipId])
 
   const highlightedEntity = useMemo((): { kind: EntityKind; idx: number; subIdx: number } | null => {
@@ -690,7 +713,15 @@ export function VideoPlayer() {
     <div className="h-full flex flex-col bg-black">
       <div ref={containerRef} className="group/video flex-1 flex items-center justify-center overflow-hidden min-h-0 relative">
         <div ref={wrapperRef} className="w-full h-full relative flex items-center justify-center" style={{ transformOrigin: '0 0' }}>
-          <video ref={videoRef} className="max-w-full max-h-full object-contain" onLoadedMetadata={onMeta} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} playsInline preload="auto" />
+          <video ref={videoRef} className="max-w-full max-h-full object-contain" onLoadedMetadata={onMeta} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={onVideoError} playsInline preload="auto" />
+          {videoError ? (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="max-w-md mx-4 px-4 py-3 rounded bg-[#1a0a0a]/95 border border-red-900/60 text-sm text-red-200 text-center pointer-events-auto">
+                <div className="font-semibold text-red-300 mb-1">Video unavailable</div>
+                <div className="text-xs text-red-200/90 whitespace-pre-wrap">{videoError}</div>
+              </div>
+            </div>
+          ) : null}
           <canvas
             ref={canvasRef}
             className="absolute inset-0 w-full h-full"
