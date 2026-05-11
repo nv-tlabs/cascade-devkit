@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2023",
+    "useDefineForClassFields": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "types": ["vite/client"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  },
+  "include": ["src"],
+  "// exclude": "Phase 1: vendored frontend modules retain references to stripped auth/admin/review modules. They are excluded from type-check while App.tsx is a stub; Phase 2 will remove these excludes as the modules are rewired.",
+  "exclude": [
+    "src/components/AdminPanel.tsx",
+    "src/components/LabelPalette.tsx",
+    "src/components/LoginPage.tsx",
+    "src/components/ReviewSection.tsx",
+    "src/components/RightPanel.tsx",
+    "src/components/Sidebar.tsx",
+    "src/components/TaskQueue.tsx",
+    "src/components/Timeline.tsx",
+    "src/components/VideoPlayer.tsx",
+    "src/lib/api.ts",
+    "src/lib/auth.ts",
+    "src/lib/review-actions.ts",
+    "src/lib/store.ts",
+    "src/lib/time-tracker.ts"
+  ]
+}
