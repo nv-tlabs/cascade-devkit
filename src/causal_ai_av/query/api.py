@@ -87,9 +87,9 @@ def _read_key(
     entity: Any, root: str, rest: tuple[str, ...], bundle: AnnotationBundle
 ) -> object:
     """Read the dotted key off a Match.entity. The match entity may be
-    the entity itself (e.g. an `Agent` for `agent.type`) or a tuple
-    (from `while`/`then`/`because_of`). We try to read off the first
-    element of a tuple if present.
+    the entity itself (e.g. an `Agent` for `agent.type`), a sub-entity
+    (e.g. an `EgoAction` for `ego.action.type`), or a tuple (from
+    `while`/`then`/`because_of`).
     """
     if isinstance(entity, tuple) and entity:
         entity = entity[0]
@@ -100,20 +100,31 @@ def _read_key(
 
     cur_desc = desc
     cur = entity
-    for i, seg in enumerate(rest):
+    for seg in rest:
         attr = cur_desc.attributes.get(seg)
         if attr is None:
             return None
         if attr.kind == "sub_entity":
-            # Read sub-entities and descend; if the path continues, look
-            # at the first sub-entity (best-effort).
-            subs = attr.reader(cur, bundle)
+            sub_desc = ENTITIES.get(attr.sub_entity or seg)
+            if sub_desc is None:
+                return None
+            # If the matched entity is already at this sub-entity level
+            # (e.g. a Match holds an EgoAction and the key descends through
+            # `ego.action`), the parent reader will fail; just stay on cur.
+            try:
+                subs = attr.reader(cur, bundle)
+            except (AttributeError, TypeError):
+                cur_desc = sub_desc
+                continue
             if not subs:
                 return None
-            cur_desc = ENTITIES[attr.sub_entity or seg]
+            cur_desc = sub_desc
             cur = subs[0]
             continue
-        return attr.reader(cur, bundle)
+        try:
+            return attr.reader(cur, bundle)
+        except (AttributeError, TypeError):
+            return None
     return None
 
 
