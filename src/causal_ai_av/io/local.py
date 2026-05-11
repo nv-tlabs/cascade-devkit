@@ -5,6 +5,8 @@ Filename convention in the reference corpus: `<annotation_uuid>__<clip_id>.json`
 
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Literal
@@ -18,16 +20,43 @@ def load_file(path: str | Path) -> AnnotationBundle:
 
 
 def save_file(bundle: AnnotationBundle, path: str | Path, *, indent: int = 2) -> None:
-    """Serialize a bundle to a JSON file.
+    """Serialize a bundle to a JSON file atomically.
 
     Uses `by_alias=True` so leading-underscore fields (`_track_index`, etc.)
     serialize with their on-disk names, and `exclude_unset=True` so absent
     optional fields stay absent (preserving the input's field set).
+
+    The write is atomic: the payload is written to a temp file in the same
+    directory, fsynced, and renamed over the target. Concurrent readers will
+    see either the old bytes or the new bytes — never a truncated file.
     """
-    Path(path).write_text(
-        bundle.model_dump_json(indent=indent, by_alias=True, exclude_unset=True),
+    dest = Path(path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    payload = bundle.model_dump_json(indent=indent, by_alias=True, exclude_unset=True)
+    # NamedTemporaryFile with delete=False so we can rename on close.
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w",
         encoding="utf-8",
+        dir=dest.parent,
+        prefix=f".{dest.name}.",
+        suffix=".tmp",
+        delete=False,
     )
+    try:
+        tmp.write(payload)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+    finally:
+        tmp.close()
+    try:
+        Path(tmp.name).replace(dest)
+    except Exception:
+        # Best-effort cleanup of the temp file if rename failed.
+        try:
+            Path(tmp.name).unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def iter_dir(
