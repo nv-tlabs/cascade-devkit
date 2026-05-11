@@ -1,9 +1,8 @@
 """Thin wrappers for `find` / `count` / `group_by` / `histogram`.
 
-`Sequence.find` and `CausalAVDataset.find` delegate here. Per the spec
-(`meta/06_query_system.md`), the corpus-scope aggregations are
-clip-level: `count` returns the number of *clips* with ≥1 match (not
-the number of match tuples).
+`Sequence.find` and `CausalAVDataset.find` delegate here. The
+corpus-scope aggregations are clip-level: `count` returns the number of
+*clips* with ≥1 match (not the number of match tuples).
 """
 
 from __future__ import annotations

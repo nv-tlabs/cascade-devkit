@@ -76,7 +76,7 @@ AGENT_TYPE: Mapping[str, frozenset[str]] = {**AGENT_TYPE_ALIASES, **AGENT_TYPE_P
 # suffixes — e.g. ``oxd:Walk (jaywalk)``. Base-verb aliases below resolve
 # to the *base* string only; the engine adds prefix-match logic so
 # ``agent.action.type = walk`` matches every variant. See
-# `meta/07_query_language.md` §3.9.
+# `docs/query_language.md` §3.9.
 # ---------------------------------------------------------------------------
 
 ACTION_TYPE_ALIASES: Mapping[str, frozenset[str]] = {

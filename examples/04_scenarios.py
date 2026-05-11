@@ -1,10 +1,11 @@
 """Driving-scenario detection.
 
-Encodes ~20 representative scenarios from `meta/scenarios_and_queries_reference.md`
-as named queries. Runs them all against the corpus and prints the
-candidate-clip count for each.
+Encodes ~20 representative driving scenarios as named DSL queries.
+Runs them all against the corpus and prints the candidate-clip count
+for each.
 
-    uv run python examples/04_scenarios.py
+    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+        uv run python examples/04_scenarios.py
 
 The queries here are *necessary-condition* filters — they reject
 clearly-not-this-scenario candidates. A real classifier (VLM, human,
@@ -13,12 +14,11 @@ heuristic) would then disambiguate the survivors.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from causal_ai_av.dataset import CausalAVDataset
-
-CORPUS = Path("/home/horde/01_json_annotations")
 
 
 @dataclass(frozen=True)
@@ -177,7 +177,12 @@ SCENARIOS: list[Scenario] = [
 
 
 def main() -> None:
-    ds = CausalAVDataset(CORPUS)
+    try:
+        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+    except KeyError:
+        raise SystemExit("set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations")
+
+    ds = CausalAVDataset(dataset_root)
 
     header = f"{'#id':>10}  {'count':>5}  scenario"
     print(header)

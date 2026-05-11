@@ -2,16 +2,16 @@
 
 Demonstrates count / group_by / histogram for human-facing analytics.
 
-    uv run python examples/03_statistics.py
+    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+        uv run python examples/03_statistics.py
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from causal_ai_av.dataset import CausalAVDataset
-
-CORPUS = Path("/home/horde/01_json_annotations")
 
 
 def print_bar_chart(title: str, counts: dict[object, int], width: int = 40) -> None:
@@ -26,7 +26,12 @@ def print_bar_chart(title: str, counts: dict[object, int], width: int = 40) -> N
 
 
 def main() -> None:
-    ds = CausalAVDataset(CORPUS)
+    try:
+        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+    except KeyError:
+        raise SystemExit("set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations")
+
+    ds = CausalAVDataset(dataset_root)
     print(f"corpus has {len(ds)} clips")
 
     # ----- count -----

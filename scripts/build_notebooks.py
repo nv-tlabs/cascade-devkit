@@ -4,8 +4,10 @@ Run after editing to regenerate:
 
     uv run --group notebooks python scripts/build_notebooks.py
 
-Each notebook starts with a `pip` cell hint and assumes the corpus
-lives at `/home/horde/01_json_annotations`.
+Each notebook reads the dataset root from the `CAUSAL_AV_DATASET_ROOT`
+environment variable — export it before launching Jupyter:
+
+    export CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations
 """
 
 from __future__ import annotations
@@ -41,6 +43,36 @@ def save(cells: list[nbf.NotebookNode], path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Shared styling
+# ---------------------------------------------------------------------------
+
+STYLING = """
+        # --- shared notebook styling -----------------------------------------------
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+        plt.rcParams.update({
+            "font.family": "DejaVu Sans",
+            "font.size": 11,
+            "axes.titlesize": 13,
+            "axes.titleweight": "semibold",
+            "axes.labelsize": 11,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.grid": True,
+            "grid.linestyle": "--",
+            "grid.alpha": 0.35,
+            "figure.dpi": 110,
+            "savefig.dpi": 110,
+        })
+
+        pd.options.display.max_colwidth = 110
+        pd.options.display.width = 140
+        pd.options.display.float_format = "{:.2f}".format
+"""
+
+
+# ---------------------------------------------------------------------------
 # 01 — Quickstart
 # ---------------------------------------------------------------------------
 
@@ -49,66 +81,157 @@ def build_quickstart() -> None:
         md("""
         # Quickstart — `causal_ai_av`
 
-        End-to-end tour of the DevKit:
-
-        1. Load the corpus.
-        2. Inspect a single clip's annotation.
-        3. Run a query in the DSL.
-        4. Read the `MatchSet` back.
+        This notebook introduces the AV Causal Dataset DevKit. You will
+        load the corpus, inspect a single clip's annotation, and run
+        your first queries in the embedded DSL.
         """),
-        code("""
-        from pathlib import Path
-        from causal_ai_av.dataset import CausalAVDataset
+        md("""
+        ## About the dataset
 
-        CORPUS = Path("/home/horde/01_json_annotations")
-        ds = CausalAVDataset(CORPUS)
-        print(f"{len(ds)} clips")
+        The **AV Causal Dataset** adds causal and spatio-temporal action
+        annotations on top of NVIDIA's *Physical AI AV Dataset*. Each
+        clip is a short front-facing driving video paired with a JSON
+        annotation bundle (schema `2.0.0`). The DevKit parses those
+        bundles into a typed Pydantic tree and exposes a small query
+        language for searching the corpus.
+
+        ### Annotation scope
+
+        Every clip is annotated with the following entity categories:
+
+        | entity | what it captures |
+        |---|---|
+        | **Agents** | non-ego actors — vehicles, pedestrians, cyclists, animals, officers — with type, ego-relative position, visibility intervals, and per-interval actions |
+        | **Ego vehicle** | actions taken by the recording car (drive, decel, stop, turn, change-lane, …) and the entities that motivated them |
+        | **Environments** | road, intersection, crosswalk, sidewalk, roundabout, cycle-lane, tunnel, … with lane counts and one-way flags |
+        | **Conditions** | weather, lighting, construction, occlusion |
+        | **Traffic lights** | signal-head colors and state transitions, plus annotator-tagged flags such as `could_have_cleared` and `ego_in_on_yellow` |
+        | **Traffic objects** | stop signs, yield signs, cones, debris, barriers |
+
+        ### What makes it *causal*
+
+        The schema includes a `because_of` edge on every action: each
+        action can name the entities that caused it. "Ego decelerates
+        *because of* a pedestrian" is not reconstructed from
+        co-occurrence — it is annotated explicitly. The query DSL
+        surfaces this directly through the `because_of` operator.
+
+        ### Schema at a glance
+
+        Each clip's annotation is a single JSON file with four
+        top-level keys:
+
+        - `video` — clip metadata (fps, duration, `clip_id`).
+        - `annotation` — typed entity arrays
+          (`agents[]`, `ego_vehicle`, `environments[]`, `conditions[]`,
+          `traffic_lights[]`, `traffic_objects[]`).
+        - `provenance` — annotator metadata.
+        - `schema_version` — currently `2.0.0`.
+
+        The corpus shipped with this DevKit contains 376 annotation
+        files covering roughly 300 distinct clips.
+
+        ### What this notebook covers
+
+        1. Load the corpus and inspect a single clip's annotation.
+        2. Run your first DSL queries against the whole corpus.
+        3. Read back the `MatchSet` result type.
+        4. Scope the same DSL to a single clip.
+
+        > Set the `CAUSAL_AV_DATASET_ROOT` environment variable to the
+        > directory containing the JSON annotations before running the
+        > setup cell below.
+        """),
+        md("## Setup"),
+        code("""
+        import os
+        from pathlib import Path
+
+        from causal_ai_av.dataset import CausalAVDataset
+        from causal_ai_av.io import load_dir
+        from causal_ai_av.query import find_on_bundle
+        """ + STYLING),
+        code("""
+        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+        ds = CausalAVDataset(dataset_root)
+        print(f"corpus loaded — {len(ds)} clips")
         """),
         md("""
         ## 1. Inspect one clip's annotation
 
-        `get_sequence` downloads the clip video lazily by default. We
-        bypass it here and read the parsed annotation directly via the
-        local IO module — quick and offline-friendly.
+        `CausalAVDataset.get_sequence` downloads the clip video lazily by
+        default. To keep this tour offline-friendly we parse the JSON
+        annotations directly via the local `io.load_dir` helper.
         """),
         code("""
-        from causal_ai_av.io import load_dir
-        bundles = load_dir(CORPUS)
+        bundles = load_dir(dataset_root)
         b = bundles[0]
-        print("clip_id:", b.video.clip_id)
-        print("schema:", b.schema_version)
-        print("agents:", len(b.annotation.agents))
-        print("ego actions:", len(b.annotation.ego_vehicle.actions))
-        print("environments:", len(b.annotation.environments))
+
+        summary = pd.DataFrame([
+            ("clip_id",        b.video.clip_id),
+            ("schema_version", b.schema_version),
+            ("fps",            b.video.fps),
+            ("duration_s",     b.video.duration_s),
+            ("agents",         len(b.annotation.agents)),
+            ("ego actions",    len(b.annotation.ego_vehicle.actions)),
+            ("environments",   len(b.annotation.environments)),
+            ("traffic lights", len(b.annotation.traffic_lights)),
+            ("traffic objects", len(b.annotation.traffic_objects)),
+        ], columns=["field", "value"])
+        summary
         """),
-        md("## 2. Run a DSL query against the whole corpus"),
-        code("""
-        ds.count("agent.type = ped")
+        md("""
+        ## 2. Run a DSL query against the whole corpus
+
+        `CausalAVDataset.count(query)` returns the number of clips with
+        at least one match. Queries are plain strings in the DSL — the
+        full grammar is covered in `02_query_dsl_tour.ipynb`.
         """),
         code("""
-        ds.count("agent.type = ped and env.type = crosswalk")
+        queries = [
+            "agent.type = ped",
+            "agent.type = vehicle",
+            "agent.type = ped and env.type = crosswalk",
+            "ego.action = stop and light.color = red",
+        ]
+        pd.DataFrame(
+            [(q, ds.count(q)) for q in queries],
+            columns=["query", "matching clips"],
+        )
         """),
         md("""
         ## 3. `find()` returns the full `MatchSet`
 
-        Every match is `(clip_id, entity, interval)`. The `.clips()` /
-        `.entities()` / `.intervals()` projections pull each column.
+        Every match is a `(clip_id, entity, interval)` tuple. The
+        `.clips()`, `.entities()`, and `.intervals()` projections pull
+        each column individually.
         """),
         code("""
         matches = ds.find("agent.type = ped and env.type = crosswalk")
-        print(f"{len(matches)} matches across {len(set(matches.clips()))} distinct clips")
-        list(set(matches.clips()))[:3]
+        clips = sorted(set(matches.clips()))
+
+        print(f"{len(matches)} matches across {len(clips)} distinct clips")
+        pd.DataFrame({"clip_id": clips[:5]})
         """),
         md("""
-        ## 4. A per-clip query
+        ## 4. The same DSL on a single clip
 
-        The same DSL runs on a single `AnnotationBundle` via
-        `find_on_bundle`. Returns a `MatchSet` scoped to that clip only.
+        `find_on_bundle` runs a query against one parsed bundle and
+        returns a `MatchSet` scoped to that clip only — useful when you
+        already have a bundle in hand.
         """),
         code("""
-        from causal_ai_av.query import find_on_bundle
         single = find_on_bundle(b, "agent.type = vehicle")
-        single.entities()[:3]
+        print(f"{len(single)} vehicle matches in clip {b.video.clip_id}")
+        pd.DataFrame({"entity": [str(e) for e in single.entities()[:5]]})
+        """),
+        md("""
+        ## Where to next
+
+        - `02_query_dsl_tour.ipynb` — every DSL operator with examples.
+        - `03_statistics.ipynb` — count / group-by aggregations with charts.
+        - `04_scenario_catalog.ipynb` — twenty representative driving
+          scenarios encoded as DSL queries.
         """),
     ]
     save(cells, NOTEBOOKS_DIR / "01_quickstart.ipynb")
@@ -123,121 +246,188 @@ def build_dsl_tour() -> None:
         md("""
         # Query DSL — operator tour
 
-        Every operator in `meta/07_query_language.md` demonstrated against
-        the real corpus. Each cell prints the clip count for that query.
+        This notebook walks through every operator in the query DSL
+        against the live corpus. Each section runs a small batch of
+        queries and tabulates the matching clip counts so you can see
+        what each operator does.
 
-        The DSL grammar:
+        > New to the DevKit? Start with `01_quickstart.ipynb` for an
+        > introduction to the dataset and the DSL's place in it.
 
-        * `<entity>.<attr> <cmp> <value>` — basic predicate.
-        * `<entity>(<expr>)` — same-entity grouping.
-        * Boolean: `and`, `or`, `not`.
-        * Temporal: `while`, `then(K)`.
-        * Relational: `because_of`.
-        * Scoping: `within W: E`.
+        ### Grammar in one screen
+
+        | form | meaning |
+        |---|---|
+        | `<entity>.<attr> <cmp> <value>` | basic attribute predicate |
+        | `<entity>(<expr>, …)` | same-entity grouping |
+        | `and`, `or`, `not` | boolean composition |
+        | `A while B` | A and B with intersecting intervals |
+        | `A then(K) B` | B starts during A or within K seconds after |
+        | `A because_of B` | A's `because_of` edge points at a B |
+        | `within W: E` | restrict E's time window to W's intervals |
+
+        The full specification lives in `docs/query_language.md`.
         """),
+        md("## Setup"),
         code("""
+        import os
         from pathlib import Path
+
         from causal_ai_av.dataset import CausalAVDataset
-
-        ds = CausalAVDataset(Path("/home/horde/01_json_annotations"))
-
-        def show(q: str) -> None:
-            print(f"{ds.count(q):>4}  {q}")
-        """),
-        md("## Attribute predicates"),
+        """ + STYLING),
         code("""
-        show("agent.type = ped")
-        show("ego.action = decel")
-        show("light.color = red")
-        show("env.lanes >= 2")
+        ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
+
+        def run(queries: list[str]) -> pd.DataFrame:
+            \"\"\"Run a batch of DSL queries and tabulate clip counts.\"\"\"
+            return pd.DataFrame(
+                [(q, ds.count(q)) for q in queries],
+                columns=["query", "matching clips"],
+            )
+        """),
+        md("""
+        ## Attribute predicates
+
+        The atomic predicate is `entity.attribute <cmp> value`. The
+        comparison is `=` for equality and `<`, `<=`, `>`, `>=` for
+        ordered attributes.
+        """),
+        code("""
+        run([
+            "agent.type = ped",
+            "ego.action = decel",
+            "light.color = red",
+            "env.lanes >= 2",
+        ])
         """),
         md("""
         ## Hierarchical aliases
 
-        `vehicle`, `vru`, `intersection`, `turn`, `change_lane` are *parent*
-        aliases — they expand to the union of their children.
+        Several attribute values are *parent aliases* that expand to a
+        union of children: `vehicle` (car, truck, bus, …),
+        `vru` (pedestrian, cyclist), `intersection` (4-way, T-junction,
+        roundabout, …), `turn` (left, right), `change_lane`
+        (change-left, change-right).
         """),
         code("""
-        show("agent.type = vehicle")
-        show("agent.type = vru")
-        show("agent.type = cyclist")
-        show("env.type = intersection")
-        """),
-        md("## Set membership — `in (a, b, c)` is OR"),
-        code("""
-        show("ego.action in (stop, yield, decel)")
-        show("agent.type in (ped, cyclist, animal)")
+        run([
+            "agent.type = vehicle",
+            "agent.type = vru",
+            "agent.type = cyclist",
+            "env.type = intersection",
+        ])
         """),
         md("""
-        ## Same-entity coupling — `agent(...)`
+        ## Set membership
 
-        Inside an entity clause, the constraints apply to the **same** agent.
-        Compare to free-floating predicates which may match different agents.
+        `attr in (a, b, c)` is sugar for an OR over the listed values.
         """),
         code("""
-        show("agent(type = vehicle, pos = front)")
-        show("agent.type = vehicle and agent.pos = front")
+        run([
+            "ego.action in (stop, yield, decel)",
+            "agent.type in (ped, cyclist, animal)",
+        ])
         """),
-        md("## Boolean operators"),
+        md("""
+        ## Same-entity coupling
+
+        Inside an `agent(…)` clause, every constraint applies to the
+        **same** agent. Free-floating predicates may bind to different
+        agents — note how the count changes.
+        """),
         code("""
-        show("agent.type = ped and env.type = crosswalk")
-        show("ego.action = stop or ego.action = yield")
-        show("agent.type = ped and not env.type = crosswalk")
+        run([
+            "agent(type = vehicle, pos = front)",
+            "agent.type = vehicle and agent.pos = front",
+        ])
+        """),
+        md("""
+        ## Boolean operators
+
+        Standard `and`, `or`, `not` over any sub-expression.
+        """),
+        code("""
+        run([
+            "agent.type = ped and env.type = crosswalk",
+            "ego.action = stop or ego.action = yield",
+            "agent.type = ped and not env.type = crosswalk",
+        ])
         """),
         md("""
         ## Action flags
 
-        Action types in the corpus encode flags as parenthesized suffixes
-        (`oxd:Walk (jaywalk)`). Flag attributes match either the schema
-        flag field OR the suffix token.
+        Action types in the corpus encode flags as parenthesized
+        suffixes (`oxd:Walk (jaywalk)`). Flag attributes match either
+        the schema flag field **or** the suffix token.
         """),
         code("""
-        show("agent(type = ped, action(jaywalk = true))")
-        show("agent(action(erratic = true))")
+        run([
+            "agent(type = ped, action(jaywalk = true))",
+            "agent(action(erratic = true))",
+        ])
         """),
         md("""
         ## Temporal — `while`
 
-        Pairs of matches whose intervals intersect.
+        `A while B` keeps only pairs of matches whose intervals
+        intersect.
         """),
         code("""
-        show("agent.type = ped while ego.action = decel")
-        show("light.color = red while ego.action = stop")
+        run([
+            "agent.type = ped while ego.action = decel",
+            "light.color = red while ego.action = stop",
+        ])
         """),
         md("""
         ## Temporal — `then(K)`
 
-        B starts during A or within K seconds after A ends. Default K=0
-        means must touch or overlap.
+        `A then(K) B` keeps pairs where B starts during A or within
+        K seconds after A ends. Bare `then` (no parens) defaults to
+        K = 0 — touch or overlap only.
         """),
         code("""
-        show("light.color = yellow then(3) ego.action = stop")
-        show("light.color = green then ego.action = drive")
+        run([
+            "light.color = yellow then(3) ego.action = stop",
+            "light.color = green then ego.action = drive",
+        ])
         """),
         md("""
         ## Relational — `because_of`
 
         Follows the schema's `because_of` causal edge. Both halves are
-        emitted as match tuples.
+        emitted as match tuples so you can inspect cause and effect.
         """),
         code("""
-        show("ego.action = decel because_of agent.type = ped")
-        show("ego.action = drive because_of agent.type = ped")
+        run([
+            "ego.action = decel because_of agent.type = ped",
+            "ego.action = drive because_of agent.type = ped",
+        ])
         """),
         md("""
         ## Scoping — `within W: E`
 
-        Restricts E's temporal window to W's intervals. Inside, `not E`
-        means "E doesn't happen during W."
+        Restricts `E`'s evaluation window to `W`'s intervals. Inside,
+        `not E` means *E does not happen during W* — useful for
+        negative scenarios like "during red, ego never stops."
         """),
         code("""
-        show("within light.color = red: not ego.action = stop")
-        show("within env.type = crosswalk: agent.type = ped")
+        run([
+            "within light.color = red: not ego.action = stop",
+            "within env.type = crosswalk: agent.type = ped",
+        ])
         """),
-        md("## Annotator-tagged flags"),
+        md("""
+        ## Annotator-tagged flags
+
+        Some attributes are not derived from kinematics but tagged by
+        the annotator (e.g. *"the ego could have safely cleared this
+        yellow"*). They compose with the same DSL.
+        """),
         code("""
-        show("light(color = yellow, ego_in_on_yellow = true)")
-        show("light(color = yellow, could_have_cleared = true)")
+        run([
+            "light(color = yellow, ego_in_on_yellow = true)",
+            "light(color = yellow, could_have_cleared = true)",
+        ])
         """),
     ]
     save(cells, NOTEBOOKS_DIR / "02_query_dsl_tour.ipynb")
@@ -252,46 +442,73 @@ def build_statistics() -> None:
         md("""
         # Dataset statistics
 
-        Count and group-by queries with matplotlib charts.
+        Count and group-by queries with matplotlib charts. Use this
+        notebook to get a feel for how the corpus is distributed across
+        agent types, ego actions, and environments before you go
+        looking for specific scenarios.
+
+        > See `01_quickstart.ipynb` for an introduction to the dataset
+        > and `02_query_dsl_tour.ipynb` for the query language itself.
         """),
+        md("## Setup"),
         code("""
+        import os
         from pathlib import Path
-        import matplotlib.pyplot as plt
-        import pandas as pd
 
         from causal_ai_av.dataset import CausalAVDataset
-
-        ds = CausalAVDataset(Path("/home/horde/01_json_annotations"))
-        print(f"corpus has {len(ds)} clips")
+        """ + STYLING),
+        code("""
+        ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
+        print(f"corpus loaded — {len(ds)} clips")
         """),
-        md("## Headline counts"),
+        md("""
+        ## Headline counts
+
+        Single-query counts for common driving primitives. `count()`
+        returns the number of *clips* with at least one match, not the
+        number of matching entities.
+        """),
         code("""
         rows = [
-            ("pedestrian", ds.count("agent.type = ped")),
-            ("vehicle", ds.count("agent.type = vehicle")),
-            ("VRU", ds.count("agent.type = vru")),
-            ("cyclist", ds.count("agent.type = cyclist")),
-            ("stop sign", ds.count("obj.type = stop_sign")),
-            ("traffic light (red)", ds.count("light.color = red")),
-            ("crosswalk env", ds.count("env.type = crosswalk")),
-            ("intersection env", ds.count("env.type = intersection")),
-            ("roundabout env", ds.count("env.type = roundabout")),
-            ("multi-lane road", ds.count("env(type = road, lanes >= 2)")),
-            ("ego decel", ds.count("ego.action = decel")),
-            ("ego stops at red", ds.count("light.color = red and ego.action = stop")),
+            ("pedestrian",              ds.count("agent.type = ped")),
+            ("vehicle",                 ds.count("agent.type = vehicle")),
+            ("VRU (ped/cyclist)",       ds.count("agent.type = vru")),
+            ("cyclist",                 ds.count("agent.type = cyclist")),
+            ("stop sign",               ds.count("obj.type = stop_sign")),
+            ("traffic light (red)",     ds.count("light.color = red")),
+            ("crosswalk environment",   ds.count("env.type = crosswalk")),
+            ("intersection environment", ds.count("env.type = intersection")),
+            ("roundabout environment",  ds.count("env.type = roundabout")),
+            ("multi-lane road",         ds.count("env(type = road, lanes >= 2)")),
+            ("ego decelerates",         ds.count("ego.action = decel")),
+            ("ego stops at red",        ds.count("light.color = red and ego.action = stop")),
         ]
-        pd.DataFrame(rows, columns=["query", "clips"]).sort_values("clips", ascending=False)
+        headline = pd.DataFrame(rows, columns=["query", "clips"]).sort_values(
+            "clips", ascending=False, ignore_index=True
+        )
+        headline
         """),
-        md("## Distribution of agent types"),
+        md("""
+        ## Distribution of agent types
+
+        `group_by(query, key)` runs the query and buckets matches by
+        the value of `key`. Values returned are clip counts (one per
+        distinct clip with a matching entity).
+        """),
         code("""
         agent_dist = ds.group_by(
             "agent.type = vehicle or agent.type = vru or agent.type = animal",
             key="agent.type",
         )
-        s = pd.Series(agent_dist).sort_values(ascending=True)
-        ax = s.plot(kind="barh", figsize=(8, 6))
+        s = pd.Series(agent_dist, name="clips").sort_values(ascending=True)
+
+        fig, ax = plt.subplots(figsize=(8, 0.45 * max(len(s), 4) + 1.5))
+        s.plot(kind="barh", ax=ax, color="#3b6ea5")
         ax.set_xlabel("clips")
+        ax.set_ylabel("")
         ax.set_title("Clips per agent type")
+        for i, v in enumerate(s.values):
+            ax.text(v + max(s.values) * 0.01, i, str(v), va="center", fontsize=9)
         plt.tight_layout()
         plt.show()
         """),
@@ -303,10 +520,15 @@ def build_statistics() -> None:
             "or ego.action.type = turn_right or ego.action.type = change_lane",
             key="ego.action.type",
         )
-        s = pd.Series(ego_dist).sort_values(ascending=True)
-        ax = s.plot(kind="barh", figsize=(8, 6))
+        s = pd.Series(ego_dist, name="clips").sort_values(ascending=True)
+
+        fig, ax = plt.subplots(figsize=(8, 0.45 * max(len(s), 4) + 1.5))
+        s.plot(kind="barh", ax=ax, color="#4f7d4a")
         ax.set_xlabel("clips")
+        ax.set_ylabel("")
         ax.set_title("Clips per ego-action type")
+        for i, v in enumerate(s.values):
+            ax.text(v + max(s.values) * 0.01, i, str(v), va="center", fontsize=9)
         plt.tight_layout()
         plt.show()
         """),
@@ -318,26 +540,37 @@ def build_statistics() -> None:
             "or env.type = tunnel",
             key="env.type",
         )
-        s = pd.Series(env_dist).sort_values(ascending=True)
-        ax = s.plot(kind="barh", figsize=(8, 5))
+        s = pd.Series(env_dist, name="clips").sort_values(ascending=True)
+
+        fig, ax = plt.subplots(figsize=(8, 0.45 * max(len(s), 4) + 1.5))
+        s.plot(kind="barh", ax=ax, color="#8a5a3b")
         ax.set_xlabel("clips")
+        ax.set_ylabel("")
         ax.set_title("Clips per environment type")
+        for i, v in enumerate(s.values):
+            ax.text(v + max(s.values) * 0.01, i, str(v), va="center", fontsize=9)
         plt.tight_layout()
         plt.show()
         """),
-        md("## Composite questions"),
+        md("""
+        ## Composite questions
+
+        DSL queries compose, so you can pose questions that combine
+        primitives — for example, "of the clips that contain a red
+        light, what fraction also contain an ego stop?"
+        """),
         code("""
-        n_red = ds.count("light.color = red")
-        n_red_stop = ds.count("light.color = red and ego.action = stop")
+        n_red          = ds.count("light.color = red")
+        n_red_stop     = ds.count("light.color = red and ego.action = stop")
         n_yellow_clear = ds.count("light(color = yellow, could_have_cleared = true)")
-        n_jaywalk = ds.count("agent(type = ped, action(jaywalk = true))")
+        n_jaywalk      = ds.count("agent(type = ped, action(jaywalk = true))")
 
         composite = pd.DataFrame([
-            ("ego stops at red", f"{n_red_stop}/{n_red}", f"{100*n_red_stop/max(n_red,1):.0f}%"),
-            ("yellow ego could have cleared", n_yellow_clear, ""),
-            ("jaywalking pedestrian", n_jaywalk, ""),
-        ], columns=["question", "count", "ratio"])
-        composite
+            ("ego stops at red light", n_red_stop, n_red, n_red_stop / max(n_red, 1)),
+            ("yellow ego could have safely cleared", n_yellow_clear, None, None),
+            ("jaywalking pedestrian present", n_jaywalk, None, None),
+        ], columns=["question", "matching clips", "denominator", "ratio"])
+        composite.style.format({"ratio": "{:.0%}"}, na_rep="—")
         """),
     ]
     save(cells, NOTEBOOKS_DIR / "03_statistics.ipynb")
@@ -352,24 +585,42 @@ def build_scenarios() -> None:
         md("""
         # Scenario catalog
 
-        20 representative driving scenarios from
-        `meta/scenarios_and_queries_reference.md` encoded as DSL queries.
-        Each row shows the candidate-clip count and an example matching clip id.
+        Twenty representative driving scenarios encoded as DSL queries
+        and run against the corpus. The output is a ranked table of
+        candidate clip counts — clips that satisfy the necessary
+        conditions for that scenario.
+
+        > These queries are *necessary-condition filters*. They reject
+        > clearly-not-this-scenario candidates; a downstream classifier
+        > (VLM, human reviewer, heuristic) would disambiguate the
+        > survivors.
+
+        > See `01_quickstart.ipynb` for an introduction to the dataset
+        > and `02_query_dsl_tour.ipynb` for the DSL grammar.
         """),
+        md("## Setup"),
         code("""
+        import os
         from dataclasses import dataclass
         from pathlib import Path
-        import pandas as pd
 
         from causal_ai_av.dataset import CausalAVDataset
-
-        ds = CausalAVDataset(Path("/home/horde/01_json_annotations"))
+        """ + STYLING),
+        code("""
+        ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
 
         @dataclass(frozen=True)
         class Scenario:
             id: str
             title: str
             query: str
+        """),
+        md("""
+        ## The catalog
+
+        Twenty scenarios spanning pedestrian interactions, traffic
+        signals, signage, lane changes, roundabouts, and explicit
+        causal queries.
         """),
         code("""
         SCENARIOS = [
@@ -417,40 +668,70 @@ def build_scenarios() -> None:
             Scenario("red-without-stop", "During red light, ego never stops (potential violation)",
                      "within light.color = red: not ego.action = stop"),
         ]
-        len(SCENARIOS)
+        print(f"{len(SCENARIOS)} scenarios catalogued")
         """),
-        md("## Run them all and tabulate"),
+        md("""
+        ## Run them all and tabulate
+
+        Sorted by candidate count, descending. The `example` column
+        shows one matching `clip_id` per scenario — drop it into the
+        annotation tool or `find_on_bundle` to inspect.
+        """),
         code("""
         rows = []
         for s in SCENARIOS:
             try:
                 matches = ds.find(s.query)
-                clips = list(set(matches.clips()))
+                clips = sorted(set(matches.clips()))
                 rows.append({
-                    "id": s.id,
-                    "title": s.title,
+                    "id":         s.id,
+                    "title":      s.title,
                     "candidates": len(clips),
-                    "example": clips[0] if clips else "",
-                    "query": s.query,
+                    "example":    clips[0] if clips else "",
                 })
             except Exception as e:
-                rows.append({"id": s.id, "title": s.title, "candidates": -1,
-                             "example": f"ERROR: {e}", "query": s.query})
+                rows.append({
+                    "id":         s.id,
+                    "title":      s.title,
+                    "candidates": -1,
+                    "example":    f"ERROR: {e}",
+                })
 
-        df = pd.DataFrame(rows).sort_values("candidates", ascending=False)
-        df[["id", "title", "candidates", "example"]]
+        results = pd.DataFrame(rows).sort_values("candidates", ascending=False, ignore_index=True)
+        results
         """),
         md("""
-        ## Dig into one
+        ## Visualise the distribution
 
-        Pick a scenario, list every matching clip.
+        A quick bar chart of candidate counts makes it obvious which
+        scenarios are well-represented in the corpus and which are
+        scarce.
+        """),
+        code("""
+        plot_df = results[results["candidates"] >= 0].sort_values("candidates", ascending=True)
+
+        fig, ax = plt.subplots(figsize=(9, 0.4 * len(plot_df) + 1.5))
+        ax.barh(plot_df["title"], plot_df["candidates"], color="#3b6ea5")
+        ax.set_xlabel("candidate clips")
+        ax.set_title("Scenario coverage in the corpus")
+        for i, v in enumerate(plot_df["candidates"].values):
+            ax.text(v + max(plot_df["candidates"].max(), 1) * 0.01, i,
+                    str(v), va="center", fontsize=9)
+        plt.tight_layout()
+        plt.show()
+        """),
+        md("""
+        ## Dig into one scenario
+
+        Pick a scenario, list every matching clip. Swap the `target`
+        query for any expression you want to drill into.
         """),
         code("""
         target = "agent(type = ped, action(jaywalk = true)) and ego.action in (stop, yield, decel)"
         clips = sorted(set(ds.find(target).clips()))
-        print(f"{len(clips)} clips for: {target}")
-        for c in clips[:10]:
-            print(" ", c)
+
+        print(f"{len(clips)} clips match: {target}\\n")
+        pd.DataFrame({"clip_id": clips})
         """),
     ]
     save(cells, NOTEBOOKS_DIR / "04_scenario_catalog.ipynb")
