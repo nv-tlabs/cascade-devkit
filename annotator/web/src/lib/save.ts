@@ -16,7 +16,12 @@ export async function saveCurrentBundle(): Promise<boolean> {
   if (s.locked || s.serverReadOnly) return false
   try {
     const saved = await saveBundle(s.selectedClipId, s.bundle)
-    useStore.setState({ bundle: saved, dirty: false, saveError: null })
+    useStore.setState({
+      bundle: saved,
+      dirty: false,
+      saveError: null,
+      lastSavedAnnotationJson: saved.annotation ? JSON.stringify(saved.annotation) : null,
+    })
     return true
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

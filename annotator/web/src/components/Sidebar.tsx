@@ -20,6 +20,7 @@ export function Sidebar() {
   const dirty = useStore(s => s.dirty)
   const locked = useStore(s => s.locked)
   const serverReadOnly = useStore(s => s.serverReadOnly)
+  const saveError = useStore(s => s.saveError)
   const currentClipId = useStore(s => s.selectedClipId)
 
   const [filter, setFilter] = useState('')
@@ -118,6 +119,11 @@ export function Sidebar() {
             <Dialog.Description className="mt-2 text-xs text-[#8888aa]">
               Save changes to <code className="text-[#e0e0e0]">{currentClipId ?? '...'}</code> before switching?
             </Dialog.Description>
+            {saveError ? (
+              <p className="mt-3 text-[11px] text-red-300/90 italic">
+                Save failed — see banner above.
+              </p>
+            ) : null}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setPendingClipId(null)}

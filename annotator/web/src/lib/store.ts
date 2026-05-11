@@ -41,6 +41,12 @@ interface AppState {
   arrowTypes: { becauseOf: boolean; linkTo: boolean; containedIn: boolean; influencedBy: boolean; actionTarget: boolean }
   _undoStack: SilAvAnnotation[]
   _isUndoing: boolean
+  // Snapshot of the annotation slice at the last known-persisted moment:
+  // either (a) the bundle fetched after a clip is loaded (`setBundle`) or
+  // (b) the bundle echoed back from a successful save. Undo consults this
+  // snapshot so that undoing back to the saved state correctly clears
+  // `dirty`. Stored as a JSON string for cheap structural equality.
+  lastSavedAnnotationJson: string | null
 
   // Catalog / selection actions
   setClips: (c: ClipEntry[]) => void
@@ -66,6 +72,10 @@ interface AppState {
   markDirty: () => void
   clearDirty: () => void
   setSaveError: (msg: string | null) => void
+  // Captures the current bundle's annotation as the new "last saved"
+  // baseline. Call after a successful PUT or after initial bundle load so
+  // undo can correctly decide whether to clear `dirty`.
+  captureSavedSnapshot: (ann: SilAvAnnotation | null) => void
   // Returns true when edits to the bundle are currently blocked. Identical to
   // `locked` today; kept as a helper because ~35 sites across the timeline /
   // right-panel / video-player call it as `editsBlocked()`.
@@ -131,6 +141,7 @@ export const useStore = create<AppState>((set, get) => ({
   arrowTypes: { becauseOf: true, linkTo: true, containedIn: true, influencedBy: true, actionTarget: true },
   _undoStack: [],
   _isUndoing: false,
+  lastSavedAnnotationJson: null,
 
   setClips: (c) => set({ clips: c }),
 
@@ -147,12 +158,16 @@ export const useStore = create<AppState>((set, get) => ({
     saveError: null,
     clipLoadKey: s.clipLoadKey + 1,
     _undoStack: [], _isUndoing: false,
+    lastSavedAnnotationJson: null,
   })),
 
   setBundle: (b) => set((s) => ({
     ...applyBundle(b, s, true),
     _undoStack: [],
     _isUndoing: false,
+    // Initial fetch is, by definition, the on-disk truth — record the
+    // annotation as the saved baseline.
+    lastSavedAnnotationJson: b?.annotation ? JSON.stringify(b.annotation) : null,
   })),
 
   updateBundle: (b) => set((s) => {
@@ -174,12 +189,20 @@ export const useStore = create<AppState>((set, get) => ({
     const stack = [...s._undoStack]
     const prev = stack.pop()!
     const restored = { ...s.bundle, annotation: prev }
+    // If the restored annotation matches the last persisted snapshot, the
+    // undo brought us back to the on-disk state — `dirty` clears. Anything
+    // else stays dirty.
+    const restoredJson = JSON.stringify(prev)
+    const matchesSaved = s.lastSavedAnnotationJson !== null
+      && restoredJson === s.lastSavedAnnotationJson
     return {
       ...applyBundle(restored, s),
       _undoStack: stack,
       _isUndoing: true,
       selectedPath: null,
-      dirty: true,
+      dirty: !matchesSaved,
+      // Saved baseline doesn't move during undo — only setBundle /
+      // captureSavedSnapshot mutate it.
     }
   }),
 
@@ -204,8 +227,17 @@ export const useStore = create<AppState>((set, get) => ({
   unlock: () => set((s) => (s.serverReadOnly ? s : { locked: false })),
   setServerReadOnly: (v) => set({ serverReadOnly: v }),
   markDirty: () => set({ dirty: true }),
-  clearDirty: () => set({ dirty: false, saveError: null }),
+  clearDirty: () => set((s) => ({
+    dirty: false,
+    saveError: null,
+    lastSavedAnnotationJson: s.bundle?.annotation
+      ? JSON.stringify(s.bundle.annotation)
+      : s.lastSavedAnnotationJson,
+  })),
   setSaveError: (msg) => set({ saveError: msg }),
+  captureSavedSnapshot: (ann) => set({
+    lastSavedAnnotationJson: ann ? JSON.stringify(ann) : null,
+  }),
 
   editsBlocked: () => get().locked,
   toggleKeypointsVisible: () => set((s) => ({ keypointsVisible: !s.keypointsVisible })),
