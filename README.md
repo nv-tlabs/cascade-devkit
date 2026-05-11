@@ -99,6 +99,7 @@ Runnable Python scripts under `examples/`:
 | `03_statistics.py` | count / group-by aggregations |
 | `04_scenarios.py` | 20 driving scenarios encoded as DSL queries |
 | `05_context.py` | inspect what else was happening during each match |
+| `06_sensor_data.py` | catalog of available sensors + recipes for fetching extras |
 
 Run any of them with:
 
@@ -117,20 +118,56 @@ CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \
     uv run --all-extras --group notebooks jupyter lab notebooks/
 ```
 
-## Working with the video data
+## Working with the sensor data
 
 The annotation bundles are paired with the original Physical AI AV
-Dataset videos hosted on HuggingFace. Prefetch a batch of clips so
-they're cached locally before you start iterating:
+Dataset on HuggingFace — every clip ships with a full sensor stack:
+
+| group | members | feature names |
+|---|---|---|
+| Cameras (7) | front-wide 120°, front-tele 30°, 2× cross 120°, 2× rear-side 70°, rear-tele 30° | `camera_front_wide_120fov`, `camera_front_tele_30fov`, `camera_cross_{left,right}_120fov`, `camera_rear_{left,right}_70fov`, `camera_rear_tele_30fov` |
+| LiDAR (1) | roof-mounted 360° | `lidar_top_360fov` |
+| Radars (19) | front-center (SRR/MRR/imaging-LRR), 4 corner radars, 2 side radars × 2 modes, 2 rear-side radars × 2 ranges | `radar_*` |
+| Egomotion (2) | raw + offline-smoothed | `egomotion`, `egomotion.offline` |
+| Calibration (6) | sensor extrinsics, camera/LiDAR intrinsics, vehicle dimensions | `sensor_extrinsics{,.offline}`, `camera_intrinsics{,.offline}`, `lidar_intrinsics.offline`, `vehicle_dimensions` |
+| Derived labels (1) | preprocessed obstacle tracks | `obstacle.offline` |
+
+Prefetch a batch of clips so they're cached locally before you start
+iterating. `download_clips` accepts an iterable of clip ids and an
+optional `features=` list; defaults are the canonical front-wide
+camera plus egomotion — the minimum for `get_sequence`:
 
 ```python
-ds.download_clips(["clip-id-1", "clip-id-2"])         # canonical camera + egomotion
-ds.download_clips()                                    # every clip in the corpus
-ds.download_clips(["…"], features=["camera_rear_left_70fov"])  # extra cameras
+ds.download_clips([clip_id])                                  # canonical camera + egomotion
+ds.download_clips()                                            # every clip in the corpus
+ds.download_clips([clip_id], features=ds.features.CAMERA.ALL)  # full 7-camera rig
+ds.download_clips([clip_id], features=ds.features.LIDAR.ALL)   # LiDAR sweeps
+ds.download_clips([clip_id], features=ds.features.RADAR.ALL)   # all 19 radars
+ds.download_clips([clip_id], features=ds.features.ALL)         # everything
 ```
 
-Then `ds.get_sequence(clip_id).video` returns a `SeekVideoReader`
-you can index by microsecond timestamp.
+Then read sensors off the `Sequence`:
+
+```python
+seq = ds.get_sequence(clip_id)
+seq.video                          # SeekVideoReader for the canonical camera
+seq.cameras["camera_rear_tele_30fov"]   # any other camera
+ds.get_clip_feature(clip_id, "lidar_top_360fov")
+```
+
+`SeekVideoReader.decode_images_from_timestamps(np.array([t_us], dtype=np.int64))`
+decodes frames at microsecond timestamps.
+
+> **Heads-up — chunk-granularity downloads.** The parent dataset
+> stores features in chunks containing many clips, so opting into
+> one extra sensor for one clip can pull several GB. The dataset
+> constructor's `confirm_download_threshold_gb` (default 10) prompts
+> for confirmation before crossing that threshold; raise it to run
+> unattended.
+
+`examples/06_sensor_data.py` prints the full sensor catalog and the
+download recipes; set `SENSOR_DEMO_DOWNLOAD=1` to also fetch a sister
+camera and decode a frame from it.
 
 ## Project layout
 
