@@ -1,0 +1,30 @@
+[project]
+name = "causal_ai_av"
+version = "0.1.0"
+description = "DevKit for the AV Causal Dataset — causal and spatio-temporal action annotations on top of the Physical AI AV Dataset."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+hf = [
+    "physical-ai-av>=0.2.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.7,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.uv]
+default-groups = "all"

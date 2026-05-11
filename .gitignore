@@ -1,0 +1,12 @@
+# Local exploration / planning artifacts, not part of the deliverable
+meta/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# uv / venv
+.venv/
+
+# pytest
+.pytest_cache/
