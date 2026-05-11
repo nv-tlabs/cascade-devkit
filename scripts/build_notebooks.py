@@ -499,6 +499,7 @@ def build_statistics() -> None:
         md("## Setup"),
         code("""
         import os
+        from collections import Counter
         from pathlib import Path
 
         from causal_ai_av.dataset import CausalAVDataset
@@ -506,57 +507,96 @@ def build_statistics() -> None:
         code("""
         ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
         print(f"corpus loaded — {len(ds)} clips")
+
+        def entity_count(query: str) -> int:
+            \"\"\"Number of matching *entities* across the corpus (not clips).\"\"\"
+            return len(ds.find(query).matches)
+
+        def entities_by_attr(query: str, attr: str) -> dict:
+            \"\"\"Bucket matching entities by a top-level attribute (e.g. ``type``).
+
+            Like ``ds.group_by`` but counts entities rather than clips.
+            \"\"\"
+            out = Counter()
+            for m in ds.find(query).matches:
+                val = getattr(m.entity, attr, None)
+                if isinstance(val, list):
+                    for v in val:
+                        out[v] += 1
+                else:
+                    out[val] += 1
+            return dict(out)
         """),
         md("""
-        ## Headline counts
+        ## Clips vs entities
 
-        Single-query counts for common driving primitives. `count()`
-        returns the number of *clips* with at least one match, not the
-        number of matching entities.
+        The query API exposes two complementary perspectives:
+
+        - **`ds.count(query)`** — the number of *clips* with ≥1 match.
+          Tells you about *coverage*: "how many clips even contain
+          this thing?"
+        - **`len(ds.find(query).matches)`** — the number of *matching
+          entities*. Tells you about *prevalence*: "how often does
+          this thing occur?" A single clip can contribute many
+          entities (six pedestrians, four vehicles, …).
+
+        Both are useful — coverage tells you how varied the corpus
+        is; prevalence tells you the actual instance counts.
         """),
+        md("## Headline counts"),
         code("""
-        rows = [
-            ("pedestrian",              ds.count("agent.type = ped")),
-            ("vehicle",                 ds.count("agent.type = vehicle")),
-            ("VRU (ped/cyclist)",       ds.count("agent.type = vru")),
-            ("cyclist",                 ds.count("agent.type = cyclist")),
-            ("stop sign",               ds.count("obj.type = stop_sign")),
-            ("traffic light (red)",     ds.count("light.color = red")),
-            ("crosswalk environment",   ds.count("env.type = crosswalk")),
-            ("intersection environment", ds.count("env.type = intersection")),
-            ("roundabout environment",  ds.count("env.type = roundabout")),
-            ("multi-lane road",         ds.count("env(type = road, lanes >= 2)")),
-            ("ego decelerates",         ds.count("ego.action = decel")),
-            ("ego stops at red",        ds.count("light.color = red and ego.action = stop")),
+        primitives = [
+            ("pedestrian",              "agent.type = ped"),
+            ("vehicle",                 "agent.type = vehicle"),
+            ("VRU (ped/cyclist)",       "agent.type = vru"),
+            ("cyclist",                 "agent.type = cyclist"),
+            ("stop sign",               "obj.type = stop_sign"),
+            ("yield sign",              "obj.type = yield_sign"),
+            ("crosswalk environment",   "env.type = crosswalk"),
+            ("intersection environment", "env.type = intersection"),
+            ("roundabout environment",  "env.type = roundabout"),
         ]
-        headline = pd.DataFrame(rows, columns=["query", "clips"]).sort_values(
-            "clips", ascending=False, ignore_index=True
-        )
+        headline = pd.DataFrame(
+            [(label, ds.count(q), entity_count(q)) for label, q in primitives],
+            columns=["category", "clips", "entities"],
+        ).sort_values("entities", ascending=False, ignore_index=True)
         headline
         """),
         md("""
         ## Distribution of agent types
 
-        `group_by(query, key)` runs the query and buckets matches by
-        the value of `key`. Values returned are clip counts (one per
-        distinct clip with a matching entity).
+        `group_by(query, key)` buckets matches by the value of `key`
+        and returns **clip counts**. Pair it with
+        `entities_by_attr(query, attr)` to see entity counts in the
+        same buckets.
         """),
         code("""
-        agent_dist = ds.group_by(
-            "agent.type = vehicle or agent.type = vru or agent.type = animal",
-            key="agent.type",
-        )
-        s = pd.Series(agent_dist, name="clips").sort_values(ascending=True)
+        agent_query = "agent.type = vehicle or agent.type = vru or agent.type = animal"
 
-        fig, ax = plt.subplots(figsize=(8, 0.45 * max(len(s), 4) + 1.5))
-        s.plot(kind="barh", ax=ax, color="#3b6ea5")
-        ax.set_xlabel("clips")
-        ax.set_ylabel("")
-        ax.set_title("Clips per agent type")
-        for i, v in enumerate(s.values):
-            ax.text(v + max(s.values) * 0.01, i, str(v), va="center", fontsize=9)
+        clips_by_type    = ds.group_by(agent_query, key="agent.type")
+        entities_by_type = entities_by_attr(agent_query, attr="type")
+
+        agent_df = pd.DataFrame({
+            "clips":    pd.Series(clips_by_type),
+            "entities": pd.Series(entities_by_type),
+        }).fillna(0).astype(int)
+        agent_df = agent_df.sort_values("entities", ascending=True)
+
+        fig, ax = plt.subplots(figsize=(9, 0.4 * len(agent_df) + 1.5))
+        y = range(len(agent_df))
+        ax.barh([i + 0.2 for i in y], agent_df["clips"],    height=0.4,
+                color="#3b6ea5", label="clips")
+        ax.barh([i - 0.2 for i in y], agent_df["entities"], height=0.4,
+                color="#8aa6c8", label="entities")
+        ax.set_yticks(list(y))
+        ax.set_yticklabels(agent_df.index)
+        ax.set_xlabel("count")
+        ax.set_title("Agent types — clip coverage vs entity prevalence")
+        ax.legend(loc="lower right", frameon=False)
         plt.tight_layout()
         plt.show()
+
+        agent_df
         """),
         md("## Distribution of ego actions"),
         code("""
@@ -606,16 +646,18 @@ def build_statistics() -> None:
         light, what fraction also contain an ego stop?"
         """),
         code("""
-        n_red          = ds.count("light.color = red")
-        n_red_stop     = ds.count("light.color = red and ego.action = stop")
-        n_yellow_clear = ds.count("light(color = yellow, could_have_cleared = true)")
-        n_jaywalk      = ds.count("agent(type = ped, action(jaywalk = true))")
+        n_red               = ds.count("light.color = red")
+        n_red_stop          = ds.count("light.color = red and ego.action = stop")
+        n_yellow_clear      = ds.count("light(color = yellow, could_have_cleared = true)")
+        n_jaywalk_clips     = ds.count("agent(type = ped, action(jaywalk = true))")
+        n_jaywalk_entities  = entity_count("agent(type = ped, action(jaywalk = true))")
 
         composite = pd.DataFrame([
-            ("ego stops at red light", n_red_stop, n_red, n_red_stop / max(n_red, 1)),
-            ("yellow ego could have safely cleared", n_yellow_clear, None, None),
-            ("jaywalking pedestrian present", n_jaywalk, None, None),
-        ], columns=["question", "matching clips", "denominator", "ratio"])
+            ("ego stops at red light",            n_red_stop,         n_red, n_red_stop / max(n_red, 1)),
+            ("yellow ego could have cleared",     n_yellow_clear,     None,  None),
+            ("jaywalking pedestrian (clips)",     n_jaywalk_clips,    None,  None),
+            ("jaywalking pedestrian (entities)",  n_jaywalk_entities, None,  None),
+        ], columns=["question", "matching clips/entities", "denominator", "ratio"])
         composite.style.format({"ratio": "{:.0%}"}, na_rep="—")
         """),
     ]
