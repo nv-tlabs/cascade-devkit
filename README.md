@@ -178,6 +178,8 @@ src/causal_ai_av/
   dataset.py   # CausalAVDataset / Sequence — corpus and per-clip API
   query/       # DSL lexer + parser + evaluator + query helpers
 
+annotator/     # local FastAPI + React annotation tool (see below)
+
 docs/
   query_language.md   # DSL specification (grammar + semantics)
 
@@ -185,6 +187,23 @@ examples/      # runnable Python scripts
 notebooks/     # Jupyter notebooks (built from scripts/build_notebooks.py)
 tests/         # pytest suite
 ```
+
+## Annotator
+
+`annotator/` ships a local annotation tool — a slim FastAPI server hosting
+a vendored React frontend — for editing the JSON bundles in-browser. No
+auth, no database, no admin layer; you point it at a directory of
+annotations (or fresh videos) and it serves an editor over `localhost`.
+
+```bash
+uv sync --extra annotator
+cd annotator/web && npm install && npm run build
+uv run causal-av-annotate /path/to/json_annotations
+```
+
+Lock-by-default, explicit Save (with `.bak` on first save), HEVC→H.264
+transcode pipeline for browser playback. See
+[`annotator/README.md`](annotator/README.md) for the full reference.
 
 ## Development
 
