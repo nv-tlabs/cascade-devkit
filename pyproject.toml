@@ -13,10 +13,19 @@ dependencies = [
 hf = [
     "physical-ai-av>=0.2.2",
 ]
+annotator = [
+    "causal-av-annotator",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.uv.workspace]
+members = ["annotator"]
+
+[tool.uv.sources]
+causal-av-annotator = { workspace = true }
 
 [dependency-groups]
 dev = [
