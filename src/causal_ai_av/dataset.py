@@ -25,12 +25,19 @@ from physical_ai_av import PhysicalAIAVDatasetInterface
 from causal_ai_av.io import load_file
 from causal_ai_av.query import (
     Interval,
+    MatchSet,
     agents_visible_at,
     ego_relative_pose_at,
     extract_causal_triplets,
     filter_active_at,
     filter_active_in_range,
     parse_timestamp,
+)
+from causal_ai_av.query.api import (
+    count_on_dataset,
+    find_on_bundle,
+    find_on_dataset,
+    group_by_on_dataset,
 )
 from causal_ai_av.query.triplets import CausalTriplet
 from causal_ai_av.spec import (
@@ -271,6 +278,28 @@ class CausalAVDataset(PhysicalAIAVDatasetInterface):
     def __getitem__(self, clip_id: str) -> Sequence:
         return self.get_sequence(clip_id)
 
+    # -- DSL search / aggregations -------------------------------------------
+
+    def find(self, dsl: str) -> MatchSet:
+        """Run a DSL query over every clip in the dataset.
+
+        Returns a single MatchSet whose entries reference entities
+        across the corpus. See `meta/07_query_language.md`.
+        """
+        return find_on_dataset(self, dsl)
+
+    def count(self, dsl: str) -> int:
+        """Number of clips with ≥1 match for `dsl`."""
+        return count_on_dataset(self, dsl)
+
+    def group_by(self, dsl: str, key: str) -> dict[object, int]:
+        """Run `dsl`, bucket matches by `key` (dotted path), return `{value: n_clips}`."""
+        return group_by_on_dataset(self, dsl, key)
+
+    def histogram(self, dsl: str, key: str) -> dict[object, int]:
+        """Alias of `group_by` (kept for API symmetry per spec §4.3)."""
+        return group_by_on_dataset(self, dsl, key)
+
 
 # -----------------------------------------------------------------------------
 # Sequence
@@ -437,6 +466,10 @@ class Sequence:
         if self._triplets is None:
             self._triplets = extract_causal_triplets(self.annotation)
         return self._triplets
+
+    def find(self, dsl: str) -> MatchSet:
+        """Run a DSL query against this clip's annotation bundle."""
+        return find_on_bundle(self.annotation, dsl)
 
     def state_at(
         self, t: float, t_end: float | None = None

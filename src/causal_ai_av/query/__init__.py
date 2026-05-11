@@ -1,12 +1,40 @@
 """Query primitives over `AnnotationBundle`.
 
-- `time`     — timestamp parsing / `Interval`
-- `index`    — `IdIndex`: by-ID lookup of every addressable entity in a bundle
-- `triplets` — causal triplet extraction (`(subject, predicate, cause)` from `because_of`)
-- `temporal` — action-at-time, action overlaps, interval predicates
-- `spatial`  — agent visibility, ego-relative pose, agents-in-position
+- `time`      — timestamp parsing / `Interval`
+- `index`     — `IdIndex`: by-ID lookup of every addressable entity in a bundle
+- `triplets`  — causal triplet extraction (`(subject, predicate, cause)` from `because_of`)
+- `temporal`  — action-at-time, action overlaps, interval predicates
+- `spatial`   — agent visibility, ego-relative pose, agents-in-position
+- `constants` — DSL value aliases, grounded against the corpus
+- `entities`  — DSL entity descriptors
+- `dsl`       — DSL lexer + parser
+- `engine`    — AST evaluator → MatchSet
+- `api`       — thin wrappers (`find_on_bundle`, `find_on_dataset`, …)
 """
 
+from causal_ai_av.query.constants import (
+    ActionKind,
+    AgentKind,
+    EnvKind,
+    LightColor,
+    Position,
+    resolve_alias,
+)
+from causal_ai_av.query.dsl import (
+    And,
+    AttrPredicate,
+    BecauseOf,
+    EntityClause,
+    Expr,
+    Not,
+    Or,
+    QueryParseError,
+    Then,
+    While,
+    Within,
+    parse,
+)
+from causal_ai_av.query.engine import Match, MatchSet, evaluate
 from causal_ai_av.query.index import IdIndex, Subject
 from causal_ai_av.query.spatial import (
     agent_visibility_interval,
@@ -42,4 +70,26 @@ __all__ = [
     "agents_visible_at",
     "ego_relative_pose_at",
     "agents_in_position",
+    # DSL surface
+    "parse",
+    "evaluate",
+    "Match",
+    "MatchSet",
+    "QueryParseError",
+    "AttrPredicate",
+    "EntityClause",
+    "And",
+    "Or",
+    "Not",
+    "While",
+    "Then",
+    "BecauseOf",
+    "Within",
+    "Expr",
+    "resolve_alias",
+    "AgentKind",
+    "ActionKind",
+    "EnvKind",
+    "LightColor",
+    "Position",
 ]
