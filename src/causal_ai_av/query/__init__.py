@@ -34,6 +34,12 @@ from causal_ai_av.query.dsl import (
     Within,
     parse,
 )
+from causal_ai_av.query.api import (
+    count_on_dataset,
+    find_on_bundle,
+    find_on_dataset,
+    group_by_on_dataset,
+)
 from causal_ai_av.query.engine import Match, MatchSet, evaluate
 from causal_ai_av.query.index import IdIndex, Subject
 from causal_ai_av.query.spatial import (
@@ -73,6 +79,10 @@ __all__ = [
     # DSL surface
     "parse",
     "evaluate",
+    "find_on_bundle",
+    "find_on_dataset",
+    "count_on_dataset",
+    "group_by_on_dataset",
     "Match",
     "MatchSet",
     "QueryParseError",

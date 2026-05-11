@@ -22,6 +22,13 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.0.1",
 ]
+notebooks = [
+    "jupyterlab>=4.0",
+    "ipykernel>=6.0",
+    "nbformat>=5.9",
+    "matplotlib>=3.8",
+    "pandas>=2.1",
+]
 
 [tool.ruff]
 line-length = 100
