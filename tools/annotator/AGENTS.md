@@ -1,0 +1,112 @@
+# AGENTS.md — `tools/annotator/`
+
+Subproject-scoped rules for the annotator. The repo-wide
+[`AGENTS.md`](../../AGENTS.md) at the root applies first; this file
+extends it for work under `tools/annotator/`. Codex, Cursor, GitHub
+Copilot, and Gemini CLI walk parent directories and concatenate matching
+AGENTS.md files automatically.
+
+## What this is
+
+A slim FastAPI server that hosts a vendored Vite + React 19 frontend
+for editing the AV Causal Dataset annotation JSONs in a browser. No
+auth, no database, no admin layer — you point the CLI at a directory of
+annotation JSONs or videos, and it serves an editor over `localhost`.
+Reference docs live in [`README.md`](README.md).
+
+## Layout
+
+| Path | Role |
+|------|------|
+| `src/annotator/server/cli.py` | argparse + uvicorn entry point (console script `causal-av-annotate`) |
+| `src/annotator/server/app.py` | FastAPI app factory; `/api/*` routes; mounts `web/dist` at `/` |
+| `src/annotator/server/io_adapter.py` | disk ↔ `AnnotationBundle`; atomic save with `.bak` snapshot |
+| `src/annotator/server/video.py` | HEVC → H.264 transcode; HF / local video resolver |
+| `web/src/` | React frontend (Zustand store, Radix dialogs, Tailwind v4) |
+| `web/dist/` | vite build output, mounted at `/`. **Generated** — rebuild with `make annotator-build`. |
+| `tests/` | pytest — server routes, video pipeline, smoke |
+
+## Dev workflow
+
+From the repo root:
+
+```bash
+make install                                    # pulls Python deps + npm deps
+make annotator-build                            # build web/dist (one-time, or after UI changes)
+make annotator-dev DATA=~/01_json_annotations   # launch the backend
+```
+
+`make annotator-dev` requires `DATA=<path>`; the target exits with a
+guidance message if it is unset.
+
+## Frontend conventions
+
+- **Tailwind v4 only.** No CSS-in-JS, no inline `style=` for anything
+  Tailwind covers. Tailwind v4 `@theme` in
+  [`web/src/index.css`](web/src/index.css) defines the design tokens;
+  `[data-theme="light"]` swaps them for light mode.
+- **Never re-introduce a global `*` reset.** Tailwind v4's preflight
+  already sets `box-sizing: border-box` and zeroes margin/padding on
+  all elements. Adding `* { padding: 0 }` (or similar) silently
+  defeats every Tailwind padding/margin utility (`pl-*`, `px-*`,
+  `mt-*`, …). See commit `9ef41f5` for the incident this rule was
+  written from. There is an explanatory comment guarding the spot in
+  `index.css`; preserve it.
+- **Theme hydration must stay synchronous.** [`web/src/main.tsx`](web/src/main.tsx)
+  reads the stored preference and sets `<html data-theme>` **before**
+  `createRoot` runs, so the first paint matches the saved theme and
+  there is no FOUC. Do not move this into a `useEffect`.
+- **The Zustand store is the source of truth.**
+  [`web/src/lib/store.ts`](web/src/lib/store.ts) owns `dirty`,
+  `locked`, `serverReadOnly`, `lastSavedAnnotationJson`, `saveError`,
+  the undo stack, and theme state. Components read; only the store
+  mutates. Don't fork dirty-tracking into component-local state.
+
+## Save & lock model — load-bearing invariants
+
+These are tested and user-facing. Do not change them without explicit
+approval:
+
+- **Editing is default-locked, per clip session.** Every clip switch
+  re-locks. The Unlock toggle is gated by a confirm dialog. `--read-only`
+  hides the toggle entirely.
+- **Saves are explicit** (Save button or `Cmd/Ctrl+S`). There is no
+  autosave.
+- **Disk writes are atomic.** `io_adapter.py` writes through
+  `os.replace` (via `causal_ai_av.io.save_file`). An interrupted
+  process cannot produce a half-written JSON.
+- **First save per server session stamps `<file>.json.bak`.**
+  Subsequent saves in the same session do not re-stamp the backup, so
+  the original on-disk content survives a chain of edits.
+- **Switching clips while dirty** opens *Save / Discard / Cancel*.
+  Save is disabled while locked or read-only.
+- **Undo restores the previous snapshot.** If undo lands back at the
+  on-disk state, `dirty` clears automatically (compared against
+  `lastSavedAnnotationJson`).
+
+## Server-side rules
+
+- **Video tests mock `subprocess.run` and `shutil.which`** so real
+  `ffmpeg` is never invoked in CI. Preserve this pattern for any new
+  video logic — agents that add subprocess calls without mocking will
+  break the suite on machines without ffmpeg.
+- **Transcode cache** lives at
+  `$XDG_CACHE_HOME/causal-av-annotator/transcoded/` (or
+  `~/.cache/causal-av-annotator/transcoded/` if XDG is unset). The
+  cache directory name is derived from the package name
+  (`causal-av-annotator`); renaming the package would orphan existing
+  caches.
+- **Frontend dist resolution.** `app.py` resolves `web/dist` via
+  `Path(__file__).resolve().parents[3] / "web" / "dist"`. If you
+  ever move `app.py` deeper or shallower in the tree, update the
+  `parents[N]` index — there is an explanatory comment at the
+  definition.
+
+## Subproject "do not touch"
+
+| Path | Why |
+|------|-----|
+| `web/dist/` | Generated by `make annotator-build`. Never hand-edit. |
+| `web/package-lock.json` | Lockfile — let npm manage it. |
+| Default port `8765` | Change via `--port` flag, not by editing the default. |
+| `*.json.bak` | First-save backups of user data. Never commit, never delete from inside the running app. |

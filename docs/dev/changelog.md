@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 docs(annotator): nested AGENTS.md scoping Tailwind/Zustand/save+lock rules (#5)
 - 2026-05-12 refactor(layout): move annotator/ under tools/annotator/ (#4)
 - 2026-05-12 docs(agents): bootstrap agentic-readiness — AGENTS.md, CLAUDE.md (@AGENTS.md), Makefile (#3)
 - 2026-05-12 docs(dev): update changelog policy — entry lands in the same PR (#2)
