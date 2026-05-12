@@ -1437,10 +1437,10 @@ export function RightPanel() {
       <div>
       {/* === Details view === */}
 
-      {/* Relevancy */}
+      {/* Relevance */}
       {ann && (
         <div className="px-5 py-4 border-b border-border-subtle">
-          <h3 className={`text-[11px] font-semibold uppercase tracking-[0.08em] mb-3 ${ann.eventful == null ? 'text-danger' : 'text-text-secondary'}`}>Relevancy</h3>
+          <h3 className={`text-[11px] font-semibold uppercase tracking-[0.08em] mb-3 ${ann.eventful == null ? 'text-danger' : 'text-text-secondary'}`}>Relevance</h3>
           <p className="text-xs text-text-muted mb-3">Does the clip show eventful, non-nominal driving?</p>
           <div className="flex gap-2">
             {[
