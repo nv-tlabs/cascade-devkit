@@ -88,7 +88,17 @@ Procedural workflows that agents repeat live as Agent Skills under
 has `name` + `description`; the body loads on demand. See the open
 standard at <https://agentskills.io>.
 
-*Bootstrap pending — initial skills land in a follow-up PR.*
+Current project skills:
+
+| Skill | Purpose |
+|-------|---------|
+| [`run-tests`](.claude/skills/run-tests/SKILL.md) | Run the pytest suite via `make test`; diagnose common failure modes. |
+| [`annotator-dev`](.claude/skills/annotator-dev/SKILL.md) | Launch the annotator backend; diagnose blank-page / port / video issues. |
+| [`add-annotator-cli-flag`](.claude/skills/add-annotator-cli-flag/SKILL.md) | Add a new flag to the `causal-av-annotate` CLI; conventions + test pattern. |
+
+More skills land as repeated patterns emerge. Personal/experimental
+skills live in `~/.claude/skills/`; only project-wide procedures
+belong here.
 
 ## Agent expectations
 
