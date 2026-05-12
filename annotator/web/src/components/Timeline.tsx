@@ -3350,7 +3350,7 @@ export function Timeline() {
                     title={`Expand ${group}`}
                   >
                     <ChevronRight className="w-3 h-3 flex-shrink-0" style={{ color }} />
-                    <span className="uppercase text-[9px] font-bold tracking-wider flex-1" style={{ color }}>{group}</span>
+                    <span className="uppercase text-[10px] font-semibold tracking-[0.08em] flex-1" style={{ color }}>{group}</span>
                   </div>
                 </div>
               )
@@ -3366,7 +3366,7 @@ export function Timeline() {
                 {subLabels.map((sl, si) => sl.label ? (
                   <span
                     key={si}
-                    className="absolute right-1 text-[8px] uppercase tracking-wider pointer-events-none select-none"
+                    className="absolute right-1 text-[9px] uppercase tracking-wider pointer-events-none select-none"
                     style={{ top: sl.y + 1, height: COND_SUBTRACK_HEIGHT - 2, lineHeight: `${COND_SUBTRACK_HEIGHT - 2}px`, color: `${sl.color}cc` }}
                   >{sl.label}</span>
                 ) : null)}
@@ -3379,28 +3379,28 @@ export function Timeline() {
                       title={`Collapse ${group}`}
                     >
                       <ChevronDown className="w-3 h-3 flex-shrink-0" style={{ color }} />
-                      <span className="uppercase text-[9px] font-bold tracking-wider truncate" style={{ color }}>{group}</span>
+                      <span className="uppercase text-[10px] font-semibold tracking-[0.08em] truncate" style={{ color }}>{group}</span>
                     </div>
                     <div className="flex-1" />
                     {isDynamic && (
                       <button type="button" onClick={() => handleAddTrack(group as DynamicGroup)}
-                        className="w-3.5 h-3.5 flex items-center justify-center rounded hover:bg-surface-hover text-text-disabled hover:text-green-400 transition-colors flex-shrink-0"
+                        className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-surface-hover text-text-muted hover:text-success transition-colors flex-shrink-0"
                         title={`Add ${group.toLowerCase()} track`}>
-                        <Plus className="w-2.5 h-2.5" />
+                        <Plus className="w-3 h-3" />
                       </button>
                     )}
                   </div>
                 )}
                 <div className="flex items-center gap-1">
                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                  <span className="text-[10px] text-text-secondary truncate flex-1">{name}</span>
+                  <span className="text-[11px] text-text-secondary truncate flex-1">{name}</span>
                   {isDynamic && trackIdx >= 0 && (
                     <button type="button"
                       onClick={() => handleRemoveTrack(group as DynamicGroup, trackIdx)}
-                      className="w-3.5 h-3.5 flex items-center justify-center rounded hover:bg-surface-hover text-transparent hover:text-red-400 transition-colors"
+                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-surface-hover text-text-muted hover:text-danger transition-colors"
                       title={`Remove ${name}`}
                     >
-                      <Minus className="w-2.5 h-2.5" />
+                      <Minus className="w-3 h-3" />
                     </button>
                   )}
                 </div>

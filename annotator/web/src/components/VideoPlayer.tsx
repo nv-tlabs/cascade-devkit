@@ -1,7 +1,8 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { useStore } from '../lib/store'
 import { Play, Pause, SkipBack, SkipForward, ChevronsLeft, ChevronsRight, MapPin, Maximize } from 'lucide-react'
-import { parseTs, annotationToSegments } from '../lib/timeline-utils'
+import { parseTs, annotationToSegments, readEntityCssVar } from '../lib/timeline-utils'
 import { interpolateKeypoint, upsertKeypoint, moveKeypointAt, removeKeypointAt, EXACT_SNAP_SECONDS } from '../lib/keypoint-utils'
 import type { SilAvAnnotation, Keypoint } from '../lib/types'
 
@@ -151,8 +152,19 @@ export function VideoPlayer() {
   const {
     selectedClipId, setDuration, setPlayhead, playheadTime, duration, bundle,
     updateBundle, markDirty, selectedPath, selectPath, keypointsVisible, toggleKeypointsVisible,
-    arrowTypes, toggleArrowType,
+    arrowTypes, toggleArrowType, effectiveTheme,
   } = useStore()
+
+  // Entity colors for the arrow-toggle cluster. Memoized by effectiveTheme so
+  // light/dark flips repaint the cluster atomically.
+  const arrowColors = useMemo(() => ({
+    becauseOf:    readEntityCssVar('--color-entity-signal',    '#f97316'),
+    linkTo:       readEntityCssVar('--color-entity-link',      '#60a5fa'),
+    containedIn:  readEntityCssVar('--color-entity-contained', '#4ade80'),
+    influencedBy: readEntityCssVar('--color-entity-influence', '#fb923c'),
+    actionTarget: readEntityCssVar('--color-entity-target',    '#10b981'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [effectiveTheme])
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef({ zoom: 1, panX: 0, panY: 0 })
@@ -733,7 +745,7 @@ export function VideoPlayer() {
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-text-secondary bg-surface-overlay/90 rounded font-mono" style={{ padding: '4px 8px' }}>{Math.round(zoomLevel * 100)}%</span>
               <button onClick={resetZoom} title="Reset zoom (fit)"
-                className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface-overlay/90 text-text-secondary hover:text-white hover:bg-surface-hover transition-all">
+                className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-overlay/90 text-text-secondary hover:text-white hover:bg-surface-hover transition-all">
                 <Maximize className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -764,27 +776,27 @@ export function VideoPlayer() {
 
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-surface-raised border-t border-border-subtle">
         <div className="flex items-center gap-2 flex-1 basis-0 justify-start">
-          <button onClick={toggle} className="w-9 h-9 flex items-center justify-center rounded-lg bg-accent text-white hover:bg-blue-400 transition-all shadow-md">
+          <button onClick={toggle} className="w-9 h-9 flex items-center justify-center rounded-md bg-accent text-white hover:bg-blue-400 transition-all shadow-md">
             {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
           </button>
-          <div className="flex items-center gap-1 bg-surface-overlay rounded-lg p-1">
-            <button onClick={() => jump(-1)} title="Jump back 1s" className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-white hover:bg-surface-hover transition-all">
+          <div className="flex items-center gap-1 bg-surface-overlay rounded-md p-1">
+            <button onClick={() => jump(-1)} title="Jump back 1s" className="w-8 h-8 flex items-center justify-center rounded-md text-text-muted hover:text-white hover:bg-surface-hover transition-all">
               <ChevronsLeft className="w-4 h-4" />
             </button>
-            <button onClick={() => step(-1)} title="Step back 1 frame" className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-white hover:bg-surface-hover transition-all">
+            <button onClick={() => step(-1)} title="Step back 1 frame" className="w-8 h-8 flex items-center justify-center rounded-md text-text-muted hover:text-white hover:bg-surface-hover transition-all">
               <SkipBack className="w-4 h-4" />
             </button>
-            <button onClick={() => step(1)} title="Step forward 1 frame" className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-white hover:bg-surface-hover transition-all">
+            <button onClick={() => step(1)} title="Step forward 1 frame" className="w-8 h-8 flex items-center justify-center rounded-md text-text-muted hover:text-white hover:bg-surface-hover transition-all">
               <SkipForward className="w-4 h-4" />
             </button>
-            <button onClick={() => jump(1)} title="Jump forward 1s" className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-white hover:bg-surface-hover transition-all">
+            <button onClick={() => jump(1)} title="Jump forward 1s" className="w-8 h-8 flex items-center justify-center rounded-md text-text-muted hover:text-white hover:bg-surface-hover transition-all">
               <ChevronsRight className="w-4 h-4" />
             </button>
           </div>
-          <div className="flex items-center gap-1 bg-surface-overlay rounded-lg p-1 ml-2">
+          <div className="flex items-center gap-1 bg-surface-overlay rounded-md p-1 ml-2">
             {[0.5, 1, 2, 3].map(s => (
               <button key={s} onClick={() => setSpeed(s)}
-                className={`w-8 h-8 flex items-center justify-center text-xs font-semibold rounded-lg transition-all tabular-nums ${speed === s ? 'bg-surface-hover text-white' : 'text-text-muted hover:text-white'}`}>
+                className={`w-8 h-8 flex items-center justify-center text-xs font-semibold rounded-md transition-all tabular-nums ${speed === s ? 'bg-surface-hover text-white' : 'text-text-muted hover:text-white'}`}>
                 {s}x
               </button>
             ))}
@@ -794,27 +806,50 @@ export function VideoPlayer() {
           <span className="text-text-muted text-xs font-mono tabular-nums">{fmt(playheadTime)} / {fmt(duration)}</span>
         </div>
         <div className="flex items-center gap-2 flex-1 basis-0 justify-end">
-          <div className="flex items-center gap-1 bg-surface-overlay rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-surface-overlay rounded-md p-1">
             <button onClick={toggleKeypointsVisible} title={keypointsVisible ? 'Hide keypoints (B)' : 'Show keypoints (B)'}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${keypointsVisible ? 'bg-surface-hover text-blue-400' : 'text-text-muted hover:text-white'}`}>
+              className={`w-8 h-8 flex items-center justify-center rounded-md transition-all ${keypointsVisible ? 'bg-surface-hover text-blue-400' : 'text-text-muted hover:text-white'}`}>
               <MapPin className="w-4 h-4" />
             </button>
           </div>
-          <div className="flex items-center gap-1 bg-surface-overlay rounded-lg p-1">
-            {([
-              { key: 'becauseOf',    label: 'B', color: '#f97316', title: 'Because Of' },
-              { key: 'linkTo',       label: 'L', color: '#60a5fa', title: 'Link To' },
-              { key: 'containedIn',  label: 'C', color: '#4ade80', title: 'Contained In' },
-              { key: 'influencedBy', label: 'I', color: '#fb923c', title: 'Influenced By' },
-              { key: 'actionTarget', label: 'T', color: '#10b981', title: 'Action Target' },
-            ] as const).map(({ key, label, color, title }) => (
-              <button key={key} onClick={() => toggleArrowType(key)} title={`${arrowTypes[key] ? 'Hide' : 'Show'} ${title} arrows`}
-                className={`w-8 h-8 flex items-center justify-center rounded-lg text-[18px] font-bold transition-all leading-none ${arrowTypes[key] ? 'bg-surface-hover' : 'hover:text-white'}`}
-                style={{ color: arrowTypes[key] ? color : '#888' }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <span className="text-[10px] uppercase tracking-wider text-text-muted mr-1">Arrows</span>
+          <Tooltip.Provider delayDuration={150}>
+            <div className="flex items-center gap-1 bg-surface-overlay rounded-md p-1">
+              {([
+                { key: 'becauseOf',    label: 'B', title: 'Because Of' },
+                { key: 'linkTo',       label: 'L', title: 'Link To' },
+                { key: 'containedIn',  label: 'C', title: 'Contained In' },
+                { key: 'influencedBy', label: 'I', title: 'Influenced By' },
+                { key: 'actionTarget', label: 'T', title: 'Action Target' },
+              ] as const).map(({ key, label, title }) => {
+                const active = arrowTypes[key]
+                const color = arrowColors[key]
+                return (
+                  <Tooltip.Root key={key}>
+                    <Tooltip.Trigger asChild>
+                      <button
+                        onClick={() => toggleArrowType(key)}
+                        aria-label={`${active ? 'Hide' : 'Show'} ${title} arrows`}
+                        className={`h-8 w-8 inline-flex items-center justify-center rounded-md text-[18px] font-bold transition-colors leading-none ${active ? 'bg-surface-hover' : 'hover:bg-surface-hover'}`}
+                        style={{ color: active ? color : 'var(--color-text-muted)' }}
+                      >
+                        {label}
+                      </button>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content
+                        sideOffset={6}
+                        className="z-50 px-2 py-1 rounded-md bg-surface-overlay text-text-primary border border-border-default text-xs font-medium shadow-md"
+                      >
+                        {title} arrows
+                        <Tooltip.Arrow className="fill-[var(--color-border-default)]" />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                )
+              })}
+            </div>
+          </Tooltip.Provider>
         </div>
       </div>
     </div>

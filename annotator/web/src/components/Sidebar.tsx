@@ -60,80 +60,83 @@ export function Sidebar() {
 
   return (
     <aside className="flex flex-col h-full bg-surface-raised border-r border-border-default overflow-x-hidden overflow-y-hidden">
-      <header className="shrink-0 p-3 border-b border-border-default">
+      <header className="shrink-0 px-4 py-3 border-b border-border-default">
         <h1 className="text-text-primary font-semibold text-sm">causal-av-annotator</h1>
-        <p className="text-[10px] text-text-muted mt-0.5">{clips.length} clip{clips.length === 1 ? '' : 's'}</p>
+        <p className="text-xs font-medium text-text-muted mt-0.5">{clips.length} clip{clips.length === 1 ? '' : 's'}</p>
       </header>
 
-      <div className="px-3 py-2 border-b border-border-default">
+      <div className="px-4 py-3 border-b border-border-default">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
           <input
             type="text"
             placeholder="Search clips..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full py-1.5 pl-8 pr-2 text-xs bg-surface-overlay border border-border-default rounded text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full h-9 pl-9 pr-3 text-sm bg-surface-overlay border border-border-default rounded-md text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
           />
         </div>
       </div>
 
-      <ul className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-0.5">
+      <ul className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-1">
         {filtered.map((c) => {
           const selected = c.clip_id === selectedClipId
           const Icon = c.kind === 'annotated' ? FileText : Film
           const badge = c.kind === 'annotated'
-            ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-            : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+            ? 'text-success bg-success-bg border-success/30'
+            : 'text-warning bg-warning-bg border-warning/30'
+          const displayId = c.clip_id.length > 20 ? c.clip_id.slice(0, 12) + '…' : c.clip_id
           return (
             <li key={c.clip_id}>
               <button
                 onClick={() => requestSelect(c.clip_id)}
-                className={`w-full text-left p-2 rounded transition-colors flex items-center gap-2.5 ${
+                className={`w-full text-left px-3 py-2.5 rounded-md transition-colors flex items-center gap-3 ${
                   selected
-                    ? 'bg-surface-hover border-l-[3px] border-l-blue-500'
-                    : 'bg-transparent border-l-[3px] border-l-transparent hover:bg-surface-hover'
+                    ? 'bg-surface-selected border-l-2 border-l-accent'
+                    : 'bg-transparent border-l-2 border-l-transparent hover:bg-surface-hover'
                 }`}
               >
                 <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <code className="block text-[11px] font-mono text-text-primary truncate">
-                    {c.clip_id.length > 16 ? c.clip_id.slice(0, 8) + '…' : c.clip_id}
+                  <code className="block text-xs font-mono text-text-primary truncate">
+                    {displayId}
                   </code>
+                  <span className={`mt-1 inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border ${badge}`}>
+                    {c.kind}
+                  </span>
                 </div>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded border ${badge}`}>{c.kind}</span>
               </button>
             </li>
           )
         })}
         {filtered.length === 0 && (
-          <li className="text-[11px] text-text-muted italic px-2 py-3">No clips match.</li>
+          <li className="text-xs text-text-muted italic px-2 py-3">No clips match.</li>
         )}
       </ul>
 
       <Dialog.Root open={pendingClipId !== null} onOpenChange={(open) => { if (!open) setPendingClipId(null) }}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[400px] max-w-[90vw] rounded-2xl border border-border-default bg-surface-raised p-5 shadow-2xl">
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[400px] max-w-[90vw] rounded-lg border border-border-default bg-surface-raised p-5 shadow-2xl">
             <Dialog.Title className="text-sm font-semibold text-text-primary">Unsaved changes</Dialog.Title>
             <Dialog.Description className="mt-2 text-xs text-text-muted">
-              Save changes to <code className="text-text-primary">{currentClipId ?? '...'}</code> before switching?
+              Save changes to <code className="font-mono text-[12px] text-text-primary">{currentClipId ?? '...'}</code> before switching?
             </Dialog.Description>
             {saveError ? (
-              <p className="mt-3 text-[11px] text-red-300/90 italic">
+              <p className="mt-3 text-[11px] text-danger italic">
                 Save failed — see banner above.
               </p>
             ) : null}
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setPendingClipId(null)}
-                className="px-3 py-1.5 rounded-lg text-xs bg-surface-overlay text-text-muted border border-border-default hover:text-text-primary"
+                className="h-8 px-3 inline-flex items-center rounded-md text-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDiscardAndSwitch}
-                className="px-3 py-1.5 rounded-lg text-xs bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20"
+                className="h-9 px-4 inline-flex items-center rounded-md text-sm font-medium bg-danger-bg text-danger border border-danger/30 hover:bg-danger/15 transition-colors"
               >
                 Discard
               </button>
@@ -141,7 +144,7 @@ export function Sidebar() {
                 onClick={confirmSaveAndSwitch}
                 disabled={saveDisabled || savingInDialog}
                 title={saveDisabled ? 'Unlock the bundle first to enable Save' : 'Save then switch'}
-                className="px-3 py-1.5 rounded-lg text-xs bg-accent/20 text-blue-300 border border-blue-500/40 hover:bg-accent/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-9 px-4 inline-flex items-center rounded-md text-sm font-semibold bg-accent text-accent-fg hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {savingInDialog ? 'Saving…' : 'Save'}
               </button>

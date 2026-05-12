@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { useStore } from '../lib/store'
-import { Lock, LockOpen, AlertCircle, Monitor, Sun, Moon } from 'lucide-react'
+import { Lock, LockOpen, AlertCircle, Monitor, Sun, Moon, X } from 'lucide-react'
 
 /**
  * Top bar across the editor pane. Drives the lock policy:
  *   - locked + server writable     → "Unlock to edit" + inline confirm
  *   - locked + server read-only    → permanently locked, no unlock button
  *   - unlocked                     → "Lock" button + edits enabled
- *   - dirty                        → red dot + "Unsaved changes"
- *   - save error                   → banner with message
+ *   - dirty                        → amber pill + "Unsaved changes"
+ *   - save error                   → separate banner row below the lock bar
  *
  * The save button itself lives in RightPanel; this bar only owns the lock
- * toggle + dirty indicator.
+ * toggle + dirty indicator + theme toggle.
  */
 export function LockBar() {
   const locked = useStore(s => s.locked)
@@ -31,20 +31,20 @@ export function LockBar() {
   // --- Confirmation row (locked, user clicked Unlock to edit) ---
   if (confirming && locked && !serverReadOnly) {
     return (
-      <div className="flex-shrink-0 px-3 py-1.5 flex items-center gap-3 border-b border-amber-700/30 bg-amber-900/30 text-amber-200 text-[11px]">
+      <div className="flex-shrink-0 px-4 py-2 flex items-center gap-3 border-b border-warning/30 bg-warning-bg text-warning text-xs">
         <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
         <span className="flex-1">
           Unlocking allows you to modify or delete annotation entries. Continue?
         </span>
         <button
           onClick={() => setConfirming(false)}
-          className="px-2 py-0.5 rounded text-[10px] bg-surface-overlay text-text-secondary border border-border-default hover:text-white transition-colors"
+          className="h-8 px-3 inline-flex items-center rounded-md text-xs font-medium bg-surface-overlay text-text-secondary border border-border-default hover:text-text-primary transition-colors"
         >
           Cancel
         </button>
         <button
           onClick={() => { unlock(); setConfirming(false) }}
-          className="px-2 py-0.5 rounded text-[10px] bg-amber-700/40 text-amber-200 border border-amber-600/50 hover:bg-amber-700/60 transition-colors font-semibold"
+          className="h-8 px-3 inline-flex items-center rounded-md text-xs font-semibold bg-warning text-text-inverse border border-warning hover:opacity-90 transition-opacity"
         >
           Unlock anyway
         </button>
@@ -52,64 +52,72 @@ export function LockBar() {
     )
   }
 
-  // --- Server read-only ---
-  if (serverReadOnly) {
-    return (
-      <div className="flex-shrink-0 h-9 px-3 flex items-center gap-2 border-b border-border-subtle bg-surface-raised text-text-muted">
-        <Lock className="w-3.5 h-3.5" />
-        <span className="text-[11px] font-medium">Locked — server is read-only</span>
-        {filePath && (
-          <code className="text-[10px] font-mono text-text-muted truncate ml-1">· {filePath}</code>
-        )}
-        {dirty && <DirtyIndicator />}
-        <div className="flex-1" />
-        {saveError && <SaveError message={saveError} onDismiss={() => setSaveError(null)} />}
-        <ThemeToggle />
-      </div>
-    )
-  }
+  return (
+    <>
+      <LockBarRow
+        locked={locked}
+        serverReadOnly={serverReadOnly}
+        dirty={dirty}
+        filePath={filePath}
+        canUnlock={!!selectedClipId}
+        onLock={lock}
+        onUnlockRequest={() => setConfirming(true)}
+      />
+      {saveError && (
+        <SaveErrorBanner message={saveError} onDismiss={() => setSaveError(null)} />
+      )}
+    </>
+  )
+}
 
-  // --- Locked (default) ---
-  if (locked) {
-    return (
-      <div className="flex-shrink-0 h-9 px-3 flex items-center gap-2 border-b border-border-subtle bg-surface-raised text-text-muted">
-        <Lock className="w-3.5 h-3.5" />
-        <span className="text-[11px] font-medium">Locked — read-only</span>
-        {filePath && (
-          <code className="text-[10px] font-mono text-text-muted truncate ml-1">· {filePath}</code>
-        )}
-        {dirty && <DirtyIndicator />}
-        <div className="flex-1" />
-        {saveError && <SaveError message={saveError} onDismiss={() => setSaveError(null)} />}
+function LockBarRow({
+  locked, serverReadOnly, dirty, filePath, canUnlock, onLock, onUnlockRequest,
+}: {
+  locked: boolean
+  serverReadOnly: boolean
+  dirty: boolean
+  filePath: string | null
+  canUnlock: boolean
+  onLock: () => void
+  onUnlockRequest: () => void
+}) {
+  const Icon = locked ? Lock : LockOpen
+  const statusText = serverReadOnly
+    ? 'Locked — server is read-only'
+    : locked
+      ? 'Locked — read-only'
+      : 'Editing enabled'
+  const statusCls = !locked ? 'text-success' : 'text-text-secondary'
+
+  return (
+    <div className="flex-shrink-0 h-11 px-4 flex items-center gap-3 border-b border-border-subtle bg-surface-raised">
+      <Icon className={`w-3.5 h-3.5 ${statusCls}`} />
+      <span className={`text-xs font-medium ${statusCls}`}>{statusText}</span>
+      {filePath && (
+        <>
+          <span className="w-px h-3 bg-border-default" />
+          <code className="text-[11px] font-mono text-text-muted truncate max-w-[280px]" title={filePath}>{filePath}</code>
+        </>
+      )}
+      <div className="flex-1" />
+      {dirty && <DirtyPill />}
+      {!serverReadOnly && locked && (
         <button
-          onClick={() => setConfirming(true)}
-          disabled={!selectedClipId}
-          className="px-2.5 py-0.5 rounded text-[10px] bg-blue-600/20 text-blue-300 border border-blue-600/40 hover:bg-blue-600/30 transition-colors font-semibold disabled:opacity-40"
+          onClick={onUnlockRequest}
+          disabled={!canUnlock}
+          className="h-8 px-3 inline-flex items-center rounded-md text-xs font-semibold bg-accent-soft-bg text-accent-soft-fg border border-accent-soft-border hover:bg-accent hover:text-accent-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Unlock to edit
         </button>
-        <ThemeToggle />
-      </div>
-    )
-  }
-
-  // --- Unlocked ---
-  return (
-    <div className="flex-shrink-0 h-9 px-3 flex items-center gap-2 border-b border-emerald-700/30 bg-emerald-900/15 text-emerald-300">
-      <LockOpen className="w-3.5 h-3.5" />
-      <span className="text-[11px] font-medium">Editing enabled</span>
-      {filePath && (
-        <code className="text-[10px] font-mono text-emerald-400/60 truncate ml-1">· {filePath}</code>
       )}
-      {dirty && <DirtyIndicator />}
-      <div className="flex-1" />
-      {saveError && <SaveError message={saveError} onDismiss={() => setSaveError(null)} />}
-      <button
-        onClick={() => lock()}
-        className="px-2.5 py-0.5 rounded text-[10px] bg-surface-overlay text-text-secondary border border-border-default hover:bg-surface-hover hover:text-white transition-colors font-semibold"
-      >
-        Lock
-      </button>
+      {!serverReadOnly && !locked && (
+        <button
+          onClick={onLock}
+          className="h-8 px-3 inline-flex items-center rounded-md text-xs font-semibold bg-surface-overlay text-text-secondary border border-border-default hover:bg-surface-hover hover:text-text-primary transition-colors"
+        >
+          Lock
+        </button>
+      )}
       <ThemeToggle />
     </div>
   )
@@ -133,21 +141,29 @@ function ThemeToggle() {
   )
 }
 
-function DirtyIndicator() {
+function DirtyPill() {
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] text-orange-300 ml-1">
-      <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+    <span className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full bg-warning-bg text-warning text-[11px] font-medium">
+      <span className="w-1.5 h-1.5 rounded-full bg-warning" />
       Unsaved changes
     </span>
   )
 }
 
-function SaveError({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+function SaveErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] text-red-300 bg-red-900/40 border border-red-700/40 px-2 py-0.5 rounded mr-2">
-      <AlertCircle className="w-3 h-3" />
-      <span className="max-w-[280px] truncate" title={message}>Save failed: {message}</span>
-      <button onClick={onDismiss} className="hover:text-white">×</button>
-    </span>
+    <div className="flex-shrink-0 h-9 px-4 flex items-center gap-2 bg-danger-bg text-danger border-b border-danger/40">
+      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+      <span className="text-xs font-medium">Save failed:</span>
+      <span className="text-xs truncate" title={message}>{message}</span>
+      <div className="flex-1" />
+      <button
+        onClick={onDismiss}
+        aria-label="Dismiss save error"
+        className="h-6 w-6 inline-flex items-center justify-center rounded-md hover:bg-danger/15 transition-colors"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
   )
 }

@@ -21,12 +21,12 @@ import { AlertTriangle, Trash2, Link2, BarChart3, FileText, Download, Upload, Sa
 import { checkSegmentCompleteness } from '../lib/completeness'
 
 // --- Shared UI helpers ---
-const inputCls = 'w-full px-3 py-2 text-xs bg-surface-overlay text-white rounded-lg border border-border-default focus:border-blue-500/50 focus:outline-none'
+const inputCls = 'w-full px-3 py-2 text-sm bg-surface-overlay text-text-primary rounded-md border border-border-default focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30'
 const selectCls = inputCls
 const labelCls = 'text-[10px] text-text-muted block mb-1'
 const SPLIT_LANE_TYPES = new Set(['fst:LaneMerge', 'fst:LaneFork'])
 const fieldCls = (highlight?: boolean) =>
-  `w-full px-3 py-2 text-xs bg-surface-overlay text-white rounded-lg border ${highlight ? 'border-orange-500/60' : 'border-border-default'} focus:border-blue-500/50 focus:outline-none`
+  `w-full px-3 py-2 text-sm bg-surface-overlay text-text-primary rounded-md border ${highlight ? 'border-warning' : 'border-border-default'} focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30`
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className={labelCls}>{label}</span>{children}</label>
@@ -95,7 +95,7 @@ function ToggleField({ label, value, onChange, activeColor, highlight }: { label
   const inactive = highlight ? 'bg-surface-overlay text-text-muted border border-orange-500/60 hover:border-orange-500/80' : 'bg-surface-overlay text-text-muted border border-border-default hover:border-border-strong'
   return (
     <button type="button" onClick={() => onChange(!value)}
-      className={`w-full flex items-center gap-2 px-3 py-2 mt-2 rounded-lg text-[11px] font-medium transition-all ${
+      className={`w-full flex items-center gap-2 px-3 py-2 mt-2 rounded-md text-[11px] font-medium transition-all ${
         value ? active : inactive
       }`}>
       <div className={`w-3 h-3 rounded-sm border ${value ? 'bg-current border-current' : 'border-border-strong'}`} />
@@ -1185,7 +1185,7 @@ export function RightPanel() {
           {ann && li != null && li >= 0 && (
             <>
               <button
-                className="w-full mt-2 px-3 py-1.5 text-xs bg-surface-overlay text-white rounded-lg border border-border-default hover:bg-surface-hover"
+                className="w-full mt-2 px-3 py-1.5 text-xs bg-surface-overlay text-white rounded-md border border-border-default hover:bg-surface-hover"
                 onClick={() => {
                   const light = ann.traffic_lights[li]
                   const t0 = parseTs(light.visibility_start_timestamp)
@@ -1194,7 +1194,7 @@ export function RightPanel() {
                 }}
               >+ Add Containment</button>
               <button
-                className="w-full mt-1 px-3 py-1.5 text-xs bg-surface-overlay text-white rounded-lg border border-border-default hover:bg-surface-hover"
+                className="w-full mt-1 px-3 py-1.5 text-xs bg-surface-overlay text-white rounded-md border border-border-default hover:bg-surface-hover"
                 onClick={() => {
                   const light = ann.traffic_lights[li]
                   const t0 = parseTs(light.visibility_start_timestamp)
@@ -1426,20 +1426,18 @@ export function RightPanel() {
     <aside className="h-full flex flex-col bg-surface-raised overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
 
       {/* Status + Save */}
-      <div className="p-4 border-b border-border-subtle">
+      <div className="px-5 py-4 border-b border-border-subtle">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556]">Status</h3>
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">Status</h3>
           <span className={`px-3 py-1 rounded-full text-[11px] font-semibold border ${statusColor}`}>{status === 'needs_revision' ? 'revision requested' : status}</span>
         </div>
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={save}
-            disabled={!bundle || saving || !dirty || locked || serverReadOnly}
-            className="flex-1 flex items-center justify-center gap-2.5 px-5 py-3 rounded-2xl bg-blue-600/20 text-blue-400 border border-blue-600/30 hover:bg-blue-600/30 text-sm font-semibold transition-all disabled:opacity-30 shadow-sm"
-          >
-            <Save className="w-5 h-5" /> {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+        <button
+          onClick={save}
+          disabled={!bundle || saving || !dirty || locked || serverReadOnly}
+          className="w-full h-10 inline-flex items-center justify-center gap-2 px-5 rounded-md bg-accent text-accent-fg hover:bg-accent-hover text-sm font-semibold shadow-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
+        </button>
       </div>
 
       <div>
@@ -1447,9 +1445,9 @@ export function RightPanel() {
 
       {/* Relevancy */}
       {ann && (
-        <div className="p-4 border-b border-border-subtle">
-          <h3 className={`text-[11px] font-bold uppercase tracking-widest mb-2 ${ann.eventful == null ? 'text-red-400' : 'text-[#556]'}`}>Relevancy</h3>
-          <p className="text-[11px] text-text-muted mb-2">Does the clip show eventful, non-nominal driving?</p>
+        <div className="px-5 py-4 border-b border-border-subtle">
+          <h3 className={`text-[11px] font-semibold uppercase tracking-[0.08em] mb-3 ${ann.eventful == null ? 'text-danger' : 'text-text-secondary'}`}>Relevancy</h3>
+          <p className="text-xs text-text-muted mb-3">Does the clip show eventful, non-nominal driving?</p>
           <div className="flex gap-2">
             {[
               { val: true, label: 'Yes' },
@@ -1463,8 +1461,8 @@ export function RightPanel() {
                   u.eventful = opt.val
                   persist(u)
                 }}
-                  className={`flex-1 px-3 py-2 rounded-xl text-xs font-medium transition-all border ${
-                    active ? 'bg-accent/20 text-blue-400 border-blue-500/40' : 'bg-surface-overlay text-text-muted border-border-default hover:border-border-strong'
+                  className={`flex-1 h-9 px-4 inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors border ${
+                    active ? 'bg-accent-soft-bg text-accent-soft-fg border-accent-soft-border' : 'bg-surface-overlay text-text-secondary border-border-default hover:border-border-strong'
                   }`}>
                   {opt.label}
                 </button>
@@ -1475,19 +1473,19 @@ export function RightPanel() {
       )}
 
       {/* Brief Description */}
-      <div className="p-4 border-b border-border-subtle">
-        <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-2 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Description</h3>
+      <div className="px-5 py-4 border-b border-border-subtle">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-3 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Description</h3>
         {briefEdit !== null ? (
-          <textarea value={briefEdit} onChange={e => setBriefEdit(e.target.value)} onBlur={handleBriefBlur} autoFocus className="w-full h-16 px-3 py-2 text-sm bg-surface-overlay text-text-primary rounded-xl border border-border-default focus:border-blue-500/50 focus:outline-none resize-none" />
+          <textarea value={briefEdit} onChange={e => setBriefEdit(e.target.value)} onBlur={handleBriefBlur} autoFocus className="w-full min-h-[3rem] px-3 py-2 text-sm bg-surface-overlay text-text-primary rounded-md border border-border-default focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 resize-none" />
         ) : (
-          <p className="text-sm text-text-muted cursor-pointer hover:text-white transition-colors min-h-[2rem] px-3 py-2 bg-surface-overlay rounded-xl border border-border-subtle" onClick={() => setBriefEdit(ann?.brief_description ?? '')}>{ann?.brief_description || 'Click to add...'}</p>
+          <p className="text-sm text-text-secondary cursor-pointer transition-colors min-h-[3rem] px-3 py-2 bg-surface-overlay rounded-md border border-border-default hover:border-border-strong" onClick={() => setBriefEdit(ann?.brief_description ?? '')}>{ann?.brief_description || 'Click to add...'}</p>
         )}
       </div>
 
       {/* Ego Driving Judgment */}
       {ann && (
-        <div className="p-4 border-b border-border-subtle">
-          <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-2">Ego Driving Judgment</h3>
+        <div className="px-5 py-4 border-b border-border-subtle">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-3">Ego Driving Judgment</h3>
           <div className="flex gap-2">
             {[
               { val: 'good', icon: '😊', label: 'Good' },
@@ -1503,10 +1501,10 @@ export function RightPanel() {
                   u.ego_vehicle.driving_judgment = opt.val
                   persist(u)
                 }}
-                  className={`flex-1 flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl text-xs font-medium transition-all border ${
-                    active ? 'bg-accent/20 text-blue-400 border-blue-500/40' : 'bg-surface-overlay text-text-muted border-border-default hover:border-border-strong'
+                  className={`flex-1 h-14 flex flex-col items-center justify-center gap-0.5 px-3 rounded-md text-xs font-medium transition-colors border ${
+                    active ? 'bg-accent-soft-bg text-accent-soft-fg border-accent-soft-border' : 'bg-surface-overlay text-text-secondary border-border-default hover:border-border-strong'
                   }`}>
-                  <span className="text-lg">{opt.icon}</span>
+                  <span className="text-lg leading-none">{opt.icon}</span>
                   <span>{opt.label}</span>
                 </button>
               )
@@ -1517,17 +1515,17 @@ export function RightPanel() {
 
       {ann?.eventful !== false && <>
       {/* Selected Segment — Properties */}
-      <div className="p-5 border-b border-border-subtle">
-        <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-3">Properties</h3>
+      <div className="px-5 py-4 border-b border-border-subtle">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-3">Properties</h3>
         {(sel || selectedPath === 'ego_main') ? (
           <div className="flex flex-col gap-1">
             {/* Completeness warning */}
             {(() => {
               if (!comp || comp.missingCount === 0) return null
               return (
-                <div className="mb-3 p-2.5 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
-                  <div className="text-[10px] text-yellow-400 font-bold uppercase mb-1">Missing fields ({comp.missingCount})</div>
-                  <ul className="text-[10px] text-yellow-300/70 space-y-0.5">
+                <div className="mb-3 p-2.5 rounded-md bg-warning-bg border border-warning/30">
+                  <div className="text-[10px] text-warning font-bold uppercase mb-1">Missing fields ({comp.missingCount})</div>
+                  <ul className="text-[10px] text-warning/80 space-y-0.5">
                     {comp.issues.map((issue, i) => <li key={i}>{issue}</li>)}
                   </ul>
                 </div>
@@ -1552,8 +1550,8 @@ export function RightPanel() {
             {/* Illegal toggle */}
             {canHaveIllegal && (
               <div className="pt-2">
-                <button onClick={handleToggleIllegal} className={`w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl text-sm font-semibold transition-all shadow-sm ${sel.illegal ? 'bg-red-500/20 text-red-400 border border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.2)]' : 'bg-surface-overlay text-text-muted border border-border-default hover:border-red-500/30 hover:text-red-400'}`}>
-                  <AlertTriangle className="w-5 h-5" /> {sel.illegal ? 'ILLEGAL — click to remove' : 'Mark as Illegal'}
+                <button onClick={handleToggleIllegal} className={`w-full h-9 inline-flex items-center justify-center gap-2 px-4 rounded-md text-sm font-medium transition-colors ${sel.illegal ? 'bg-danger-bg text-danger border border-danger/40' : 'bg-surface-overlay text-text-secondary border border-border-default hover:border-danger/40 hover:text-danger'}`}>
+                  <AlertTriangle className="w-4 h-4" /> {sel.illegal ? 'ILLEGAL — click to remove' : 'Mark as Illegal'}
                 </button>
               </div>
             )}
@@ -1564,7 +1562,7 @@ export function RightPanel() {
                 <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider block mb-2">Because of (causality)</span>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {(sel.because_of || []).map((c, i) => (
-                    <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] bg-red-500/15 text-red-400 border border-red-500/20">
+                    <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] bg-danger-bg text-danger border border-danger/30">
                       {c}
                       <button onClick={() => handleRemoveBecause(c)} className="hover:text-white"><X className="w-3.5 h-3.5" /></button>
                     </span>
@@ -1681,7 +1679,7 @@ export function RightPanel() {
                               }
                             }}
                             placeholder="Short description…"
-                            className="flex-1 bg-surface-overlay border border-border-default rounded-lg px-3 py-1.5 text-[12px] text-white placeholder-[#444] focus:outline-none focus:border-red-500/50"
+                            className="flex-1 bg-surface-overlay border border-border-default rounded-md px-3 py-1.5 text-[12px] text-white placeholder-[#444] focus:outline-none focus:border-red-500/50"
                           />
                           <button
                             onClick={() => {
@@ -1690,11 +1688,11 @@ export function RightPanel() {
                                 setBecauseOtherMode(false); setBecauseOtherText('')
                               }
                             }}
-                            className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 text-[12px] hover:bg-red-500/30"
+                            className="px-3 py-1.5 rounded-md bg-red-500/20 text-red-400 border border-red-500/30 text-[12px] hover:bg-red-500/30"
                           >Add</button>
                           <button
                             onClick={() => { setBecauseOtherMode(false); setBecauseOtherText('') }}
-                            className="px-2 py-1.5 rounded-lg bg-surface-overlay text-text-muted border border-border-default text-[12px] hover:text-white"
+                            className="px-2 py-1.5 rounded-md bg-surface-overlay text-text-muted border border-border-default text-[12px] hover:text-white"
                           ><X className="w-3 h-3" /></button>
                         </div>
                       )}
@@ -1716,14 +1714,14 @@ export function RightPanel() {
             {/* Delete + Raw attrs — well separated */}
             <div className="pt-5 mt-2 border-t border-border-subtle space-y-3">
               <div className="flex items-center gap-3">
-                <button onClick={handleDelete} className="flex-1 flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl text-sm font-semibold bg-red-600/10 text-red-400 border border-red-600/20 hover:bg-red-600/20 hover:border-red-600/40 transition-all shadow-sm">
-                  <Trash2 className="w-5 h-5" /> Delete Segment
+                <button onClick={handleDelete} className="flex-1 h-9 inline-flex items-center justify-center gap-2 px-4 rounded-md text-sm font-medium bg-danger-bg text-danger border border-danger/30 hover:bg-danger/15 hover:border-danger/50 transition-colors">
+                  <Trash2 className="w-4 h-4" /> Delete Segment
                 </button>
-                <button onClick={() => setAttrsOpen(!attrsOpen)} className="flex items-center gap-1.5 px-4 py-3.5 rounded-2xl text-[11px] text-text-muted hover:text-text-secondary bg-surface-overlay border border-border-default transition-all">
+                <button onClick={() => setAttrsOpen(!attrsOpen)} className="h-9 inline-flex items-center gap-1.5 px-3 rounded-md text-xs text-text-muted hover:text-text-secondary bg-surface-overlay border border-border-default transition-colors">
                   {attrsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />} Raw
                 </button>
               </div>
-              {attrsOpen && <pre className="text-[9px] text-text-muted bg-surface-sunken p-3 rounded-xl overflow-auto max-h-32">{JSON.stringify(sel.meta, null, 2)}</pre>}
+              {attrsOpen && <pre className="text-[9px] text-text-muted bg-surface-sunken p-3 rounded-md overflow-auto max-h-32">{JSON.stringify(sel.meta, null, 2)}</pre>}
             </div>
             </>}
           </div>
@@ -1733,12 +1731,12 @@ export function RightPanel() {
       </div>
 
       {/* Coverage */}
-      <div className="p-4 border-b border-border-subtle">
-        <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-2 flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5" /> Coverage</h3>
+      <div className="px-5 py-4 border-b border-border-subtle">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-3 flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5" /> Coverage</h3>
         <div className="space-y-2">
-          {[{ label: 'Ego Actions', pct: egoActCov, color: 'bg-accent' }, { label: 'Ego Containment', pct: egoContCov, color: 'bg-cyan-500' }].map(m => (
+          {[{ label: 'Ego Actions', pct: egoActCov, color: 'bg-accent' }, { label: 'Ego Containment', pct: egoContCov, color: 'bg-info' }].map(m => (
             <div key={m.label}>
-              <div className="flex justify-between text-[10px] text-text-muted mb-1"><span>{m.label}</span><span>{m.pct.toFixed(0)}%</span></div>
+              <div className="flex justify-between text-xs text-text-muted mb-1.5"><span>{m.label}</span><span>{m.pct.toFixed(0)}%</span></div>
               <div className="h-2 bg-surface-overlay rounded-full overflow-hidden"><div className={`h-full ${m.color} rounded-full transition-all`} style={{ width: `${Math.min(100, m.pct)}%` }} /></div>
             </div>
           ))}
@@ -1747,11 +1745,11 @@ export function RightPanel() {
 
       {/* Causality */}
       {causal.length > 0 && (
-        <div className="p-4 border-b border-border-subtle">
-          <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-2 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Causality</h3>
+        <div className="px-5 py-4 border-b border-border-subtle">
+          <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-3 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Causality</h3>
           <div className="space-y-1 max-h-28 overflow-y-auto">
             {causal.map((c, i) => (
-              <button key={i} onClick={() => selectPath(c.id)} className="w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] hover:bg-surface-overlay transition-colors">
+              <button key={i} onClick={() => selectPath(c.id)} className="w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-md text-xs hover:bg-surface-overlay transition-colors">
                 <span className={`w-1.5 h-1.5 rounded-full ${c.track === 'ego_act' ? 'bg-accent' : 'bg-purple-500'}`} />
                 <span className="text-text-secondary truncate">{c.label}</span>
                 <span className="text-text-disabled">-&gt;</span>
@@ -1768,16 +1766,16 @@ export function RightPanel() {
 
       {/* Bottom actions */}
       <div>
-      <div className="p-5 border-t border-border-subtle space-y-3">
-        <button onClick={handleExport} disabled={!selectedClipId || !bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-surface-overlay text-text-muted border border-border-default hover:bg-surface-hover hover:text-white text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
-          <Download className="w-5 h-5" /> Export JSON
+      <div className="px-5 py-4 border-t border-border-subtle space-y-2">
+        <button onClick={handleExport} disabled={!selectedClipId || !bundle} className="w-full h-9 inline-flex items-center justify-center gap-2 px-4 rounded-md bg-surface-overlay text-text-secondary border border-border-default hover:bg-surface-hover hover:text-text-primary text-sm font-medium transition-colors disabled:opacity-30">
+          <Download className="w-4 h-4" /> Export JSON
         </button>
-        <button onClick={() => loadJsonRef.current?.click()} disabled={!bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-surface-overlay text-text-muted border border-border-default hover:bg-surface-hover hover:text-white text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
-          <Upload className="w-5 h-5" /> Load JSON
+        <button onClick={() => loadJsonRef.current?.click()} disabled={!bundle} className="w-full h-9 inline-flex items-center justify-center gap-2 px-4 rounded-md bg-surface-overlay text-text-secondary border border-border-default hover:bg-surface-hover hover:text-text-primary text-sm font-medium transition-colors disabled:opacity-30">
+          <Upload className="w-4 h-4" /> Load JSON
         </button>
         <input ref={loadJsonRef} type="file" accept=".json" onChange={loadJson} className="hidden" />
-        <button onClick={handleClear} disabled={!selectedClipId || !bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-surface-overlay text-text-muted border border-border-default hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
-          <Trash2 className="w-5 h-5" /> Clear All Annotations
+        <button onClick={handleClear} disabled={!selectedClipId || !bundle} className="w-full h-9 inline-flex items-center justify-center gap-2 px-4 rounded-md bg-surface-overlay text-text-secondary border border-border-default hover:bg-danger-bg hover:text-danger hover:border-danger/40 text-sm font-medium transition-colors disabled:opacity-30">
+          <Trash2 className="w-4 h-4" /> Clear All Annotations
         </button>
       </div>
       </div>
