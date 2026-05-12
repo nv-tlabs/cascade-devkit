@@ -479,6 +479,75 @@ def test_inline_label_present_on_long_segments_suppressed_on_short_ones() -> Non
     assert not any(n.startswith("label:agent_action_0_1_") for n in label_names)
 
 
+def test_inline_label_thresholds_match_current_constants() -> None:
+    """Pin the three inline-label constants together so a tweak to
+    any one is forced to update this test (and document the choice).
+
+    The current values keep labels readable at the 24px-per-lane
+    layout: font 9, 11-char truncation, 0.5s suppression. A 0.4s
+    segment (between old 0.3s and new 0.5s) gets suppressed under
+    the current threshold; a 0.6s one keeps its label.
+    """
+    from causal_ai_av.viz.timeline import (
+        _INLINE_LABEL_FONT_SIZE,
+        _INLINE_LABEL_MAX_CHARS,
+        _INLINE_LABEL_MIN_WIDTH_S,
+        _truncate_label,
+    )
+
+    assert _INLINE_LABEL_FONT_SIZE == 9
+    assert _INLINE_LABEL_MAX_CHARS == 11
+    assert _INLINE_LABEL_MIN_WIDTH_S == 0.5
+
+    # Truncation cap: a 14-char label gets shortened with the new
+    # 11-char cap (would have been kept whole under the old cap).
+    assert _truncate_label("abcdefghijklmn") == "abcdefghij…"
+
+    # Suppression threshold: a 0.4s segment (between old 0.3 and
+    # new 0.5) is now suppressed; a 0.6s one keeps its label.
+    medium_action = AgentAction(
+        id="agent_0_act_0",
+        action_type="Yield",
+        start_timestamp="0:0.0",
+        end_timestamp="0:0.4",  # 0.4s — suppressed under new threshold
+    )
+    long_action = AgentAction(
+        id="agent_0_act_1",
+        action_type="oxd:Decelerate",
+        start_timestamp="0:1.0",
+        end_timestamp="0:1.6",  # 0.6s — labeled under new threshold
+    )
+    agent = Agent(
+        id="agent_0",
+        type="oxd:Car",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:10.0",
+        actions=[medium_action, long_action],
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="thresholds", duration_s=10.0),
+        annotation=SilAvAnnotation(agents=[agent]),
+    )
+    fig = render_timeline(_seq(bundle))
+    label_names = {a.get("name", "") for a in _annotations(fig)}
+    assert not any(n.startswith("label:agent_action_0_0_") for n in label_names), (
+        "0.4s segment should be suppressed under the new 0.5s threshold"
+    )
+    assert any(n.startswith("label:agent_action_0_1_") for n in label_names), (
+        "0.6s segment should still get an inline label"
+    )
+
+    # And the inline annotation that does fire uses the new font size.
+    fired = [
+        a for a in _annotations(fig)
+        if a.get("name", "").startswith("label:agent_action_0_1_")
+    ]
+    assert fired, "expected the 0.6s action to fire an inline label"
+    font = fired[0].get("font") or {}
+    assert int(font.get("size", 0)) == _INLINE_LABEL_FONT_SIZE
+
+
 # ---------------------------------------------------------------------------
 # Hover trace invariant
 # ---------------------------------------------------------------------------
