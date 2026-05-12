@@ -207,6 +207,174 @@ def test_segment_is_frozen() -> None:
         s.label = "Y"  # type: ignore[misc]
 
 
+def test_segment_family_defaults_to_parent() -> None:
+    """`Segment.family` defaults to "parent" so historical
+    constructions without an explicit family keep working."""
+    s = Segment(id="x", track_id="env_0", label="L", t0=0.0, t1=1.0)
+    assert s.family == "parent"
+
+
+def test_segment_carries_family() -> None:
+    """`annotation_to_segments` tags every emitted segment with the
+    correct family. One assertion per family the fixture exercises;
+    families not present in the fixture (signal_head / state /
+    env_control / physical_containment) are covered by the lights
+    fixture below.
+    """
+    bundle = _make_bundle()
+    segs = annotation_to_segments(bundle)
+
+    def _by_prefix(prefix: str) -> list[Segment]:
+        return [s for s in segs if s.id.startswith(prefix)]
+
+    # Env parent.
+    envs = _by_prefix("env_")
+    assert envs and all(s.family == "parent" for s in envs)
+    # Condition.
+    conds = _by_prefix("cond_")
+    assert conds and all(s.family == "condition" for s in conds)
+    # Ego action.
+    ego_acts = _by_prefix("ego_act_")
+    assert ego_acts and all(s.family == "action" for s in ego_acts)
+    # Ego containment.
+    ego_conts = _by_prefix("ego_cont_")
+    assert ego_conts and all(s.family == "containment" for s in ego_conts)
+    # Agent parent — there's exactly one in the fixture, under the
+    # `agent_0_` prefix (no extra subtrack suffix).
+    agent_parents = [s for s in segs if s.id.startswith("agent_0_") and s.family == "parent"]
+    assert agent_parents, "expected one agent parent segment"
+    # Agent action.
+    agent_acts = _by_prefix("agent_action_")
+    assert agent_acts and all(s.family == "action" for s in agent_acts)
+    # Agent property.
+    agent_props = _by_prefix("agent_prop_")
+    assert agent_props and all(s.family == "property" for s in agent_props)
+    # Agent influence.
+    agent_infls = _by_prefix("agent_infl_")
+    assert agent_infls and all(s.family == "influence" for s in agent_infls)
+
+
+def test_segment_carries_family_for_lights() -> None:
+    """Per-signal-head light families: signal_head, state, env_control,
+    plus physical_containment (at the light's top level)."""
+    from causal_ai_av.spec import (
+        LightStates,
+        SignalHead,
+        TrafficLight,
+    )
+
+    env = Environment(
+        id="env_0",
+        type="fst:Road",
+        start_timestamp="0:0.0",
+        end_timestamp="0:10.0",
+    )
+    light_phys = Containment(
+        id="light_phys_0",
+        env_id="env_0",
+        start_timestamp="0:0.0",
+        end_timestamp="0:5.0",
+    )
+    sh_state = LightStates(
+        id="sh_state_0",
+        type="Steady",
+        color="red",
+        start_timestamp="0:0.0",
+        end_timestamp="0:3.0",
+    )
+    sh_env_cont = Containment(
+        id="sh_cont_0",
+        env_id="env_0",
+        start_timestamp="0:0.0",
+        end_timestamp="0:3.0",
+    )
+    sh = SignalHead(
+        id="sh_0",
+        start_timestamp="0:0.0",
+        end_timestamp="0:5.0",
+        state_sequence=[sh_state],
+        env_controlled=[sh_env_cont],
+    )
+    light = TrafficLight(
+        id="light_0",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:5.0",
+        containment=[light_phys],
+        signal_heads=[sh],
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="light_clip", duration_s=10.0),
+        annotation=SilAvAnnotation(environments=[env], traffic_lights=[light]),
+    )
+    segs = annotation_to_segments(bundle)
+    by_id_prefix = {
+        "light_0_": "parent",
+        "light_phys_cont_0_0_": "physical_containment",
+        "light_sh_0_0_": "signal_head",
+        "light_state_0_0_0_": "state",
+        "light_cont_0_0_0_": "env_control",
+    }
+    for prefix, expected_family in by_id_prefix.items():
+        match = [s for s in segs if s.id.startswith(prefix)]
+        assert match, f"no segment with prefix {prefix!r} in {[s.id for s in segs]!r}"
+        assert match[0].family == expected_family, (
+            f"prefix {prefix}: family={match[0].family!r} expected {expected_family!r}"
+        )
+    # Per-head light segments carry `_sh_index` in meta so the painter
+    # can group them by signal head.
+    sh_segs = [s for s in segs if s.id.startswith("light_sh_")]
+    assert sh_segs[0].meta is not None and sh_segs[0].meta.get("_sh_index") == 0
+
+
+def test_segment_carries_family_for_traffic_objects() -> None:
+    """Traffic-object parent + state + containment families."""
+    from causal_ai_av.spec import ObjectStateEntry, TrafficObject
+
+    env = Environment(
+        id="env_0",
+        type="fst:Road",
+        start_timestamp="0:0.0",
+        end_timestamp="0:10.0",
+    )
+    obj_cont = Containment(
+        id="obj_cont_0",
+        env_id="env_0",
+        lane_number="1",
+        start_timestamp="0:0.0",
+        end_timestamp="0:5.0",
+    )
+    obj_state = ObjectStateEntry(
+        id="obj_state_0",
+        motion_state="Stationary",
+        start_timestamp="0:0.0",
+        end_timestamp="0:5.0",
+    )
+    obj = TrafficObject(
+        id="obj_0",
+        type="oxd:Cone",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:5.0",
+        state_sequence=[obj_state],
+        containment=[obj_cont],
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="obj_clip", duration_s=10.0),
+        annotation=SilAvAnnotation(environments=[env], traffic_objects=[obj]),
+    )
+    segs = annotation_to_segments(bundle)
+    expected = {
+        "obj_0_": "parent",
+        "obj_state_0_0_": "state",
+        "obj_cont_0_0_": "containment",
+    }
+    for prefix, family in expected.items():
+        match = [s for s in segs if s.id.startswith(prefix)]
+        assert match, f"no segment with prefix {prefix!r}"
+        assert match[0].family == family
+
+
 def test_segments_on_empty_bundle() -> None:
     """No environments / agents / ego actions → empty list, no exception."""
     bundle = AnnotationBundle(

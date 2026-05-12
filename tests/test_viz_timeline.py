@@ -714,3 +714,229 @@ def test_filter_propagation_drops_arrows_with_filtered_endpoints() -> None:
     assert _arrow_shapes(fig, "because_of") == []
     # And the agent-targeted action_target arrows also vanish.
     assert _arrow_shapes(fig, "action_target") == []
+
+
+# ---------------------------------------------------------------------------
+# Family sub-row layout (this PR)
+# ---------------------------------------------------------------------------
+
+
+def _yticks(fig: go.Figure) -> list[str]:
+    return list(fig.layout.yaxis.ticktext or ())
+
+
+def test_paint_emits_band_per_populated_family() -> None:
+    """The full-bundle fixture has Env (parent + condition), Ego
+    (containment + influence + action), and Agents (parent +
+    containment + action + property + influence). Every populated
+    family in those groups must show up as a band on the y-axis.
+    Lights / Objects have no entities in the fixture, so they
+    contribute zero bands."""
+    fig = render_timeline(_seq(_make_full_bundle()))
+    yticks = _yticks(fig)
+    # Spot check: the labels match the expected (group, family) shape.
+    expected_present = {
+        "Env · parent",
+        "Env · condition",
+        "Agents · parent",
+        "Agents · containment",
+        "Agents · influence",
+        "Agents · action",
+        "Agents · property",
+        "Ego · containment",
+        "Ego · influence",
+        "Ego · action",
+    }
+    missing = expected_present - set(yticks)
+    assert not missing, f"missing expected bands: {missing}; got {yticks}"
+
+
+def test_band_y_axis_labels_have_group_family_format() -> None:
+    """Every tick label matches the `"Group · family[ · ...]"` shape."""
+    fig = render_timeline(_seq(_make_full_bundle()))
+    yticks = _yticks(fig)
+    assert yticks, "expected at least one band on a non-empty bundle"
+    for label in yticks:
+        assert " · " in label, f"band label missing separator: {label!r}"
+        head, *_ = label.split(" · ", 1)
+        # The group head must be one of the canonical group names.
+        assert head in {"Env", "Lights", "Objects", "Agents", "Ego"}, (
+            f"unexpected group head in band label: {label!r}"
+        )
+
+
+def test_empty_bands_dropped() -> None:
+    """A bundle with ONLY env entities produces a figure with bands
+    from Env only; no Agent / Ego / Object / Light bands appear."""
+    env = Environment(
+        id="env_0",
+        type="fst:Road",
+        start_timestamp="0:0.0",
+        end_timestamp="0:10.0",
+    )
+    ann = SilAvAnnotation(environments=[env])
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="env_only", duration_s=10.0),
+        annotation=ann,
+    )
+    fig = render_timeline(_seq(bundle))
+    yticks = _yticks(fig)
+    # Exactly one band — Env · parent — because no other families are
+    # populated.
+    assert yticks == ["Env · parent"], yticks
+
+
+def test_overlapping_subtracks_land_on_distinct_lanes_in_band() -> None:
+    """Two overlapping agent actions paint on different lanes inside
+    the `Agents · action` band, not bleed into other family bands."""
+    fig = render_timeline(_seq(_make_two_overlapping_agent_actions_bundle()))
+    action_shapes = [
+        s for s in _segment_shapes(fig)
+        if s.get("name", "").startswith("segment:agent_action_")
+    ]
+    bands = {(round(float(s["y0"]), 3), round(float(s["y1"]), 3)) for s in action_shapes}
+    # Two overlapping actions → two distinct lane bands within the
+    # `Agents · action` band.
+    assert len(bands) == 2, f"expected 2 lanes, got {bands}"
+
+
+def test_proportional_label_suppression() -> None:
+    """A 1.0s segment in a 20s clip suppresses the inline label
+    (1.0 / 20 = 0.05 < 0.06 threshold); the same segment in a 10s clip
+    shows the inline label (1.0 / 10 = 0.10 > 0.06)."""
+
+    def _bundle(duration: float) -> AnnotationBundle:
+        act = AgentAction(
+            id="agent_0_act_0",
+            action_type="Yield",
+            start_timestamp="0:0.0",
+            end_timestamp="0:1.0",  # 1.0 s wide
+        )
+        agent = Agent(
+            id="agent_0",
+            type="oxd:Car",
+            visibility_start_timestamp="0:0.0",
+            visibility_end_timestamp="0:1.0",
+            actions=[act],
+        )
+        return AnnotationBundle(
+            schema_version="2.0.0",
+            video=VideoMeta(clip_id=f"prop_{duration}", duration_s=duration),
+            annotation=SilAvAnnotation(agents=[agent]),
+        )
+
+    fig_20 = render_timeline(_seq(_bundle(20.0)))
+    fig_10 = render_timeline(_seq(_bundle(10.0)))
+
+    def _action_label(fig: go.Figure) -> dict | None:
+        for a in _annotations(fig):
+            if a.get("name", "").startswith("label:agent_action_0_0_"):
+                return a
+        return None
+
+    # 20s clip: 1.0 / 20 = 0.05 < 0.06 → suppressed.
+    assert _action_label(fig_20) is None, (
+        "1.0s segment in a 20s clip should be suppressed (5% < 6% threshold)"
+    )
+    # 10s clip: 1.0 / 10 = 0.10 > 0.06 → shown.
+    assert _action_label(fig_10) is not None, (
+        "1.0s segment in a 10s clip should be shown (10% > 6% threshold)"
+    )
+
+
+def test_show_inline_labels_false_suppresses_all() -> None:
+    """`render_timeline(seq, show_inline_labels=False)` produces ZERO
+    inline label annotations on the figure."""
+    fig = render_timeline(_seq(_make_full_bundle()), show_inline_labels=False)
+    labels = [
+        a for a in _annotations(fig)
+        if (a.get("name") or "").startswith("label:")
+    ]
+    assert labels == [], (
+        f"expected 0 inline labels with show_inline_labels=False, got {len(labels)}"
+    )
+
+
+def test_arrows_target_new_band_y() -> None:
+    """`because_of` arrows from agent_1's action to agent_0's parent
+    anchor at the y-coordinates of the agent's action band and parent
+    band respectively — NOT the legacy whole-Agents group center.
+
+    The annotator resolves a `because_of: ["agent_0"]` reference to
+    the parent agent entity (by id), so the arrow tail sits on the
+    agent_1's action band and the arrowhead sits on agent_0's parent
+    band. With family sub-rows those are two DIFFERENT band rows;
+    the legacy renderer would have collapsed both to the same Agents
+    row, which is exactly the visual regression the band layout
+    fixes.
+    """
+    a0_act = AgentAction(
+        id="agent_0_act_0",
+        action_type="Yield",
+        start_timestamp="0:1.0",
+        end_timestamp="0:3.0",
+    )
+    a1_act = AgentAction(
+        id="agent_1_act_0",
+        action_type="oxd:Decelerate",
+        because_of=["agent_0"],
+        start_timestamp="0:4.0",
+        end_timestamp="0:6.0",
+    )
+    a0 = Agent(
+        id="agent_0",
+        type="oxd:Car",
+        visibility_start_timestamp="0:0.5",
+        visibility_end_timestamp="0:3.5",
+        actions=[a0_act],
+    )
+    a1 = Agent(
+        id="agent_1",
+        type="oxd:Car",
+        visibility_start_timestamp="0:3.5",
+        visibility_end_timestamp="0:6.5",
+        actions=[a1_act],
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="arrow", duration_s=10.0),
+        annotation=SilAvAnnotation(agents=[a0, a1]),
+    )
+    fig = render_timeline(_seq(bundle))
+    yticks_text = _yticks(fig)
+    yticks_vals = list(fig.layout.yaxis.tickvals or ())
+    action_idx = yticks_text.index("Agents · action")
+    action_row = float(yticks_vals[action_idx])
+    parent_idx = yticks_text.index("Agents · parent")
+    parent_row = float(yticks_vals[parent_idx])
+
+    arrows = _arrow_shapes(fig, "because_of")
+    assert arrows, "expected at least one because_of arrow"
+    # Parse the SVG bezier path: `M x0 y0 Q midX ctrlY x1 y1`.
+    import re
+
+    arrow_path = arrows[0]["path"]
+    m = re.match(
+        r"M\s+([-\d.]+)\s+([-\d.]+)\s+Q\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)",
+        arrow_path,
+    )
+    assert m, f"could not parse bezier path: {arrow_path!r}"
+    y_src = float(m.group(2))
+    y_tgt = float(m.group(6))
+    # Source (agent_1 action) anchors near `Agents · action`'s band row.
+    assert abs(y_src - action_row) <= 0.4, (
+        f"arrow source y={y_src} not in Agents·action band "
+        f"[{action_row - 0.4}, {action_row + 0.4}] (row={action_row})"
+    )
+    # Target (agent_0 parent) anchors near `Agents · parent`'s band row.
+    assert abs(y_tgt - parent_row) <= 0.4, (
+        f"arrow target y={y_tgt} not in Agents·parent band "
+        f"[{parent_row - 0.4}, {parent_row + 0.4}] (row={parent_row})"
+    )
+    # Sanity: the two bands are distinct rows. If the family layout
+    # regressed and collapsed parent + action onto the same row, this
+    # would silently pass (both endpoints fall in the same band).
+    assert abs(parent_row - action_row) >= 1.0, (
+        "parent and action bands collapsed onto the same row — band layout broken"
+    )

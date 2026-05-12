@@ -591,6 +591,41 @@ def test_frame_max_dim_kwarg_downscales() -> None:
     )
 
 
+def test_clipplayer_forwards_show_inline_labels() -> None:
+    """`ClipPlayer(seq, show_inline_labels=False)` produces ZERO inline
+    label annotations on the timeline subplot."""
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq, show_inline_labels=False)
+    label_annotations = [
+        a for a in (player._fig.layout.annotations or ())
+        if (a.name or "").startswith("label:")
+    ]
+    assert label_annotations == [], (
+        f"expected 0 inline labels with show_inline_labels=False, "
+        f"got {len(label_annotations)}"
+    )
+
+
+def test_clipplayer_playhead_spans_full_band_range() -> None:
+    """The playhead line spans the painter's computed y-range, NOT
+    the legacy `[-0.5, len(_TRACK_GROUPS)-0.5]` constant. With the
+    family-band layout the band count varies per bundle — a bundle
+    with N bands gives the playhead a `[-0.5, N - 0.5]` range."""
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq)
+    # Find the playhead shape.
+    playhead = player._fig.layout.shapes[player._playhead_index]
+    # Compute expected band count from a parallel render_timeline call.
+    fig = render_timeline(seq)
+    yticks = list(fig.layout.yaxis.ticktext or ())
+    expected_n_bands = len(yticks)
+    assert expected_n_bands > 0, "fixture must produce at least one band"
+    # Playhead y0 / y1 — `_paint_timeline_onto` reports `(y_min, y_max)`,
+    # widget assigns `y0 = y_min, y1 = y_max`.
+    assert float(playhead.y0) == -0.5
+    assert float(playhead.y1) == expected_n_bands - 0.5
+
+
 def test_play_tick_updates_source_not_z() -> None:
     """A Play tick swaps the trace's `source` data URI, not the legacy
     `z=` array. Pins both halves of the transport fix: `source` must
