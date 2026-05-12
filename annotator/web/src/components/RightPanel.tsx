@@ -126,7 +126,7 @@ function AgentIdPicker({ label, value, onChange, ann }: { label: string; value: 
       <span className={labelCls}>{label}</span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-info-bg text-info text-[10px] border border-info/30">
+          <span key={id} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-info-bg text-info text-[10px] border border-info/30">
             {nameFor(id)}
             <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
@@ -178,7 +178,7 @@ function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required
       </span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success-bg text-success text-[10px] border border-success/30">
+          <span key={id} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-success-bg text-success text-[10px] border border-success/30">
             {nameFor(id)}
             <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
@@ -218,7 +218,7 @@ function InfluencerIdPicker({ label, value, onChange, ann, highlight, showAgents
       <span className={labelCls}>{label}</span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning-bg text-warning text-[10px] border border-warning/30">
+          <span key={id} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-warning-bg text-warning text-[10px] border border-warning/30">
             {id}
             <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
@@ -1432,7 +1432,7 @@ export function RightPanel() {
     <aside className="h-full flex flex-col bg-surface-raised overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
 
       {/* Status + Save */}
-      <div className="px-5 py-4 border-b border-border-subtle">
+      <div className="px-5 pt-4 pb-5 border-b border-border-subtle">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">Status</h3>
           <span className={`px-3 py-1 rounded-full text-[11px] font-semibold border ${statusColor}`}>{status === 'needs_revision' ? 'revision requested' : status}</span>
@@ -1694,11 +1694,11 @@ export function RightPanel() {
                                 setBecauseOtherMode(false); setBecauseOtherText('')
                               }
                             }}
-                            className="px-3 py-1.5 rounded-md bg-danger-bg text-danger border border-danger/30 text-[12px] hover:bg-danger/30"
+                            className="h-8 px-3 inline-flex items-center rounded-md bg-danger-bg text-danger border border-danger/30 text-[12px] hover:bg-danger/30"
                           >Add</button>
                           <button
                             onClick={() => { setBecauseOtherMode(false); setBecauseOtherText('') }}
-                            className="px-2 py-1.5 rounded-md bg-surface-overlay text-text-muted border border-border-default text-[12px] hover:text-white"
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-md bg-surface-overlay text-text-muted border border-border-default hover:text-white"
                           ><X className="w-3 h-3" /></button>
                         </div>
                       )}
@@ -1718,7 +1718,7 @@ export function RightPanel() {
             )}
 
             {/* Delete + Raw attrs — well separated */}
-            <div className="pt-5 mt-2 border-t border-border-subtle space-y-3">
+            <div className="pt-4 mt-3 border-t border-border-subtle space-y-3">
               <div className="flex items-center gap-3">
                 <button onClick={handleDelete} className="flex-1 h-9 inline-flex items-center justify-center gap-2 px-4 rounded-md text-sm font-medium bg-danger-bg text-danger border border-danger/30 hover:bg-danger/15 hover:border-danger/50 transition-colors">
                   <Trash2 className="w-4 h-4" /> Delete Segment
@@ -1755,7 +1755,7 @@ export function RightPanel() {
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-3 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Causality</h3>
           <div className="space-y-1 max-h-28 overflow-y-auto">
             {causal.map((c, i) => (
-              <button key={i} onClick={() => selectPath(c.id)} className="w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-md text-xs hover:bg-surface-overlay transition-colors">
+              <button key={i} onClick={() => selectPath(c.id)} className="w-full text-left flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs hover:bg-surface-overlay transition-colors">
                 <span className={`w-1.5 h-1.5 rounded-full ${c.track === 'ego_act' ? 'bg-accent' : 'bg-purple-500'}`} />
                 <span className="text-text-secondary truncate">{c.label}</span>
                 <span className="text-text-disabled">-&gt;</span>
