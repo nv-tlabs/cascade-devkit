@@ -18,6 +18,11 @@ hf = [
 annotator = [
     "causal-av-annotator",
 ]
+viz = [
+    "pillow>=10.0",
+    "plotly>=5.20",
+    "ipywidgets>=8.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]

@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 feat(viz): package skeleton + headless render_frame (#22)
 - 2026-05-12 feat(query): MatchSet.sequences() iterator helper (#20)
 - 2026-05-12 docs(user): drop legacy "old" form from scenario examples in query_language.md (#19)
 - 2026-05-12 chore(license): add SPDX Apache-2.0 headers to all current source files (#18)
