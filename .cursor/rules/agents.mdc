@@ -1,0 +1,20 @@
+---
+description: Repository-wide instructions — defer to AGENTS.md.
+alwaysApply: true
+---
+
+See [`AGENTS.md`](../../AGENTS.md) at the repository root for the
+full set of repository-wide rules that apply when working in this
+codebase (branch-first workflow, atomic commits, the canonical
+`make`-target verb namespace, security and data-handling rules,
+etc.).
+
+Subproject-specific rules live in nested `AGENTS.md` files — e.g.
+[`tools/annotator/AGENTS.md`](../../tools/annotator/AGENTS.md) —
+and Cursor loads them automatically when editing under that path.
+
+> Cursor describes `AGENTS.md` as "a simple alternative to
+> `.cursor/rules`" per <https://cursor.com/docs/context/rules>. This
+> rule file simply pins `alwaysApply: true` so the AGENTS.md
+> contents are in context for every Cursor request without the user
+> having to `@`-mention anything.
