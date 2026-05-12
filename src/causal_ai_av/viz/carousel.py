@@ -100,16 +100,33 @@ def build_matchset_carousel(
         if i >= limit:
             break
 
-        t0_raw, t1_raw = _interval_seconds(match)
+        t0_raw, t1_raw = _interval_seconds(match, seq)
         duration = float(seq.duration_s) if seq.duration_s else 0.0
         t_start = max(0.0, t0_raw - pad)
         t_end = min(duration, t1_raw + pad)
         # `ClipPlayer` requires `t_end > t_start`; if pad clamping
-        # collapsed the window, expand to at least one fps-tick. This
-        # is rare (only when the match interval butts up against
-        # `duration_s` and `pad=0`).
+        # collapsed the window, expand to at least one fps-tick. The
+        # original PR-25 implementation always pushed `t_end` upward,
+        # which silently failed at the end-of-clip boundary
+        # (`t_start == duration` clamped the expansion right back).
+        # Now we push `t_start` downward at the end-of-clip boundary
+        # and `t_end` upward otherwise. If the clip is shorter than a
+        # single fps tick, neither direction has room — surface a
+        # clear `ValueError` instead of constructing a degenerate
+        # player.
         if t_end <= t_start:
-            t_end = min(duration, t_start + 1.0 / max(fps, 1.0))
+            tick = 1.0 / max(fps, 1.0)
+            if duration < tick:
+                raise ValueError(
+                    f"clip duration ({duration:.6f}s) is shorter than one "
+                    f"frame at fps={fps}; cannot build a non-degenerate "
+                    f"playback window for match {match.clip_id}"
+                )
+            if t_end >= duration:
+                # End-of-clip boundary: back `t_start` off by one tick.
+                t_start = max(0.0, t_start - tick)
+            else:
+                t_end = t_start + tick
 
         player = ClipPlayer(
             seq,
@@ -135,10 +152,16 @@ def build_matchset_carousel(
                 grid_template_columns=f"repeat({cols}, 1fr)"
             ),
         )
-    else:
-        # Default to "stack" — anything other than "grid" falls through
-        # here, mirroring the Literal[...] type annotation.
+    elif layout == "stack":
         body = ipywidgets.VBox(children=children)
+    else:
+        # The `Literal["stack", "grid"]` type hint is advisory at
+        # runtime only; a typo'd string would previously fall through
+        # to a `VBox` silently. Raise instead so the caller knows
+        # their `layout=` argument was ignored.
+        raise ValueError(
+            f"layout must be 'stack' or 'grid', got {layout!r}"
+        )
 
     if truncated:
         notice = ipywidgets.HTML(
@@ -148,18 +171,22 @@ def build_matchset_carousel(
     return body
 
 
-def _interval_seconds(match: Any) -> tuple[float, float]:
+def _interval_seconds(match: Any, seq: Any) -> tuple[float, float]:
     """Pull `(start, end)` seconds out of a `Match.interval`.
 
     `Match.interval` is an `Interval` dataclass with `.start` / `.end`
     attributes; it may also be `None` for matches that don't carry a
     time window (e.g., bundle-level `not` matches that span the whole
-    clip). When it's None the player gets the full clip duration —
-    the caller has already chosen to visualize this match.
+    clip). When it's `None` we return the full clip span
+    `(0.0, seq.duration_s)` so the resulting player covers the whole
+    clip — the caller has already chosen to visualize this match.
+    Previously this returned `(0.0, 0.0)`, which collapsed the player
+    window and tripped `ClipPlayer`'s `t_end > t_start` invariant.
     """
     iv = match.interval
     if iv is None:
-        return 0.0, 0.0
+        duration = float(seq.duration_s) if seq.duration_s else 0.0
+        return 0.0, duration
     return float(iv.start), float(iv.end)
 
 
