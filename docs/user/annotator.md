@@ -88,7 +88,7 @@ not edit.
 
 ### 2.3 Mark the clip as eventful or nominal
 
-In the right panel, **Relevancy** is the first section after the Save
+In the right panel, **Relevance** is the first section after the Save
 button. Two buttons: **Yes** / **No**.
 
 - **Yes** — the clip shows something worth annotating. The timeline
