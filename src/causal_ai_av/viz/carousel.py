@@ -100,7 +100,7 @@ def build_matchset_carousel(
         if i >= limit:
             break
 
-        t0_raw, t1_raw = _interval_seconds(match)
+        t0_raw, t1_raw = _interval_seconds(match, seq)
         duration = float(seq.duration_s) if seq.duration_s else 0.0
         t_start = max(0.0, t0_raw - pad)
         t_end = min(duration, t1_raw + pad)
@@ -171,18 +171,22 @@ def build_matchset_carousel(
     return body
 
 
-def _interval_seconds(match: Any) -> tuple[float, float]:
+def _interval_seconds(match: Any, seq: Any) -> tuple[float, float]:
     """Pull `(start, end)` seconds out of a `Match.interval`.
 
     `Match.interval` is an `Interval` dataclass with `.start` / `.end`
     attributes; it may also be `None` for matches that don't carry a
     time window (e.g., bundle-level `not` matches that span the whole
-    clip). When it's None the player gets the full clip duration —
-    the caller has already chosen to visualize this match.
+    clip). When it's `None` we return the full clip span
+    `(0.0, seq.duration_s)` so the resulting player covers the whole
+    clip — the caller has already chosen to visualize this match.
+    Previously this returned `(0.0, 0.0)`, which collapsed the player
+    window and tripped `ClipPlayer`'s `t_end > t_start` invariant.
     """
     iv = match.interval
     if iv is None:
-        return 0.0, 0.0
+        duration = float(seq.duration_s) if seq.duration_s else 0.0
+        return 0.0, duration
     return float(iv.start), float(iv.end)
 
 
