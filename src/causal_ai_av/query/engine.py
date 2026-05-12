@@ -10,7 +10,8 @@ window; `because_of` walks the schema's `because_of` edge via `IdIndex`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import weakref
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from causal_ai_av.query.constants import ALIAS_FAMILIES, resolve_alias
@@ -51,6 +52,36 @@ class Match:
 @dataclass(frozen=True)
 class MatchSet:
     matches: tuple[Match, ...]
+    # Weakref back to the dataset (or other producer) that built this
+    # MatchSet. Populated by the user-facing entry points
+    # (`find_on_dataset`, `find_on_bundle` when called with `dataset=…`,
+    # `Sequence.find`, `CausalAVDataset.find`); left None for intermediate
+    # MatchSets created during boolean composition inside `evaluate`. Use
+    # the `dataset` property to resolve; it raises if the referent has
+    # been garbage-collected and returns None if never set.
+    _dataset: "weakref.ReferenceType[Any] | None" = field(
+        default=None, compare=False, repr=False
+    )
+
+    @property
+    def dataset(self) -> Any | None:
+        """Resolve the back-reference to the producing dataset.
+
+        Returns `None` if this MatchSet was created without a dataset
+        reference (e.g. via `find_on_bundle` with no `dataset=` kwarg).
+        Raises `RuntimeError` if the dataset existed at construction
+        time but has since been garbage-collected.
+        """
+        if self._dataset is None:
+            return None
+        obj = self._dataset()
+        if obj is None:
+            raise RuntimeError(
+                "MatchSet's source dataset is no longer alive — the weakref "
+                "expired. Keep the dataset bound in scope while you operate "
+                "on the MatchSet."
+            )
+        return obj
 
     def clips(self) -> list[str]:
         seen: set[str] = set()

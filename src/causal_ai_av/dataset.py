@@ -523,8 +523,15 @@ class Sequence:
         return self._triplets
 
     def find(self, dsl: str) -> MatchSet:
-        """Run a DSL query against this clip's annotation bundle."""
-        return find_on_bundle(self.annotation, dsl)
+        """Run a DSL query against this clip's annotation bundle.
+
+        If this Sequence was constructed via `CausalAVDataset.get_sequence`,
+        the returned MatchSet carries a weakref to the parent dataset so
+        follow-up operations like `matches.visualize()` can find it.
+        Standalone Sequences (constructed via `from_annotation`) return a
+        MatchSet whose `.dataset` is None.
+        """
+        return find_on_bundle(self.annotation, dsl, dataset=self._parent)
 
     def state_at(
         self, t: float, t_end: float | None = None
