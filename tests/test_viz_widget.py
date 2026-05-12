@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
 import plotly.graph_objects as go
 import pytest
 
@@ -39,31 +38,10 @@ from causal_ai_av.viz import ClipPlayer, render_timeline
 # Fixtures — bundle + a Sequence whose `video` is mocked to a fake reader.
 # ---------------------------------------------------------------------------
 
-
-class _FakeVideoReader:
-    """Stand-in for the parent dataset's `SeekVideoReader`.
-
-    `decode_images_from_timestamps` returns a `(H, W, 3)` uint8 array per
-    requested timestamp and records each call so the test can assert on
-    the exact `t_us` argument the widget passed in.
-    """
-
-    def __init__(self, height: int = 8, width: int = 12) -> None:
-        self.height = height
-        self.width = width
-        self.calls: list[np.ndarray] = []
-
-    def decode_images_from_timestamps(
-        self, t_us: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray]:
-        self.calls.append(np.asarray(t_us).copy())
-        n = len(t_us)
-        # Encode the timestamp into the first pixel so the test can
-        # tell which frame was decoded.
-        frames = np.zeros((n, self.height, self.width, 3), dtype=np.uint8)
-        for i, ts in enumerate(t_us):
-            frames[i, 0, 0, 0] = int(ts) & 0xFF
-        return frames, np.asarray(t_us, dtype=np.int64)
+# `_FakeVideoReader` was lifted into `tests/conftest.py` so the PR-5
+# carousel tests can reuse it. The leading-underscore alias is kept
+# here for backwards compatibility with the existing test code below.
+from tests.conftest import FakeVideoReader as _FakeVideoReader  # noqa: E402
 
 
 def _make_full_bundle() -> AnnotationBundle:
