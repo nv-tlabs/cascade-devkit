@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import sys
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -31,6 +32,27 @@ from causal_ai_av.query.time import Interval
 from causal_ai_av.spec import AnnotationBundle, SilAvAnnotation, VideoMeta
 from causal_ai_av.viz import ClipPlayer
 from tests.conftest import FakeVideoReader
+
+
+class _FakeVideoReaderWithTimestamps(FakeVideoReader):
+    """`FakeVideoReader` extended with a public `timestamps` (np.int64 μs).
+
+    The real `physical_ai_av.video.SeekVideoReader` exposes a numpy
+    int64 microsecond array as `.timestamps`. The base fake omits it
+    because the original widget tests don't need clamping, but the
+    Bug-A fix (`dataset.py`) reads this attribute. Subclass-here keeps
+    the original tests unchanged while letting the new tests cover the
+    non-zero-start path.
+    """
+
+    def __init__(
+        self,
+        timestamps: np.ndarray,
+        height: int = 8,
+        width: int = 12,
+    ) -> None:
+        super().__init__(height=height, width=width)
+        self.timestamps = np.asarray(timestamps, dtype=np.int64)
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +241,57 @@ def test_context_with_mismatched_clip_id_raises_value_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 8. Import hygiene — `from causal_ai_av.dataset import Sequence` must NOT
+# 8. Video timestamp clamping — Bug A. Real clips' video manifests rarely
+# start at t=0us; `seq.visualize()` must clamp `[t_start, t_end]` to
+# `seq.video.timestamps.min()/max()` so the eager first-frame decode in
+# `ClipPlayer.__init__` doesn't trip `decode_images_from_timestamps([0])`.
+# ---------------------------------------------------------------------------
+
+
+def test_visualize_clamps_to_video_timestamp_range() -> None:
+    """No-args path: clamp `(t_start, t_end)` to the video's covered span.
+
+    Mirrors the real-corpus reproducer in `meta/viz-e2e/findings.md`:
+    clip `004c2001-...` has `timestamps=[3464, 20103730]μs`. Without
+    clamping the ClipPlayer constructor eagerly decoded `t=0.0` and
+    raised `ValueError` from the parent dataset's video reader.
+    """
+    bundle = _make_bundle(duration=20.13)
+    seq = Sequence.from_annotation(bundle)
+    seq._cameras = {  # type: ignore[assignment]
+        seq.annotation_camera: _FakeVideoReaderWithTimestamps(
+            timestamps=np.array([3464, 1_000_000, 20_103_730], dtype=np.int64),
+        )
+    }
+
+    player = seq.visualize()
+    assert isinstance(player, ClipPlayer)
+    # `t_start` must move forward from 0.0 to the first available μs.
+    assert player._t_start == pytest.approx(0.003464)
+    # `t_end` must move back from `duration_s` (20.13) to the last μs.
+    assert player._t_end == pytest.approx(20.103730)
+
+
+def test_visualize_raises_when_window_outside_video_coverage() -> None:
+    """Tuple `t` entirely before the video starts → clear ValueError.
+
+    A silent snap to a 1-frame sliver would hide the misconfiguration;
+    surface it as a `ValueError` instead.
+    """
+    bundle = _make_bundle(duration=30.0)
+    seq = Sequence.from_annotation(bundle)
+    seq._cameras = {  # type: ignore[assignment]
+        seq.annotation_camera: _FakeVideoReaderWithTimestamps(
+            timestamps=np.array([10_000_000, 20_000_000], dtype=np.int64),
+        )
+    }
+
+    with pytest.raises(ValueError, match="outside the video's timestamp coverage"):
+        seq.visualize(t=(0.0, 5.0))
+
+
+# ---------------------------------------------------------------------------
+# 9. Import hygiene — `from causal_ai_av.dataset import Sequence` must NOT
 # pull in Pillow / Plotly / ipywidgets. The viz extras are optional and the
 # dispatcher lazy-imports them inside `.visualize()`.
 # ---------------------------------------------------------------------------
