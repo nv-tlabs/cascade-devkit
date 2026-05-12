@@ -728,9 +728,9 @@ export function VideoPlayer() {
           <video ref={videoRef} className="max-w-full max-h-full object-contain" onLoadedMetadata={onMeta} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={onVideoError} playsInline preload="auto" />
           {videoError ? (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="max-w-md mx-4 px-4 py-3 rounded bg-danger-bg border border-danger/40 text-sm text-danger text-center pointer-events-auto">
-                <div className="font-semibold text-red-300 mb-1">Video unavailable</div>
-                <div className="text-xs text-red-200/90 whitespace-pre-wrap">{videoError}</div>
+              <div className="max-w-md mx-4 px-4 py-3 rounded-md bg-danger-bg border border-danger/40 text-sm text-danger text-center pointer-events-auto">
+                <div className="font-semibold text-danger mb-1">Video unavailable</div>
+                <div className="text-xs text-danger whitespace-pre-wrap">{videoError}</div>
               </div>
             </div>
           ) : null}
@@ -743,19 +743,19 @@ export function VideoPlayer() {
         {zoomLevel > 1 ? (
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-10">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-text-secondary bg-surface-overlay/90 rounded font-mono" style={{ padding: '4px 8px' }}>{Math.round(zoomLevel * 100)}%</span>
+              <span className="text-xs text-text-secondary bg-surface-overlay/90 rounded-md font-mono" style={{ padding: '4px 8px' }}>{Math.round(zoomLevel * 100)}%</span>
               <button onClick={resetZoom} title="Reset zoom (fit)"
                 className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-overlay/90 text-text-secondary hover:text-white hover:bg-surface-hover transition-all">
                 <Maximize className="w-3.5 h-3.5" />
               </button>
             </div>
-            <span className="text-[10px] text-text-muted bg-surface-overlay/70 px-2 py-1 rounded opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Drag to pan</span>
+            <span className="text-[10px] text-text-muted bg-surface-overlay/70 px-2 py-1 rounded-md opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Drag to pan</span>
           </div>
         ) : (
           <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1 pointer-events-none">
-            <span className="text-[10px] text-text-secondary bg-surface-overlay/95 px-2 py-1 rounded opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Scroll to zoom</span>
+            <span className="text-[10px] text-text-secondary bg-surface-overlay/95 px-2 py-1 rounded-md opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Scroll to zoom</span>
             {keypointsVisible ? (
-              <div className="text-[10px] bg-surface-overlay/95 px-2 py-1 rounded flex flex-col items-end gap-0.5 opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">
+              <div className="text-[10px] bg-surface-overlay/95 px-2 py-1 rounded-md flex flex-col items-end gap-0.5 opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">
                 <span className="text-text-secondary font-medium">Keypoints</span>
                 {!hasEntitySelected ? (
                   <span className="text-text-secondary">select an entity in the timeline</span>

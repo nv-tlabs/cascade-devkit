@@ -134,7 +134,7 @@ function ThemeToggle() {
       onClick={() => setTheme(next)}
       title={label}
       aria-label={label}
-      className="h-8 w-8 inline-flex items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary transition-colors"
+      className="h-9 w-9 inline-flex items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary transition-colors"
     >
       <Icon className="w-4 h-4" />
     </button>

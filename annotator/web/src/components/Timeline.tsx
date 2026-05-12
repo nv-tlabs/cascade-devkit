@@ -419,7 +419,7 @@ function ZoomButton({
 function Kb({ keys, desc }: { keys: string; desc: string }) {
   return (
     <div className="flex items-center gap-2 text-[11px] text-text-muted">
-      <kbd className="font-mono text-[10px] h-5 px-1.5 inline-flex items-center bg-surface-overlay border border-border-default rounded text-text-secondary">
+      <kbd className="font-mono text-[10px] h-5 px-1.5 inline-flex items-center bg-surface-overlay border border-border-default rounded-md text-text-secondary">
         {keys}
       </kbd>
       <span>{desc}</span>
@@ -3395,7 +3395,7 @@ export function Timeline() {
                   style={{ height: COLLAPSED_GROUP_HEIGHT, marginTop: gapAbove, backgroundColor: i % 2 === 0 ? canvasColors.trackA : canvasColors.trackB, borderLeft: `3px solid ${color}50` }}
                 >
                   <div
-                    className="flex items-center gap-1.5 mx-1 mt-1 px-1.5 py-0.5 rounded cursor-pointer hover:brightness-125 transition-all"
+                    className="flex items-center gap-1.5 mx-1 mt-1 px-1.5 py-0.5 rounded-md cursor-pointer hover:brightness-125 transition-all"
                     style={{}}
                     onClick={() => toggleGroupCollapse(group)}
                     title={`Expand ${group}`}
@@ -3424,7 +3424,7 @@ export function Timeline() {
                 {isFirstInGroup && (
                   <div className="flex items-center gap-1">
                     <div
-                      className="flex items-center gap-1 px-1.5 py-0.5 rounded cursor-pointer hover:brightness-125 transition-all"
+                      className="flex items-center gap-1 px-1.5 py-0.5 rounded-md cursor-pointer hover:brightness-125 transition-all"
                       style={{}}
                       onClick={() => toggleGroupCollapse(group)}
                       title={`Collapse ${group}`}

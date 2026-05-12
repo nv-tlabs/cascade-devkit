@@ -126,9 +126,9 @@ function AgentIdPicker({ label, value, onChange, ann }: { label: string; value: 
       <span className={labelCls}>{label}</span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-accent/20 text-blue-300 text-[10px] border border-blue-500/30">
+          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-info-bg text-info text-[10px] border border-info/30">
             {nameFor(id)}
-            <button type="button" onClick={() => remove(id)} className="hover:text-red-400 transition-colors"><X className="w-2.5 h-2.5" /></button>
+            <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
         ))}
         {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
@@ -178,9 +178,9 @@ function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required
       </span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] border border-emerald-500/30">
+          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-success-bg text-success text-[10px] border border-success/30">
             {nameFor(id)}
-            <button type="button" onClick={() => remove(id)} className="hover:text-red-400 transition-colors"><X className="w-2.5 h-2.5" /></button>
+            <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
         ))}
         {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
@@ -218,9 +218,9 @@ function InfluencerIdPicker({ label, value, onChange, ann, highlight, showAgents
       <span className={labelCls}>{label}</span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] border border-amber-500/30">
+          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-warning-bg text-warning text-[10px] border border-warning/30">
             {id}
-            <button type="button" onClick={() => remove(id)} className="hover:text-red-400 transition-colors"><X className="w-2.5 h-2.5" /></button>
+            <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
         ))}
         {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
@@ -886,7 +886,13 @@ export function RightPanel() {
   }
 
 
-  const statusColor = status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : status === 'disapproved' ? 'bg-red-500/20 text-red-400 border-red-500/30' : status === 'needs_revision' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : status === 'annotating' ? 'bg-accent/20 text-blue-400 border-blue-500/30' : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+  const STATUS_STYLES: Record<string, string> = {
+    approved: 'bg-success-bg text-success border-success/30',
+    disapproved: 'bg-danger-bg text-danger border-danger/30',
+    needs_revision: 'bg-warning-bg text-warning border-warning/30',
+    annotating: 'bg-info-bg text-info border-info/30',
+  }
+  const statusColor = STATUS_STYLES[status] ?? 'bg-surface-overlay text-text-muted border-border-default'
 
   // Determine entity info for the selected segment
   const selMeta = (sel?.meta ?? {}) as Record<string, unknown>
@@ -902,15 +908,15 @@ export function RightPanel() {
         <>
           <SectionHeader color="#3b82f6">Ego</SectionHeader>
           <button
-            className="mt-2 w-full px-3 py-1.5 rounded text-xs font-medium bg-cyan-700 hover:bg-cyan-600 text-white transition-colors"
+            className="mt-2 w-full px-3 py-1.5 rounded-md text-xs font-medium bg-entity-ego-soft-bg text-entity-ego-soft-fg border border-entity-ego-soft-border hover:bg-accent hover:text-accent-fg transition-colors"
             onClick={() => persist(addContainmentToEgo(ann, 0, egoDur))}
           >+ Add Containment</button>
           <button
-            className="mt-1 w-full px-3 py-1.5 rounded text-xs font-medium bg-amber-800 hover:bg-amber-700 text-white transition-colors"
+            className="mt-1 w-full px-3 py-1.5 rounded-md text-xs font-medium bg-entity-ego-soft-bg text-entity-ego-soft-fg border border-entity-ego-soft-border hover:bg-accent hover:text-accent-fg transition-colors"
             onClick={() => persist(addInfluenceToEgo(ann, 0, egoDur))}
           >+ Add Influence</button>
           <button
-            className="mt-1 w-full px-3 py-1.5 rounded text-xs font-medium bg-fuchsia-800 hover:bg-fuchsia-700 text-white transition-colors"
+            className="mt-1 w-full px-3 py-1.5 rounded-md text-xs font-medium bg-entity-ego-soft-bg text-entity-ego-soft-fg border border-entity-ego-soft-border hover:bg-accent hover:text-accent-fg transition-colors"
             onClick={() => persist(addPropertyToEgo(ann, 0, egoDur))}
           >+ Add Property</button>
         </>
@@ -942,9 +948,9 @@ export function RightPanel() {
       const edge = meta.edge as 'left' | 'right' | null | undefined
       return (
         <>
-          <ToggleField label="Near (not fully inside)" value={!!meta.near_flag} onChange={v => updateField('near_flag', v)} activeColor="bg-amber-500/20 text-amber-400 border border-amber-500/40" />
-          <ToggleField label="Left edge" value={edge === 'left'} onChange={v => updateField('edge', v ? 'left' : null)} activeColor="bg-amber-500/20 text-amber-400 border border-amber-500/40" />
-          <ToggleField label="Right edge" value={edge === 'right'} onChange={v => updateField('edge', v ? 'right' : null)} activeColor="bg-amber-500/20 text-amber-400 border border-amber-500/40" />
+          <ToggleField label="Near (not fully inside)" value={!!meta.near_flag} onChange={v => updateField('near_flag', v)} activeColor="bg-warning-bg text-warning border border-warning/40" />
+          <ToggleField label="Left edge" value={edge === 'left'} onChange={v => updateField('edge', v ? 'left' : null)} activeColor="bg-warning-bg text-warning border border-warning/40" />
+          <ToggleField label="Right edge" value={edge === 'right'} onChange={v => updateField('edge', v ? 'right' : null)} activeColor="bg-warning-bg text-warning border border-warning/40" />
         </>
       )
     }
@@ -983,7 +989,7 @@ export function RightPanel() {
           <Field label="Containment ID"><span className="text-sm text-gray-300">{(m.id as string) || ''}</span></Field>
           {renderEnvSelect(m)}
           <LaneIdField value={(m.lane_number as string) || 'none'} onChange={v => updateField('lane_number', v)} highlight={missing('lane_number')} />
-          <ToggleField label="Illegal containment" value={(m.illegal_flag as boolean) ?? false} onChange={v => updateField('illegal_flag', v)} activeColor="bg-red-500/20 text-red-400 border border-red-500/40" />
+          <ToggleField label="Illegal containment" value={(m.illegal_flag as boolean) ?? false} onChange={v => updateField('illegal_flag', v)} activeColor="bg-danger-bg text-danger border border-danger/40" />
           {renderSpatialContainmentFields(m)}
         </>
       )
@@ -997,7 +1003,7 @@ export function RightPanel() {
           <Field label="Containment ID"><span className="text-sm text-gray-300">{(m.id as string) || ''}</span></Field>
           {renderEnvSelect(m)}
           <LaneIdField value={(m.lane_number as string) || 'none'} onChange={v => updateField('lane_number', v)} highlight={missing('lane_number')} />
-          <ToggleField label="Illegal containment" value={(m.illegal_flag as boolean) ?? false} onChange={v => updateField('illegal_flag', v)} activeColor="bg-red-500/20 text-red-400 border border-red-500/40" />
+          <ToggleField label="Illegal containment" value={(m.illegal_flag as boolean) ?? false} onChange={v => updateField('illegal_flag', v)} activeColor="bg-danger-bg text-danger border border-danger/40" />
           {renderSpatialContainmentFields(m)}
         </>
       )
@@ -1011,7 +1017,7 @@ export function RightPanel() {
           <Field label="Containment ID"><span className="text-sm text-gray-300">{(m.id as string) || ''}</span></Field>
           {renderEnvSelect(m)}
           <LaneIdField value={(m.lane_number as string) || 'none'} onChange={v => updateField('lane_number', v)} highlight={missing('lane_number')} />
-          <ToggleField label="Illegal containment" value={(m.illegal_flag as boolean) ?? false} onChange={v => updateField('illegal_flag', v)} activeColor="bg-red-500/20 text-red-400 border border-red-500/40" />
+          <ToggleField label="Illegal containment" value={(m.illegal_flag as boolean) ?? false} onChange={v => updateField('illegal_flag', v)} activeColor="bg-danger-bg text-danger border border-danger/40" />
           {renderSpatialContainmentFields(m)}
         </>
       )
@@ -1166,7 +1172,7 @@ export function RightPanel() {
           )}
           <ToggleField label="One way" value={(m.one_way as boolean) ?? false} onChange={v => updateField('one_way', v)} />
           {ann && <button
-            className="mt-2 w-full px-3 py-1.5 rounded text-xs font-medium bg-cyan-700 hover:bg-cyan-600 text-white transition-colors"
+            className="mt-2 w-full px-3 py-1.5 rounded-md text-xs font-medium bg-entity-env-soft-bg text-entity-env-soft-fg border border-entity-env-soft-border hover:bg-accent hover:text-accent-fg transition-colors"
             onClick={() => persist(addConditionToEnv(ann, String(envId), sel.t0, sel.t1))}
           >+ Add Condition</button>}
         </>
@@ -1287,7 +1293,7 @@ export function RightPanel() {
             />
           )}
           {oi != null && <button
-            className="mt-2 w-full px-3 py-1.5 rounded text-xs font-medium bg-cyan-700 hover:bg-cyan-600 text-white transition-colors"
+            className="mt-2 w-full px-3 py-1.5 rounded-md text-xs font-medium bg-entity-object-soft-bg text-entity-object-soft-fg border border-entity-object-soft-border hover:bg-accent hover:text-accent-fg transition-colors"
             onClick={() => {
               const o = ann!.traffic_objects[oi]
               const t0 = o.visibility_start_timestamp ? parseTs(o.visibility_start_timestamp) : 0
@@ -1363,7 +1369,7 @@ export function RightPanel() {
           {agent?.type === 'Pedestrian (Other)' && <TextField label="Other pedestrian description" value={agent?.other_type_description || ''} onChange={v => updateField('agent_other_type_description', v)} highlight={missing('other pedestrian description')} />}
           {agent?.type === 'oxd:Animal' && <TextField label="Animal description" value={agent?.other_type_description || ''} onChange={v => updateField('agent_other_type_description', v)} highlight={missing('animal description')} />}
           {ai != null && <button
-            className="mt-2 w-full px-3 py-1.5 rounded text-xs font-medium bg-green-700 hover:bg-green-600 text-white transition-colors"
+            className="mt-2 w-full px-3 py-1.5 rounded-md text-xs font-medium bg-entity-agent-soft-bg text-entity-agent-soft-fg border border-entity-agent-soft-border hover:bg-accent hover:text-accent-fg transition-colors"
             onClick={() => {
               const a = ann!.agents[ai]
               const t0 = a.visibility_start_timestamp ? parseTs(a.visibility_start_timestamp) : 0
@@ -1372,7 +1378,7 @@ export function RightPanel() {
             }}
           >+ Add Containment</button>}
           {ai != null && <button
-            className="mt-1 w-full px-3 py-1.5 rounded text-xs font-medium bg-amber-800 hover:bg-amber-700 text-white transition-colors"
+            className="mt-1 w-full px-3 py-1.5 rounded-md text-xs font-medium bg-entity-agent-soft-bg text-entity-agent-soft-fg border border-entity-agent-soft-border hover:bg-accent hover:text-accent-fg transition-colors"
             onClick={() => {
               const a = ann!.agents[ai]
               const t0 = a.visibility_start_timestamp ? parseTs(a.visibility_start_timestamp) : 0
@@ -1381,7 +1387,7 @@ export function RightPanel() {
             }}
           >+ Add Influence</button>}
           {ai != null && <button
-            className="mt-1 w-full px-3 py-1.5 rounded text-xs font-medium bg-fuchsia-800 hover:bg-fuchsia-700 text-white transition-colors"
+            className="mt-1 w-full px-3 py-1.5 rounded-md text-xs font-medium bg-entity-agent-soft-bg text-entity-agent-soft-fg border border-entity-agent-soft-border hover:bg-accent hover:text-accent-fg transition-colors"
             onClick={() => {
               const a = ann!.agents[ai]
               const t0 = a.visibility_start_timestamp ? parseTs(a.visibility_start_timestamp) : 0
@@ -1688,7 +1694,7 @@ export function RightPanel() {
                                 setBecauseOtherMode(false); setBecauseOtherText('')
                               }
                             }}
-                            className="px-3 py-1.5 rounded-md bg-red-500/20 text-red-400 border border-red-500/30 text-[12px] hover:bg-red-500/30"
+                            className="px-3 py-1.5 rounded-md bg-danger-bg text-danger border border-danger/30 text-[12px] hover:bg-danger/30"
                           >Add</button>
                           <button
                             onClick={() => { setBecauseOtherMode(false); setBecauseOtherText('') }}

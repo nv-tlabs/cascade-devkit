@@ -60,6 +60,23 @@
   --color-entity-influence: #fb923c;
   --color-entity-target: #10b981;
 
+  /* Entity soft variants (translucent fill + readable fg + border) */
+  --color-entity-env-soft-bg: rgba(34, 197, 94, 0.14);
+  --color-entity-env-soft-fg: #4ade80;
+  --color-entity-env-soft-border: rgba(34, 197, 94, 0.34);
+  --color-entity-ego-soft-bg: rgba(59, 130, 246, 0.16);
+  --color-entity-ego-soft-fg: #93c5fd;
+  --color-entity-ego-soft-border: rgba(59, 130, 246, 0.34);
+  --color-entity-object-soft-bg: rgba(245, 158, 11, 0.16);
+  --color-entity-object-soft-fg: #fbbf24;
+  --color-entity-object-soft-border: rgba(245, 158, 11, 0.34);
+  --color-entity-agent-soft-bg: rgba(168, 85, 247, 0.16);
+  --color-entity-agent-soft-fg: #d8b4fe;
+  --color-entity-agent-soft-border: rgba(168, 85, 247, 0.34);
+  --color-entity-light-soft-bg: rgba(239, 68, 68, 0.16);
+  --color-entity-light-soft-fg: #fca5a5;
+  --color-entity-light-soft-border: rgba(239, 68, 68, 0.34);
+
   /* Fonts */
   --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -79,7 +96,7 @@
 
   --color-text-primary: #13131e;
   --color-text-secondary: #444a5e;
-  --color-text-muted: #6c7186;
+  --color-text-muted: #62677c;
   --color-text-disabled: #a4a8b6;
   --color-text-inverse: #ffffff;
 
@@ -109,6 +126,22 @@
   --color-entity-contained: #168a3e;
   --color-entity-influence: #b46a04;
   --color-entity-target: #0a8a5f;
+
+  --color-entity-env-soft-bg: rgba(22, 138, 62, 0.10);
+  --color-entity-env-soft-fg: #156a32;
+  --color-entity-env-soft-border: rgba(22, 138, 62, 0.30);
+  --color-entity-ego-soft-bg: rgba(36, 86, 194, 0.10);
+  --color-entity-ego-soft-fg: #1f49a8;
+  --color-entity-ego-soft-border: rgba(36, 86, 194, 0.30);
+  --color-entity-object-soft-bg: rgba(180, 106, 4, 0.12);
+  --color-entity-object-soft-fg: #8a5104;
+  --color-entity-object-soft-border: rgba(180, 106, 4, 0.32);
+  --color-entity-agent-soft-bg: rgba(122, 50, 196, 0.10);
+  --color-entity-agent-soft-fg: #5e259a;
+  --color-entity-agent-soft-border: rgba(122, 50, 196, 0.30);
+  --color-entity-light-soft-bg: rgba(194, 37, 58, 0.10);
+  --color-entity-light-soft-fg: #9a1d2e;
+  --color-entity-light-soft-border: rgba(194, 37, 58, 0.30);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
