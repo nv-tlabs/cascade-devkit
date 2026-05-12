@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 fix(annotator): tighten timeline toolbar so "Because of" hint fits in narrow viewports (#35)
 - 2026-05-12 fix(annotator): timeline zoom toolbar no longer wraps to two lines on narrow viewports (#34)
 - 2026-05-12 fix(annotator): timeline category header no longer overlaps first track name (#32)
 - 2026-05-12 chore(make): annotator-dev target forwards optional PORT= variable (#31)
