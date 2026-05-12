@@ -126,7 +126,7 @@ function AgentIdPicker({ label, value, onChange, ann }: { label: string; value: 
       <span className={labelCls}>{label}</span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-info-bg text-info text-[10px] border border-info/30">
+          <span key={id} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-info-bg text-info text-[10px] border border-info/30">
             {nameFor(id)}
             <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
@@ -178,7 +178,7 @@ function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required
       </span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-success-bg text-success text-[10px] border border-success/30">
+          <span key={id} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-success-bg text-success text-[10px] border border-success/30">
             {nameFor(id)}
             <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
@@ -218,7 +218,7 @@ function InfluencerIdPicker({ label, value, onChange, ann, highlight, showAgents
       <span className={labelCls}>{label}</span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-warning-bg text-warning text-[10px] border border-warning/30">
+          <span key={id} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-warning-bg text-warning text-[10px] border border-warning/30">
             {id}
             <button type="button" onClick={() => remove(id)} className="hover:text-danger transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
@@ -1755,7 +1755,7 @@ export function RightPanel() {
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary mb-3 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Causality</h3>
           <div className="space-y-1 max-h-28 overflow-y-auto">
             {causal.map((c, i) => (
-              <button key={i} onClick={() => selectPath(c.id)} className="w-full text-left flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs hover:bg-surface-overlay transition-colors">
+              <button key={i} onClick={() => selectPath(c.id)} className="w-full text-left flex items-center gap-1.5 px-3 py-2 rounded-md text-xs hover:bg-surface-overlay transition-colors">
                 <span className={`w-1.5 h-1.5 rounded-full ${c.track === 'ego_act' ? 'bg-accent' : 'bg-purple-500'}`} />
                 <span className="text-text-secondary truncate">{c.label}</span>
                 <span className="text-text-disabled">-&gt;</span>

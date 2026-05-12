@@ -743,19 +743,19 @@ export function VideoPlayer() {
         {zoomLevel > 1 ? (
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-10">
             <div className="flex items-center gap-1.5">
-              <span className="h-7 inline-flex items-center text-xs text-text-secondary bg-surface-overlay/90 rounded-md font-mono px-2.5">{Math.round(zoomLevel * 100)}%</span>
+              <span className="h-7 inline-flex items-center text-xs text-text-secondary bg-surface-overlay/90 rounded-md font-mono px-3">{Math.round(zoomLevel * 100)}%</span>
               <button onClick={resetZoom} title="Reset zoom (fit)"
                 className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-overlay/90 text-text-secondary hover:text-white hover:bg-surface-hover transition-all">
                 <Maximize className="w-3.5 h-3.5" />
               </button>
             </div>
-            <span className="text-[10px] text-text-muted bg-surface-overlay/70 px-2 py-1 rounded-md opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Drag to pan</span>
+            <span className="text-[10px] text-text-muted bg-surface-overlay/70 px-3 py-1 rounded-md opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Drag to pan</span>
           </div>
         ) : (
           <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1 pointer-events-none">
-            <span className="text-[10px] text-text-secondary bg-surface-overlay/95 px-2 py-1 rounded-md opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Scroll to zoom</span>
+            <span className="text-[10px] text-text-secondary bg-surface-overlay/95 px-3 py-1 rounded-md opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Scroll to zoom</span>
             {keypointsVisible ? (
-              <div className="text-[10px] bg-surface-overlay/95 px-2 py-1 rounded-md flex flex-col items-end gap-0.5 opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">
+              <div className="text-[10px] bg-surface-overlay/95 px-3 py-1 rounded-md flex flex-col items-end gap-0.5 opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">
                 <span className="text-text-secondary font-medium">Keypoints</span>
                 {!hasEntitySelected ? (
                   <span className="text-text-secondary">select an entity in the timeline</span>
@@ -839,7 +839,7 @@ export function VideoPlayer() {
                     <Tooltip.Portal>
                       <Tooltip.Content
                         sideOffset={6}
-                        className="z-50 px-2 py-1 rounded-md bg-surface-overlay text-text-primary border border-border-default text-xs font-medium shadow-md"
+                        className="z-50 px-3 py-1.5 rounded-md bg-surface-overlay text-text-primary border border-border-default text-xs font-medium shadow-md"
                       >
                         {title} arrows
                         <Tooltip.Arrow className="fill-[var(--color-border-default)]" />

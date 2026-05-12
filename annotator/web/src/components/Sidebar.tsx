@@ -101,7 +101,7 @@ export function Sidebar() {
                   <code className="block text-xs font-mono text-text-primary truncate pr-1">
                     {displayId}
                   </code>
-                  <span className={`mt-1 inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-2.5 py-0.5 rounded-full border ${badge}`}>
+                  <span className={`mt-1 inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-3 py-1 rounded-full border ${badge}`}>
                     {c.kind}
                   </span>
                 </div>
@@ -130,7 +130,7 @@ export function Sidebar() {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setPendingClipId(null)}
-                className="h-9 px-3 inline-flex items-center rounded-md text-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
+                className="h-9 px-4 inline-flex items-center rounded-md text-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
               >
                 Cancel
               </button>

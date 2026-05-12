@@ -105,7 +105,7 @@ function LockBarRow({
         <button
           onClick={onUnlockRequest}
           disabled={!canUnlock}
-          className="h-8 px-3 inline-flex items-center rounded-md text-xs font-semibold bg-accent-soft-bg text-accent-soft-fg border border-accent-soft-border hover:bg-accent hover:text-accent-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="h-8 px-4 inline-flex items-center rounded-md text-xs font-semibold bg-accent-soft-bg text-accent-soft-fg border border-accent-soft-border hover:bg-accent hover:text-accent-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Unlock to edit
         </button>
@@ -113,7 +113,7 @@ function LockBarRow({
       {!serverReadOnly && !locked && (
         <button
           onClick={onLock}
-          className="h-8 px-3 inline-flex items-center rounded-md text-xs font-semibold bg-surface-overlay text-text-secondary border border-border-default hover:bg-surface-hover hover:text-text-primary transition-colors"
+          className="h-8 px-4 inline-flex items-center rounded-md text-xs font-semibold bg-surface-overlay text-text-secondary border border-border-default hover:bg-surface-hover hover:text-text-primary transition-colors"
         >
           Lock
         </button>
@@ -143,7 +143,7 @@ function ThemeToggle() {
 
 function DirtyPill() {
   return (
-    <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-warning-bg text-warning text-[11px] font-medium">
+    <span className="inline-flex items-center gap-1.5 h-6 px-3 rounded-full bg-warning-bg text-warning text-[11px] font-medium">
       <span className="w-1.5 h-1.5 rounded-full bg-warning" />
       Unsaved changes
     </span>
