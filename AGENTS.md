@@ -147,17 +147,43 @@ the short version for agents:
 
 ## Security & data handling
 
-- **No secrets in the repo.** No `.env`, no credentials, no API keys.
-  See [`docs/dev/contrib.md`](docs/dev/contrib.md) §AI Agent Rules.
-- **Dataset root** is configured via the `CAUSAL_AV_DATASET_ROOT`
-  environment variable. Do not hard-code paths to the corpus.
-- **Do not log the dataset root, clip IDs, or any sample annotation
-  content** in commit messages, PR descriptions, or issue bodies.
-  Sample paths in examples should remain placeholders
-  (`/path/to/json_annotations`).
-- **The annotator writes user data.** Saves go through atomic
-  `os.replace`; the first save for a clip in a session stamps
-  `<file>.bak`. Do not change either invariant without explicit
+### Environment variables
+
+The DevKit reads these from the environment. Copy
+[`.env.example`](.env.example) to `.env` and fill in real values;
+`.env` is gitignored.
+
+| Variable | Purpose | Required? |
+|----------|---------|-----------|
+| `CAUSAL_AV_DATASET_ROOT` | Path to the annotation-JSON directory | Yes for examples / notebooks / tests that iterate the real corpus |
+| `CAUSAL_AV_VERBOSE` | Set to `1` for per-file detail in dataset-scan warnings | No (default `0`) |
+
+Setting options: shell `export` (or per-command
+`VAR=... make test`); a `.env` file at the repo root (auto-loaded by
+IDE test runners, Docker Compose, and `dotenv-cli`, but **not** by
+plain shell or `uv run`); or on the Horde DGXC VM via `hgx secrets`,
+which auto-inject across sessions.
+
+### Never commit
+
+- `.env` (real values; gitignored).
+- `*.bak` — annotator first-save backups of user data.
+- `~/.cache/causal-av-annotator/` — transcode cache.
+- Anything under `meta/` — gitignored working/research notes.
+- Real corpus paths in source. Use `/path/to/json_annotations` in
+  examples and docs.
+
+### Never log
+
+The dataset root, real clip IDs, sample annotation content, or any
+auth token (HuggingFace, parent dataset) in commit messages, PR
+descriptions, issue bodies, or externally uploaded stack traces.
+
+### Data invariants
+
+- **The annotator writes user data** via atomic `os.replace`; the
+  first save for a clip in a server session stamps `<file>.bak`.
+  Both invariants are tested; do not change either without explicit
   approval.
 
 ## When in doubt

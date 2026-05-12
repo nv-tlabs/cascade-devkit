@@ -13,3 +13,6 @@ __pycache__/
 
 # jupyter local state
 .ipynb_checkpoints/
+
+# Local environment variables — see .env.example for the template
+.env
