@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 feat(viz): rich timeline — labels, sub-lanes, arrowheads, filter kwargs (#29)
 - 2026-05-12 fix(dataset): Sequence handles missing egomotion gracefully (#28)
 - 2026-05-12 fix(viz): post-merge cleanup — video-window clamping, carousel boundary guards (#27)
 - 2026-05-12 feat(viz): Sequence.visualize() polymorphic dispatcher + docs + notebook (#26)
