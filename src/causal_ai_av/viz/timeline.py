@@ -154,17 +154,25 @@ def _segment_top_y(group: str, lane: int = 0, lane_count: int = 1) -> float:
     return y1
 
 
+# Inline-label font size, in points. Tuned for the 24px-per-lane
+# layout from `render_timeline`'s adaptive height — at that lane
+# height a `size=9` label reads cleanly without clipping vertically
+# against the rectangle's top/bottom edge. Bumping this back up is
+# the right knob if a caller forces a taller layout via the `height`
+# kwarg.
+_INLINE_LABEL_FONT_SIZE: int = 9
+
 # Maximum characters for an inline segment label. Anything longer gets
 # truncated with an ellipsis; the full label always lives in the hover
 # tooltip.
-_INLINE_LABEL_MAX_CHARS: int = 14
+_INLINE_LABEL_MAX_CHARS: int = 11
 
 # A segment must be at least this wide (in seconds) to qualify for an
 # inline label. Narrower segments suppress the inline annotation and
 # rely on hover-only — otherwise the text would clip outside the
 # rectangle and read as noise. Pinned by a regression test on the
 # `~5 s vs ~0.05 s` divide called out in the design doc.
-_INLINE_LABEL_MIN_WIDTH_S: float = 0.3
+_INLINE_LABEL_MIN_WIDTH_S: float = 0.5
 
 
 def _truncate_label(label: str, *, max_chars: int = _INLINE_LABEL_MAX_CHARS) -> str:
@@ -505,7 +513,7 @@ def _paint_timeline_onto(
                     "yref": yref,
                     "text": _truncate_label(seg.label),
                     "showarrow": False,
-                    "font": {"size": 10, "color": "#0f172a"},
+                    "font": {"size": _INLINE_LABEL_FONT_SIZE, "color": "#0f172a"},
                     "name": f"label:{seg.id}",
                 }
             )
