@@ -1,0 +1,19 @@
+{
+  "name": "av-causal-dataset-tools",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+  "onCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg",
+  "postCreateCommand": "pipx install uv && make install",
+  "forwardPorts": [8765],
+  "portsAttributes": {
+    "8765": {
+      "label": "Annotator",
+      "onAutoForward": "notify"
+    }
+  },
+  "remoteUser": "vscode"
+}

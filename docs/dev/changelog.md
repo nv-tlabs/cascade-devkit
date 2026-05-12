@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 chore(devcontainer): add .devcontainer/devcontainer.json (Python 3.11 + uv + Node LTS + ffmpeg) (#8)
 - 2026-05-12 docs(agents): thin tool pointers — .github/copilot-instructions.md, .cursor/rules/agents.mdc (#7)
 - 2026-05-12 docs(skills): bootstrap .claude/skills/ — run-tests, annotator-dev, add-annotator-cli-flag (#6)
 - 2026-05-12 docs(annotator): nested AGENTS.md scoping Tailwind/Zustand/save+lock rules (#5)
