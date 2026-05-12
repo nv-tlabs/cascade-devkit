@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import weakref
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Iterator, Mapping, Sequence
 
 from causal_ai_av.query.constants import ALIAS_FAMILIES, resolve_alias
 from causal_ai_av.query.dsl import (
@@ -37,6 +37,13 @@ from causal_ai_av.query.entities import (
 from causal_ai_av.query.index import IdIndex
 from causal_ai_av.query.time import Interval
 from causal_ai_av.spec import AgentAction, AnnotationBundle, EgoAction
+
+if TYPE_CHECKING:  # pragma: no cover — typing only
+    # Imported lazily for the `sequences()` return annotation; a runtime
+    # import here would create a cycle (`dataset.py` already imports from
+    # `causal_ai_av.query`). The runtime resolution happens dynamically
+    # inside `MatchSet.sequences` via `self.dataset.get_sequence(...)`.
+    from causal_ai_av.dataset import Sequence as _DatasetSequence
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +106,35 @@ class MatchSet:
 
     def intervals(self) -> list[Interval]:
         return [m.interval for m in self.matches if m.interval is not None]
+
+    def sequences(self) -> Iterator[tuple[Match, "_DatasetSequence"]]:
+        """Yield ``(match, Sequence)`` pairs, one per match.
+
+        The ``Sequence`` is constructed (or fetched) from the originating
+        dataset; identical ``clip_id``s share a single ``Sequence``
+        instance across yields (dedup-by-clip-id within a single call).
+
+        Raises ``RuntimeError`` if this ``MatchSet`` has no dataset
+        back-reference (e.g., produced by ``find_on_bundle`` without the
+        ``dataset=`` kwarg). The wording mirrors the message used by the
+        ``.dataset`` property when the weakref has expired.
+        """
+        if self._dataset is None:
+            raise RuntimeError(
+                "MatchSet has no dataset back-reference; cannot resolve "
+                "Sequence objects. Use find_on_dataset(...) or "
+                "find_on_bundle(..., dataset=ds) to attach one."
+            )
+        # `self.dataset` will raise its own RuntimeError if the weakref
+        # has expired; we let that propagate.
+        ds = self.dataset
+        cache: dict[str, Any] = {}
+        for m in self.matches:
+            seq = cache.get(m.clip_id)
+            if seq is None:
+                seq = ds.get_sequence(m.clip_id)
+                cache[m.clip_id] = seq
+            yield m, seq
 
     def __bool__(self) -> bool:
         return len(self.matches) > 0
