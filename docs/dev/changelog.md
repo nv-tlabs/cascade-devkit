@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 fix(annotator): remove guardedSave stub from RightPanel.tsx (closes #12) (#15)
 - 2026-05-12 fix(annotator): remove unused LabelPalette component (closes #11) (#14)
 - 2026-05-12 docs(user): create docs/user/ — move query_language.md, add annotator.md (#10)
 - 2026-05-12 docs(security): .env.example + expand Security & data handling in AGENTS.md (#9)

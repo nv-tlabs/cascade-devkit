@@ -16,7 +16,7 @@ import {
   envDisplayName, getAllowedAmounts, getAgentActionTypes, getAgentActionTypeGroups,
   ACTION_LINK_TO_CONFIG,
 } from '../lib/attribute-cycling'
-import type { SilAvAnnotation, AnnotationBundle } from '../lib/types'
+import type { SilAvAnnotation } from '../lib/types'
 import { AlertTriangle, Trash2, Link2, BarChart3, FileText, Download, Upload, Save, ChevronDown, ChevronRight, X } from 'lucide-react'
 import { checkSegmentCompleteness } from '../lib/completeness'
 
@@ -335,13 +335,6 @@ export function RightPanel() {
     updateBundle(nb)
   }
 
-  // ---- Guarded save ----
-  // Step 4 stub: edits while unlocked update the in-memory bundle (and flip
-  // dirty) but do not auto-save. Step 6 wires the explicit Save button.
-  const guardedSave = async (_clipId: string, data: unknown): Promise<AnnotationBundle> => {
-    return data as AnnotationBundle
-  }
-
   // ---- Generic field updater (mutates a clone, then persists) ----
   const updateField = (field: string, value: unknown) => {
     if (!sel || !ann || editsBlocked) return
@@ -636,7 +629,7 @@ export function RightPanel() {
   const handleBriefBlur = async () => {
     if (briefEdit === null || !ann || !selectedClipId || !bundle || editsBlocked) return
     const nb = { ...bundle, annotation: { ...ann, brief_description: briefEdit } }
-    try { updateBundle(await guardedSave(selectedClipId, nb)) } catch {}
+    updateBundle(nb)
     setBriefEdit(null)
   }
 
@@ -660,7 +653,6 @@ export function RightPanel() {
     const u = applySegmentTimeUpdate(ann, sel.id, clamped.t0, clamped.t1)
     const nb = { ...bundle, annotation: u }
     updateBundle(nb)
-    try { await guardedSave(selectedClipId, nb) } catch {}
   }
 
   const handleDelete = async () => {
@@ -776,7 +768,8 @@ export function RightPanel() {
       if (eai >= 0 && eai < (u.ego_vehicle?.actions || []).length) u.ego_vehicle.actions.splice(eai, 1)
     }
     const nb = { ...bundle, annotation: u }
-    try { updateBundle(await guardedSave(selectedClipId, nb)); selectPath(null) } catch { updateBundle(nb); selectPath(null) }
+    updateBundle(nb)
+    selectPath(null)
   }
 
   const handleToggleIllegal = () => {
@@ -828,7 +821,7 @@ export function RightPanel() {
     }
     syncInfluencedAgentIds(u)
     const nb = { ...bundle, annotation: u }
-    try { updateBundle(await guardedSave(selectedClipId, nb)) } catch { updateBundle(nb) }
+    updateBundle(nb)
   }
 
   const handleRemoveBecause = async (causeId: string) => {
@@ -859,7 +852,7 @@ export function RightPanel() {
     }
     syncInfluencedAgentIds(u)
     const nb = { ...bundle, annotation: u }
-    try { updateBundle(await guardedSave(selectedClipId, nb)) } catch { updateBundle(nb) }
+    updateBundle(nb)
   }
 
   const handleExport = () => {
@@ -874,15 +867,8 @@ export function RightPanel() {
     if (!window.confirm('Clear ALL annotations for this clip?')) return
     const empty: SilAvAnnotation = { eventful: null, brief_description: '', environments: [], conditions: [], traffic_objects: [], traffic_lights: [], ego_vehicle: { actions: [] }, agents: [] }
     const cleared = { ...bundle, annotation: empty, status: 'pending' }
-    // Optimistically update the UI immediately
     updateBundle(cleared)
     selectPath(null)
-    try {
-      const saved = await guardedSave(selectedClipId, cleared)
-      updateBundle(saved)
-    } catch (e) {
-      console.error('Failed to clear annotations:', e)
-    }
   }
 
 
