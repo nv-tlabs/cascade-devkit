@@ -46,17 +46,10 @@ agent(type = ped, action(jaywalk = true))
 light(color = yellow, ego_in_on_yellow = true)
 ```
 
-### 1.2 Translation of scenarios from
-`scenarios_and_queries_reference.md`
+### 1.2 Scenarios from `scenarios_and_queries_reference.md`
 
 **Scenario 1** — Ego passes through crosswalk while pedestrian present.
 ```
-# old
-- has_agent_of_type: PED
-- has_environment_of_type: CROSSWALK
-- has_ego_action: fst:DrivingInLane
-
-# new
 agent.type = ped
   and env.type = crosswalk
   and ego.action = drive
@@ -64,23 +57,12 @@ agent.type = ped
 
 **Scenario 8** — Pedestrian crosses mid-block (jaywalking).
 ```
-# old
-- has_agent_action_type_contains: PED ; jaywalk
-- has_ego_action: STOP_YIELD_DECEL
-
-# new
 agent(type = ped, action(jaywalk = true))
   and ego.action in (stop, yield, decel)
 ```
 
 **Scenario 14** — Ego stops at red traffic light.
 ```
-# old
-- has_traffic_light_with_color: Red
-- has_ego_action: oxd:Stop
-- has_environment_of_type: INTERSECTION_TYPES
-
-# new
 light.color = red
   and ego.action = stop
   and env.type = intersection
@@ -88,23 +70,12 @@ light.color = red
 
 **Scenario 20** — Ego in intersection when light turns yellow, proceeds.
 ```
-# old
-- has_yellow_state_with_flag: ego_in_intersection_on_yellow
-- has_ego_action: fst:DrivingInLane, fst:Enter, fst:Creep
-
-# new
 light(color = yellow, ego_in_on_yellow = true)
   and ego.action in (drive, enter, creep)
 ```
 
 **Scenario 76** — Vehicle stopped in front of ego, ego nudges.
 ```
-# old
-- has_agent_position: In front ; VEHICLE_TYPES
-- has_agent_action: VEHICLE_TYPES ; oxd:Stop, oxd:NotMove
-- has_ego_action: NUDGE_ANY, oxd:ChangeLane (left), oxd:ChangeLane (right)
-
-# new
 agent(type = vehicle, pos = front, action(type in (stop, not_move)))
   and ego.action in (nudge, change_lane_left, change_lane_right)
 ```
