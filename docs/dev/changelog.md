@@ -15,6 +15,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 - 2026-05-12 chore(annotator): rename "Relevancy" section heading to "Relevance" (#36)
 - 2026-05-12 fix(annotator): tighten timeline toolbar so "Because of" hint fits in narrow viewports (#35)
 - 2026-05-12 fix(annotator): timeline zoom toolbar no longer wraps to two lines on narrow viewports (#34)
+- 2026-05-12 fix(viz): JPEG-encode frame transport — Play perf from ~0.1 fps to ~5 fps (#33)
 - 2026-05-12 fix(annotator): timeline category header no longer overlaps first track name (#32)
 - 2026-05-12 chore(make): annotator-dev target forwards optional PORT= variable (#31)
 - 2026-05-12 fix(viz): denser layout + readable labels + visible arrowheads + faster Play (#30)
