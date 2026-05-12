@@ -88,6 +88,62 @@ within light.color = red: not ego.action = stop
 ego.action = decel because_of agent.type = ped
 ```
 
+## Visualization
+
+`causal_ai_av.viz` renders any subset of a clip — a single instant, a
+time range, a `MatchSet`, or a `ContextWindow` — as a decoded camera
+frame paired with the clip's annotation timeline. The timeline carries
+one bar per agent action, ego action, environment, condition, and
+traffic-light state, plus five families of causal arrow
+(`because_of`, `link_to`, `containedIn`, `influencedBy`,
+`action_target`) and a yellow highlight band over any match interval.
+**v0 ships the timeline + frame + arrows + highlight; on-frame bbox
+and keypoint overlays land in v1.**
+
+The viz API requires the optional `[viz]` extra and runs in
+JupyterLab, VS Code / Cursor notebooks, and similar Jupyter-protocol
+environments. Colab support is best-effort.
+
+```bash
+uv sync --extra viz
+```
+
+The three common entry points hang off the objects you already use:
+
+```python
+seq = ds.get_sequence(clip_id)
+
+# Whole-clip scrubbable widget. Pass t=2.5 to open at a single instant,
+# or t=(2, 5) for an explicit window.
+seq.visualize()
+
+# Single match in context — pads the match interval by `pad` seconds
+# and paints `m.interval` as the yellow highlight band.
+m = ds.find("agent.type = ped while ego.action = decel").matches[0]
+seq.visualize(match=m, pad=1.0)
+
+# Fan out a whole MatchSet into a carousel of mini-players (one per
+# match, capped at `limit`).
+ds.find("ego.action = decel because_of agent.type = ped").visualize()
+```
+
+For reports, doc figures, or headless pipelines, two functions return
+plain values you can pickle, save, or post-process:
+
+```python
+from causal_ai_av import viz
+
+frame = viz.render_frame(seq, t=3.0)          # -> PIL.Image (RGB)
+fig   = viz.render_timeline(seq,              # -> plotly.graph_objects.Figure
+                            highlight=(2, 5))
+frame.save("/tmp/clip_t3.png")
+fig.write_image("/tmp/timeline.png")          # needs the `kaleido` extra
+```
+
+`seq.visualize(t=2.5, static=True)` is the shorthand for
+`viz.render_frame(seq, 2.5)` — handy when you start interactive and
+want a single still without switching modules.
+
 ## Examples and notebooks
 
 Runnable Python scripts under `examples/`:
@@ -100,6 +156,7 @@ Runnable Python scripts under `examples/`:
 | `04_scenarios.py` | 20 driving scenarios encoded as DSL queries |
 | `05_context.py` | inspect what else was happening during each match |
 | `06_sensor_data.py` | catalog of available sensors + recipes for fetching extras |
+| `07_visualize.py` | headless render — single frame and timeline figure |
 
 Run any of them with:
 
@@ -111,7 +168,9 @@ CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \
 Jupyter notebooks under `notebooks/` cover the same ground with
 richer narrative and charts, plus `05_video_inspection.ipynb` which
 pulls the original camera video from HuggingFace and renders frames
-across a match's interval. Launch JupyterLab with:
+across a match's interval, and `06_visualize.ipynb` which walks
+through the interactive viz API (clip player + timeline + match
+carousel). Launch JupyterLab with:
 
 ```bash
 CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \
@@ -177,6 +236,7 @@ src/causal_ai_av/
   io.py        # parse JSON → AnnotationBundle
   dataset.py   # CausalAVDataset / Sequence — corpus and per-clip API
   query/       # DSL lexer + parser + evaluator + query helpers
+  viz/         # render_frame / render_timeline / ClipPlayer (optional [viz] extra)
 
 tools/
   annotator/   # local FastAPI + React annotation tool (see below)
