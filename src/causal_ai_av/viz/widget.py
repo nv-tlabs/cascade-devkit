@@ -432,7 +432,14 @@ class ClipPlayer:
                 self._suspend_link = False
 
     def _on_play_change(self, change: dict[str, Any]) -> None:
-        """Play tick — mirror to the slider, which drives the figure."""
+        """Play tick — mirror to the slider, which drives the figure.
+
+        The slider's `value` assignment fires `_on_slider_change`,
+        which itself calls `_apply_t`. Do **not** call `_apply_t`
+        again here — doing so caused every Play tick to decode the
+        same frame twice (once from the slider observer, once from
+        this method), doubling the per-tick latency.
+        """
         if self._suspend_link:
             return
         new_t = float(change["new"]) / 1000.0
@@ -443,7 +450,6 @@ class ClipPlayer:
             self._slider.value = new_t
         finally:
             self._suspend_link = False
-        self._apply_t(new_t)
 
     def _apply_t(self, t: float) -> None:
         """Decode the frame at `t`, swap the Image trace + playhead atomically."""
