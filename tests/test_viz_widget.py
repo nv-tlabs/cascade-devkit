@@ -342,21 +342,33 @@ def test_repr_mimebundle_has_html_and_widget_view_keys() -> None:
 
 
 def test_filter_kwargs_forwarded_to_timeline_subplot() -> None:
-    """`ClipPlayer(seq, entity_kinds=["agent"])` paints only agent-row
-    segment shapes on the timeline subplot."""
+    """`ClipPlayer(seq, entity_kinds=["agent"])` paints only Agent-band
+    segment shapes on the timeline subplot. The y-axis collapses to
+    just `Agents · *` bands."""
     seq = _seq_with_fake_video()
     player = ClipPlayer(seq, entity_kinds=["agent"])
+    # The timeline subplot's y-axis is `yaxis2`. Read its tick labels
+    # to find which band rows belong to Agents bands.
+    yticks = list(player._fig.layout.yaxis2.ticktext or ())
+    tickvals = list(player._fig.layout.yaxis2.tickvals or ())
+    agent_rows = {
+        float(v) for v, t in zip(tickvals, yticks, strict=False)
+        if t.startswith("Agents · ")
+    }
+    assert agent_rows, (
+        f"expected at least one Agents band tick, got {yticks!r}"
+    )
     seg_shapes = [
         s
         for s in _bottom_subplot_shapes(player._fig)
         if s.get("name", "").startswith("segment:")
     ]
-    assert seg_shapes, "expected at least one agent-row segment shape"
+    assert seg_shapes, "expected at least one Agents-band segment shape"
     for s in seg_shapes:
         mid = (float(s["y0"]) + float(s["y1"])) / 2.0
-        # Agents row is index 3; band spans roughly [2.6, 3.4] across
-        # all lane configurations.
-        assert 2.5 <= mid <= 3.5, f"non-Agent shape leaked through filter: {s}"
+        assert any(abs(mid - r) <= 0.4 + 1e-9 for r in agent_rows), (
+            f"non-Agent shape leaked through filter: {s}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -394,30 +406,34 @@ def _bundle_with_n_overlapping_agent_actions(n: int) -> AnnotationBundle:
 
 def test_adaptive_height_grows_with_lanes() -> None:
     """A bundle with N stacked agent-action lanes produces a figure
-    whose total height grows by roughly N * 24px relative to the
-    no-overlap baseline. Pins the 24-px-per-lane scaling so any
-    regression to a fixed-height layout is caught.
+    whose total height grows with the deepest stack. Pins the
+    24-px-per-lane scaling so any regression to a fixed-height
+    layout is caught.
 
     Uses `render_timeline` (headless) so the comparison isn't
     masked by the widget's fixed-pixel video pane / chrome. The
     widget's height tracks the same lane budget through the
     shared `_timeline_px_for` helper.
+
+    With the family-band layout, the lane budget is per band rather
+    than per group — so a busy clip with N overlapping agent actions
+    grows the `Agents · action` band's lane count to N, while the
+    other (sparse) bands stay at 1 lane each. The total lane count
+    still scales linearly with N.
     """
     from causal_ai_av.viz.timeline import _PX_PER_LANE
 
-    # Baseline at the 240px floor: 5 groups × 1 lane = 5 lanes < 10
-    # (the floor's lane-equivalent), so height clamps to 240.
+    # Baseline: 1 agent parent + 1 agent action = 2 bands × 1 lane =
+    # 2 lanes. Clamps to the 240px floor.
     baseline_fig = render_timeline(
         _seq_with_fake_video(_bundle_with_n_overlapping_agent_actions(0))
     )
     baseline_height = int(baseline_fig.layout.height)
 
-    # 12 overlapping actions plus the parent puts the Agents group at
-    # 13 lanes; combined with the 4 other groups (1 lane each) the
-    # total is 17 lanes, well above the 240px (= 10-lane) floor — so
-    # the adaptive path actually grows the figure proportionally.
+    # 16 overlapping actions: Agents · parent band (1 lane) + Agents
+    # · action band (16 lanes) = 17 total lanes, well above the floor.
     busy_fig = render_timeline(
-        _seq_with_fake_video(_bundle_with_n_overlapping_agent_actions(12))
+        _seq_with_fake_video(_bundle_with_n_overlapping_agent_actions(16))
     )
     busy_height = int(busy_fig.layout.height)
 
