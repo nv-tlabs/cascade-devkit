@@ -59,6 +59,7 @@ If you are new to the repo, read in this order:
 | `src/causal_ai_av/` | Python DevKit: schema, I/O, dataset, query DSL |
 | `src/causal_ai_av/spec/` | Pydantic models for the annotation JSON (schema `2.0.0`) |
 | `src/causal_ai_av/query/` | DSL lexer + parser + evaluator |
+| `src/causal_ai_av/viz/` | Visualization surface: `render_frame`, `render_timeline`, `ClipPlayer`, carousel. Lives behind the optional `[viz]` extra. |
 | `tools/` | User-facing utilities layered on the DevKit |
 | `tools/annotator/` | Local FastAPI + React annotation tool (uv workspace member) |
 | `tools/annotator/web/` | Vite + React 19 + Tailwind v4 frontend |
