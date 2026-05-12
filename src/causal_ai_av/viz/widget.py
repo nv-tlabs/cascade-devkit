@@ -249,6 +249,20 @@ class ClipPlayer:
         """Current playhead position, seconds."""
         return self._t
 
+    @property
+    def widget(self) -> Any:
+        """The underlying ipywidgets composite (`VBox` of figure + controls).
+
+        Returned for embedding in other ipywidgets containers — e.g. the
+        `MatchSet.visualize()` carousel which stacks one labeled
+        `ClipPlayer` per match inside a `VBox` / `GridBox`. The
+        ipywidgets display protocol (`_ipython_display_` /
+        `_repr_mimebundle_`) is still the preferred path for rendering
+        a player on its own; this property exists so other widgets can
+        wrap one without reaching into a private attribute.
+        """
+        return self._container
+
     def seek(self, t: float) -> None:
         """Move the playhead to `t` (seconds), updating the figure.
 
