@@ -1,0 +1,331 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+"""Tests for the `MatchSet.visualize()` carousel (PR-5).
+
+Covers the public surface of `causal_ai_av.viz.carousel.
+build_matchset_carousel` plus the thin `MatchSet.visualize()` delegator
+on the query engine side. No real video decode — every `Sequence`
+gets a `FakeVideoReader` from `tests/conftest.py`.
+"""
+
+from __future__ import annotations
+
+import weakref
+
+import ipywidgets
+import pytest
+
+from causal_ai_av.dataset import Sequence
+from causal_ai_av.query.engine import Match, MatchSet
+from causal_ai_av.query.time import Interval
+from causal_ai_av.spec import (
+    AnnotationBundle,
+    SilAvAnnotation,
+    VideoMeta,
+)
+from causal_ai_av.viz import ClipPlayer, build_matchset_carousel
+from tests.conftest import FakeVideoReader
+
+
+# ---------------------------------------------------------------------------
+# Fixtures — minimal bundle + a fake dataset that hands out Sequences
+# with mocked video readers, no real decode.
+# ---------------------------------------------------------------------------
+
+
+def _make_minimal_bundle(clip_id: str, duration_s: float = 10.0) -> AnnotationBundle:
+    """Smallest valid bundle — empty `SilAvAnnotation`, named clip.
+
+    The carousel doesn't care about annotation content; it just walks
+    matches and asks each `Sequence` for its `duration_s`. The timeline
+    painter inside `ClipPlayer` handles an empty annotation cleanly.
+    """
+    return AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id=clip_id, duration_s=duration_s),
+        annotation=SilAvAnnotation(),
+    )
+
+
+def _seq_with_fake_video(
+    clip_id: str = "clip_a", duration_s: float = 10.0
+) -> Sequence:
+    bundle = _make_minimal_bundle(clip_id, duration_s)
+    seq = Sequence.from_annotation(bundle)
+    # `Sequence.video` is a property reading from `_cameras`; install a
+    # dict that satisfies the contract without hitting a real parent.
+    reader = FakeVideoReader()
+    seq._cameras = {seq.annotation_camera: reader}  # type: ignore[assignment]
+    return seq
+
+
+class _FakeDataset:
+    """Stand-in for `CausalAVDataset` — just answers `get_sequence`.
+
+    The carousel only needs `.get_sequence(clip_id)`; the rest of the
+    `CausalAVDataset` surface is irrelevant here. Holding the Sequence
+    by clip_id ensures the same instance is returned on repeat lookups
+    (matches `MatchSet.sequences()`'s dedup behavior).
+    """
+
+    def __init__(self, sequences: dict[str, Sequence]) -> None:
+        self._seqs = sequences
+
+    def get_sequence(self, clip_id: str) -> Sequence:
+        return self._seqs[clip_id]
+
+
+def _make_matchset(
+    matches: list[Match], dataset: _FakeDataset | None
+) -> MatchSet:
+    """Build a `MatchSet` with the same weakref shape `find_on_dataset` uses."""
+    ref = weakref.ref(dataset) if dataset is not None else None
+    return MatchSet(tuple(matches), _dataset=ref)
+
+
+# ---------------------------------------------------------------------------
+# 1. Empty MatchSet → HTML widget, no players constructed.
+# ---------------------------------------------------------------------------
+
+
+def test_empty_matchset_returns_html_widget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Sentinel: spy on ClipPlayer construction to confirm nothing was
+    # built. If the empty short-circuit fails the spy would fire.
+    construction_calls = []
+    real_init = ClipPlayer.__init__
+
+    def _spy_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        construction_calls.append(1)
+        return real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ClipPlayer, "__init__", _spy_init)
+
+    ms = _make_matchset([], dataset=None)
+    out = build_matchset_carousel(ms)
+    assert isinstance(out, ipywidgets.HTML)
+    assert "No matches" in out.value
+    assert construction_calls == []
+
+
+# ---------------------------------------------------------------------------
+# 2. Smoke (stack): 3 matches across 2 clips → VBox with 3 labeled children.
+# ---------------------------------------------------------------------------
+
+
+def test_stack_layout_smoke() -> None:
+    seq_a = _seq_with_fake_video("clip_a")
+    seq_b = _seq_with_fake_video("clip_b")
+    ds = _FakeDataset({"clip_a": seq_a, "clip_b": seq_b})
+
+    matches = [
+        Match("clip_a", "agent_0", Interval(1.0, 2.0)),
+        Match("clip_a", "agent_1", Interval(3.0, 4.0)),
+        Match("clip_b", "agent_2", Interval(5.0, 6.0)),
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    out = build_matchset_carousel(ms)
+    assert isinstance(out, ipywidgets.VBox)
+    assert len(out.children) == 3
+    # Each child is a `VBox([HTML(label), player.widget])`.
+    for child in out.children:
+        assert isinstance(child, ipywidgets.VBox)
+        assert len(child.children) == 2
+        assert isinstance(child.children[0], ipywidgets.HTML)
+        # Player widget is the VBox composite from ClipPlayer.
+        assert isinstance(child.children[1], ipywidgets.VBox)
+
+
+# ---------------------------------------------------------------------------
+# 3. Smoke (grid): same matches, layout="grid", cols=2 → GridBox.
+# ---------------------------------------------------------------------------
+
+
+def test_grid_layout_smoke() -> None:
+    seq_a = _seq_with_fake_video("clip_a")
+    seq_b = _seq_with_fake_video("clip_b")
+    ds = _FakeDataset({"clip_a": seq_a, "clip_b": seq_b})
+
+    matches = [
+        Match("clip_a", "agent_0", Interval(1.0, 2.0)),
+        Match("clip_a", "agent_1", Interval(3.0, 4.0)),
+        Match("clip_b", "agent_2", Interval(5.0, 6.0)),
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    out = build_matchset_carousel(ms, layout="grid", cols=2)
+    assert isinstance(out, ipywidgets.GridBox)
+    assert out.layout.grid_template_columns == "repeat(2, 1fr)"
+    assert len(out.children) == 3
+
+
+# ---------------------------------------------------------------------------
+# 4. Limit truncation: 10 matches, limit=5 → 5 players + notice header.
+# ---------------------------------------------------------------------------
+
+
+def test_limit_truncates_and_emits_notice() -> None:
+    seq = _seq_with_fake_video("clip_a")
+    ds = _FakeDataset({"clip_a": seq})
+
+    # 10 matches all in the same clip; the carousel should render 5
+    # and prepend a notice.
+    matches = [
+        Match("clip_a", f"agent_{i}", Interval(float(i), float(i) + 0.5))
+        for i in range(10)
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    out = build_matchset_carousel(ms, limit=5)
+    # Truncation wraps the body in an outer VBox: [notice, body].
+    assert isinstance(out, ipywidgets.VBox)
+    assert len(out.children) == 2
+    notice = out.children[0]
+    assert isinstance(notice, ipywidgets.HTML)
+    assert "5 of 10" in notice.value
+    body = out.children[1]
+    assert isinstance(body, ipywidgets.VBox)
+    assert len(body.children) == 5
+
+
+# ---------------------------------------------------------------------------
+# 5. Pad widens the player window; highlight tracks the raw interval.
+# ---------------------------------------------------------------------------
+
+
+def test_pad_widens_window_and_highlight_uses_raw_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seq = _seq_with_fake_video("clip_a", duration_s=10.0)
+    ds = _FakeDataset({"clip_a": seq})
+
+    matches = [Match("clip_a", "agent_0", Interval(3.0, 4.0))]
+    ms = _make_matchset(matches, dataset=ds)
+
+    captured: list[dict] = []
+    real_init = ClipPlayer.__init__
+
+    def _capture_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        captured.append(dict(kwargs))
+        return real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ClipPlayer, "__init__", _capture_init)
+
+    build_matchset_carousel(ms, pad=2.0)
+
+    assert len(captured) == 1
+    kwargs = captured[0]
+    assert kwargs["t_start"] == 1.0  # max(0, 3.0 - 2.0)
+    assert kwargs["t_end"] == 6.0  # min(10.0, 4.0 + 2.0)
+    assert kwargs["highlight"] == (3.0, 4.0)
+
+
+def test_pad_clamps_to_clip_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`max(0, t0 - pad)` and `min(duration, t1 + pad)` both clamp."""
+    seq = _seq_with_fake_video("clip_a", duration_s=5.0)
+    ds = _FakeDataset({"clip_a": seq})
+
+    # Match right at the start and end of the clip; large pad would
+    # overshoot both bounds.
+    matches = [Match("clip_a", "agent_0", Interval(0.5, 4.5))]
+    ms = _make_matchset(matches, dataset=ds)
+
+    captured: list[dict] = []
+    real_init = ClipPlayer.__init__
+
+    def _capture_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        captured.append(dict(kwargs))
+        return real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ClipPlayer, "__init__", _capture_init)
+
+    build_matchset_carousel(ms, pad=10.0)
+
+    assert captured[0]["t_start"] == 0.0
+    assert captured[0]["t_end"] == 5.0
+
+
+# ---------------------------------------------------------------------------
+# 6. No dataset attached → sequences() raises, error propagates.
+# ---------------------------------------------------------------------------
+
+
+def test_no_dataset_raises_runtime_error() -> None:
+    matches = [Match("clip_a", "agent_0", Interval(1.0, 2.0))]
+    ms = _make_matchset(matches, dataset=None)
+    # The error originates in MatchSet.sequences(); the carousel does
+    # not catch it.
+    with pytest.raises(RuntimeError, match="no dataset back-reference"):
+        build_matchset_carousel(ms)
+
+
+# ---------------------------------------------------------------------------
+# 7. Two matches in the same clip get two distinct ClipPlayer instances.
+# ---------------------------------------------------------------------------
+
+
+def test_same_clip_matches_each_get_own_player(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seq = _seq_with_fake_video("clip_a")
+    ds = _FakeDataset({"clip_a": seq})
+
+    matches = [
+        Match("clip_a", "agent_0", Interval(1.0, 2.0)),
+        Match("clip_a", "agent_1", Interval(5.0, 6.0)),
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    captured: list[dict] = []
+    real_init = ClipPlayer.__init__
+
+    def _capture_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        captured.append(dict(kwargs))
+        return real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ClipPlayer, "__init__", _capture_init)
+
+    out = build_matchset_carousel(ms)
+
+    # Two players built — one per match, even though both share clip_a.
+    assert len(captured) == 2
+    # Distinct highlight windows.
+    assert captured[0]["highlight"] == (1.0, 2.0)
+    assert captured[1]["highlight"] == (5.0, 6.0)
+    # The VBox container has both as labeled children.
+    assert isinstance(out, ipywidgets.VBox)
+    assert len(out.children) == 2
+
+
+# ---------------------------------------------------------------------------
+# 8. MatchSet.visualize delegates to build_matchset_carousel with kwargs.
+# ---------------------------------------------------------------------------
+
+
+def test_matchset_visualize_delegates_with_kwargs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = object()
+    seen: list[tuple] = []
+
+    def _fake_builder(ms, **kwargs):  # type: ignore[no-untyped-def]
+        seen.append((ms, kwargs))
+        return sentinel
+
+    monkeypatch.setattr(
+        "causal_ai_av.viz.carousel.build_matchset_carousel", _fake_builder
+    )
+
+    matches = [Match("clip_a", "agent_0", Interval(1.0, 2.0))]
+    ms = _make_matchset(matches, dataset=None)
+
+    result = ms.visualize(layout="grid", cols=4, limit=2)
+    assert result is sentinel
+    assert len(seen) == 1
+    passed_ms, passed_kwargs = seen[0]
+    assert passed_ms is ms
+    assert passed_kwargs == {"layout": "grid", "cols": 4, "limit": 2}
