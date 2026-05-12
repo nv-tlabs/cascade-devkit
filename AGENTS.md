@@ -29,6 +29,18 @@ make install
 make test
 ```
 
+### Running in a devcontainer
+
+A [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+ships with the repo. Open the folder in any devcontainer-compatible
+host (VS Code Dev Containers, GitHub Codespaces, Copilot Workspace,
+Devin, Jules, Cursor, etc.) and rebuild in container — Python 3.11,
+`uv`, Node LTS, and `ffmpeg` are installed automatically and
+`make install` runs as part of `postCreateCommand`. Port `8765`
+(annotator default) is auto-forwarded. No GPU passthrough.
+
+### Reading order
+
 If you are new to the repo, read in this order:
 
 1. This file.
