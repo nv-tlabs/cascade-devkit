@@ -19,10 +19,10 @@ drawn as upward-curving bezier `path` shapes between segment centers,
 mirroring `drawBecauseOfCurve` in `tools/annotator/web/src/components/
 Timeline.tsx`. Each family has its own color:
 
-- `because_of`     → red       (`#ef4444`) — same hue as the annotator's
-                                              "BECAUSE" pill family
+- `because_of`     → rose      (`#f43f5e`) — same hue family as the
+                                              annotator's "BECAUSE" pill
                                               (the TS code uses `#b45309`;
-                                              we pick a brighter red so it
+                                              we pick a brighter rose so it
                                               reads clearly on
                                               `plotly_dark`).
 - `link_to`        → teal      (`#14b8a6`)
@@ -31,7 +31,10 @@ Timeline.tsx`. Each family has its own color:
 - `action_target`  → orange    (`#f97316`)
 
 These are chosen to be high-contrast against `plotly_dark` while staying
-distinguishable from each other.
+distinguishable from each other. **Invariant:** the arrow palette must
+stay disjoint from `entity_color()`'s row-fill palette — an arrow that
+shares a hex with the row it crosses would visually disappear. A guard
+test in `tests/test_viz_timeline.py` pins this.
 
 `highlight=(t0, t1)` paints a translucent yellow vertical band on top of
 the rows — useful when callers want to draw attention to a particular
@@ -62,8 +65,10 @@ _TRACK_GROUPS: tuple[str, ...] = ("Env", "Lights", "Objects", "Agents", "Ego")
 _GROUP_ROW: dict[str, int] = {name: i for i, name in enumerate(_TRACK_GROUPS)}
 
 # Arrow-family colors. See module docstring for the choice rationale.
+# Invariant: values here must be disjoint from `entity_color()`'s row
+# fills — guarded by `test_arrow_palette_disjoint_from_entity_palette`.
 _ARROW_COLORS: dict[str, str] = {
-    "because_of": "#ef4444",
+    "because_of": "#f43f5e",
     "link_to": "#14b8a6",
     "containment": "#10b981",
     "influence": "#a78bfa",

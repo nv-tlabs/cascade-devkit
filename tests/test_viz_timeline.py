@@ -154,6 +154,27 @@ def test_render_timeline_returns_figure() -> None:
     assert isinstance(fig, go.Figure)
 
 
+def test_arrow_palette_disjoint_from_entity_palette() -> None:
+    """Arrow-family colors must not collide with entity row-fill colors.
+
+    A causal arrow that shares a hex with the row it crosses would
+    visually disappear — e.g., a `because_of` arrow drawn over the
+    Lights row when both are red. Pinned here so future palette tweaks
+    cannot silently re-introduce the collision.
+    """
+    from causal_ai_av.viz.colors import entity_color
+    from causal_ai_av.viz.timeline import _ARROW_COLORS
+
+    entity_hexes = {
+        entity_color(k) for k in ("env", "ego", "object", "agent", "light")
+    }
+    arrow_hexes = set(_ARROW_COLORS.values())
+    overlap = arrow_hexes & entity_hexes
+    assert not overlap, (
+        f"arrow palette overlaps entity palette: {sorted(overlap)}"
+    )
+
+
 def test_render_timeline_has_segment_shapes_per_group() -> None:
     """Each of the five groups (Env, Lights, Objects, Agents, Ego) gets at
     least one segment shape when its family is populated.
