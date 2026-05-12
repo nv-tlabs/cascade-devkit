@@ -34,6 +34,7 @@ import { buildCompletenessMap } from '../lib/completeness'
 import { ACTION_LINK_TO_CONFIG } from '../lib/attribute-cycling'
 import type { TimelineSegment, TrackId, SilAvAnnotation } from '../lib/types'
 import { ZoomIn, ZoomOut, Maximize2, Plus, Minus, ChevronRight, ChevronDown } from 'lucide-react'
+import * as Tooltip from '@radix-ui/react-tooltip'
 
 const TRACK_HEIGHT = 32
 const ENV_TRACK_HEIGHT = 50
@@ -376,6 +377,54 @@ function drawBecauseOfCurve(ctx: CanvasRenderingContext2D, x1: number, y1: numbe
   ctx.fillStyle = '#fff'
   ctx.textAlign = 'center'
   ctx.fillText(label, midX, pillY + 9)
+}
+
+// --- Toolbar helpers ---------------------------------------------------------
+
+function ZoomButton({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={label}
+          className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover text-xs transition-colors"
+        >
+          <Icon className="w-3.5 h-3.5" />
+          <span>{label}</span>
+        </button>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content
+          sideOffset={6}
+          className="z-50 px-2 py-1 rounded-md bg-surface-overlay text-text-primary border border-border-default text-xs font-medium shadow-md"
+        >
+          {label}
+          <Tooltip.Arrow className="fill-[var(--color-border-default)]" />
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  )
+}
+
+function Kb({ keys, desc }: { keys: string; desc: string }) {
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-text-muted">
+      <kbd className="font-mono text-[10px] h-5 px-1.5 inline-flex items-center bg-surface-overlay border border-border-default rounded text-text-secondary">
+        {keys}
+      </kbd>
+      <span>{desc}</span>
+    </div>
+  )
 }
 
 export function Timeline() {
@@ -3307,20 +3356,22 @@ export function Timeline() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border-default bg-surface-sunken">
-        <button type="button" onClick={zoomIn} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-surface-hover text-text-muted text-[10px] transition-colors" title="Zoom in"><ZoomIn className="w-3.5 h-3.5" /><span>Zoom in</span></button>
-        <button type="button" onClick={zoomOut} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-surface-hover text-text-muted text-[10px] transition-colors" title="Zoom out"><ZoomOut className="w-3.5 h-3.5" /><span>Zoom out</span></button>
-        <button type="button" onClick={zoomFit} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-surface-hover text-text-muted text-[10px] transition-colors" title="Fit timeline"><Maximize2 className="w-3.5 h-3.5" /><span>Fill timeline</span></button>
-        <div className="flex items-center gap-3 ml-auto text-[10px] text-text-muted">
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Del</kbd><span>Delete</span></div>
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">&larr; &rarr;</kbd><span>Frame step</span></div>
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Space</kbd><span>Play/Pause</span></div>
-          <span className="w-px h-3 bg-surface-hover" />
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Right-click</kbd><span>Create</span></div>
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Shift+click</kbd><span>Link</span></div>
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Ctrl+click</kbd><span>Because of</span></div>
+      <Tooltip.Provider delayDuration={200}>
+        <div className="flex-shrink-0 h-9 px-4 flex items-center gap-1 border-b border-border-default bg-surface-sunken">
+          <ZoomButton onClick={zoomIn} icon={ZoomIn} label="Zoom in" />
+          <ZoomButton onClick={zoomOut} icon={ZoomOut} label="Zoom out" />
+          <ZoomButton onClick={zoomFit} icon={Maximize2} label="Fill timeline" />
+          <div className="flex items-center gap-4 ml-auto">
+            <Kb keys="Del" desc="Delete" />
+            <Kb keys={'← →'} desc="Frame step" />
+            <Kb keys="Space" desc="Play/Pause" />
+            <span className="w-px h-4 bg-border-default mx-1" />
+            <Kb keys="Right-click" desc="Create" />
+            <Kb keys="Shift+click" desc="Link" />
+            <Kb keys="Ctrl+click" desc="Because of" />
+          </div>
         </div>
-      </div>
+      </Tooltip.Provider>
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Label panel */}
         <div className="flex-shrink-0 border-r border-border-default overflow-hidden" style={{ width: LABEL_PANEL_WIDTH, backgroundColor: canvasColors.bg }} onWheel={handleWheel}>
