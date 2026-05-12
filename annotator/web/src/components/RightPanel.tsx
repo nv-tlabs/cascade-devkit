@@ -21,12 +21,12 @@ import { AlertTriangle, Trash2, Link2, BarChart3, FileText, Download, Upload, Sa
 import { checkSegmentCompleteness } from '../lib/completeness'
 
 // --- Shared UI helpers ---
-const inputCls = 'w-full px-3 py-2 text-xs bg-[#1a1a35] text-white rounded-lg border border-[#2a2a50] focus:border-blue-500/50 focus:outline-none'
+const inputCls = 'w-full px-3 py-2 text-xs bg-surface-overlay text-white rounded-lg border border-border-default focus:border-blue-500/50 focus:outline-none'
 const selectCls = inputCls
-const labelCls = 'text-[10px] text-[#556] block mb-1'
+const labelCls = 'text-[10px] text-text-muted block mb-1'
 const SPLIT_LANE_TYPES = new Set(['fst:LaneMerge', 'fst:LaneFork'])
 const fieldCls = (highlight?: boolean) =>
-  `w-full px-3 py-2 text-xs bg-[#1a1a35] text-white rounded-lg border ${highlight ? 'border-orange-500/60' : 'border-[#2a2a50]'} focus:border-blue-500/50 focus:outline-none`
+  `w-full px-3 py-2 text-xs bg-surface-overlay text-white rounded-lg border ${highlight ? 'border-orange-500/60' : 'border-border-default'} focus:border-blue-500/50 focus:outline-none`
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className={labelCls}>{label}</span>{children}</label>
@@ -91,14 +91,14 @@ function LaneIdField({ value, onChange, highlight }: { value: string; onChange: 
 }
 
 function ToggleField({ label, value, onChange, activeColor, highlight }: { label: string; value: boolean; onChange: (v: boolean) => void; activeColor?: string; highlight?: boolean }) {
-  const active = activeColor || 'bg-blue-500/20 text-blue-400 border-blue-500/40'
-  const inactive = highlight ? 'bg-[#1a1a35] text-[#555] border border-orange-500/60 hover:border-orange-500/80' : 'bg-[#1a1a35] text-[#555] border border-[#2a2a50] hover:border-[#3a3a60]'
+  const active = activeColor || 'bg-accent/20 text-blue-400 border-blue-500/40'
+  const inactive = highlight ? 'bg-surface-overlay text-text-muted border border-orange-500/60 hover:border-orange-500/80' : 'bg-surface-overlay text-text-muted border border-border-default hover:border-border-strong'
   return (
     <button type="button" onClick={() => onChange(!value)}
       className={`w-full flex items-center gap-2 px-3 py-2 mt-2 rounded-lg text-[11px] font-medium transition-all ${
         value ? active : inactive
       }`}>
-      <div className={`w-3 h-3 rounded-sm border ${value ? 'bg-current border-current' : 'border-[#555]'}`} />
+      <div className={`w-3 h-3 rounded-sm border ${value ? 'bg-current border-current' : 'border-border-strong'}`} />
       {label}
     </button>
   )
@@ -126,12 +126,12 @@ function AgentIdPicker({ label, value, onChange, ann }: { label: string; value: 
       <span className={labelCls}>{label}</span>
       <div className="flex flex-wrap gap-1 mb-1.5 min-h-[24px]">
         {value.map(id => (
-          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] border border-blue-500/30">
+          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-accent/20 text-blue-300 text-[10px] border border-blue-500/30">
             {nameFor(id)}
             <button type="button" onClick={() => remove(id)} className="hover:text-red-400 transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
         ))}
-        {value.length === 0 && <span className="text-[10px] text-[#444] italic">None</span>}
+        {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
       </div>
       <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={selectCls} disabled={available.length === 0 && hasUnknown}>
         <option value="">+ Add agent&hellip;</option>
@@ -171,7 +171,7 @@ function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required
       <span className={labelCls}>
         {required ? label : (
           <>
-            <span className="text-[#666]">Optional: </span>
+            <span className="text-text-muted">Optional: </span>
             {label}
           </>
         )}
@@ -183,7 +183,7 @@ function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required
             <button type="button" onClick={() => remove(id)} className="hover:text-red-400 transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
         ))}
-        {value.length === 0 && <span className="text-[10px] text-[#444] italic">None</span>}
+        {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
       </div>
       <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={fieldCls(highlight)} disabled={!hasOptions && hasUnknown}>
         <option value="">+ Add&hellip;</option>
@@ -223,7 +223,7 @@ function InfluencerIdPicker({ label, value, onChange, ann, highlight, showAgents
             <button type="button" onClick={() => remove(id)} className="hover:text-red-400 transition-colors"><X className="w-2.5 h-2.5" /></button>
           </span>
         ))}
-        {value.length === 0 && <span className="text-[10px] text-[#444] italic">None</span>}
+        {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
       </div>
       <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={fieldCls(highlight)} disabled={!hasOptions && hasUnknown}>
         <option value="">+ Add entity&hellip;</option>
@@ -886,7 +886,7 @@ export function RightPanel() {
   }
 
 
-  const statusColor = status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : status === 'disapproved' ? 'bg-red-500/20 text-red-400 border-red-500/30' : status === 'needs_revision' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : status === 'annotating' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
+  const statusColor = status === 'approved' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : status === 'disapproved' ? 'bg-red-500/20 text-red-400 border-red-500/30' : status === 'needs_revision' ? 'bg-orange-500/20 text-orange-400 border-orange-500/30' : status === 'annotating' ? 'bg-accent/20 text-blue-400 border-blue-500/30' : 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30'
 
   // Determine entity info for the selected segment
   const selMeta = (sel?.meta ?? {}) as Record<string, unknown>
@@ -1185,7 +1185,7 @@ export function RightPanel() {
           {ann && li != null && li >= 0 && (
             <>
               <button
-                className="w-full mt-2 px-3 py-1.5 text-xs bg-[#1a1a35] text-white rounded-lg border border-[#2a2a50] hover:bg-[#2a2a50]"
+                className="w-full mt-2 px-3 py-1.5 text-xs bg-surface-overlay text-white rounded-lg border border-border-default hover:bg-surface-hover"
                 onClick={() => {
                   const light = ann.traffic_lights[li]
                   const t0 = parseTs(light.visibility_start_timestamp)
@@ -1194,7 +1194,7 @@ export function RightPanel() {
                 }}
               >+ Add Containment</button>
               <button
-                className="w-full mt-1 px-3 py-1.5 text-xs bg-[#1a1a35] text-white rounded-lg border border-[#2a2a50] hover:bg-[#2a2a50]"
+                className="w-full mt-1 px-3 py-1.5 text-xs bg-surface-overlay text-white rounded-lg border border-border-default hover:bg-surface-hover"
                 onClick={() => {
                   const light = ann.traffic_lights[li]
                   const t0 = parseTs(light.visibility_start_timestamp)
@@ -1223,7 +1223,7 @@ export function RightPanel() {
           )}
           {isSignal && (
             <div className="space-y-2 pl-2 border-l-2 border-purple-500/30">
-              <span className="text-[9px] text-[#556] font-bold uppercase">Signaling Details</span>
+              <span className="text-[9px] text-text-muted font-bold uppercase">Signaling Details</span>
               <SelectField label="Source" value={(sd.source as string) || ''} options={SIGNAL_SOURCES} onChange={v => updateField('signal_source', v)} allowEmpty highlight={missing('signal source')} />
               {sd.source === 'Other' && <TextField label="Other Source" value={(sd.other_source_description as string) || ''} onChange={v => updateField('signal_other_source', v)} placeholder="Describe the source" highlight={missing('other source description')} />}
               <SelectField label="Intent" value={(sd.intent as string) || ''} options={SIGNAL_INTENTS} onChange={v => updateField('signal_intent', v)} allowEmpty highlight={missing('signal intent')} />
@@ -1327,7 +1327,7 @@ export function RightPanel() {
           )}
           {isSignal && (
             <div className="space-y-2 pl-2 border-l-2 border-purple-500/30">
-              <span className="text-[9px] text-[#556] font-bold uppercase">Signaling Details</span>
+              <span className="text-[9px] text-text-muted font-bold uppercase">Signaling Details</span>
               <SelectField label="Source" value={(sd.source as string) || ''} options={SIGNAL_SOURCES} onChange={v => updateField('signal_source', v)} allowEmpty highlight={missing('signal source')} />
               {sd.source === 'Other' && <TextField label="Other Source" value={(sd.other_source_description as string) || ''} onChange={v => updateField('signal_other_source', v)} placeholder="Describe the source" highlight={missing('other source description')} />}
               <SelectField label="Intent" value={(sd.intent as string) || ''} options={SIGNAL_INTENTS} onChange={v => updateField('signal_intent', v)} allowEmpty highlight={missing('signal intent')} />
@@ -1423,10 +1423,10 @@ export function RightPanel() {
 
   // ================= JSX =================
   return (
-    <aside className="h-full flex flex-col bg-[#111128] overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
+    <aside className="h-full flex flex-col bg-surface-raised overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
 
       {/* Status + Save */}
-      <div className="p-4 border-b border-[#1e1e38]">
+      <div className="p-4 border-b border-border-subtle">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556]">Status</h3>
           <span className={`px-3 py-1 rounded-full text-[11px] font-semibold border ${statusColor}`}>{status === 'needs_revision' ? 'revision requested' : status}</span>
@@ -1447,9 +1447,9 @@ export function RightPanel() {
 
       {/* Relevancy */}
       {ann && (
-        <div className="p-4 border-b border-[#1e1e38]">
+        <div className="p-4 border-b border-border-subtle">
           <h3 className={`text-[11px] font-bold uppercase tracking-widest mb-2 ${ann.eventful == null ? 'text-red-400' : 'text-[#556]'}`}>Relevancy</h3>
-          <p className="text-[11px] text-[#888] mb-2">Does the clip show eventful, non-nominal driving?</p>
+          <p className="text-[11px] text-text-muted mb-2">Does the clip show eventful, non-nominal driving?</p>
           <div className="flex gap-2">
             {[
               { val: true, label: 'Yes' },
@@ -1464,7 +1464,7 @@ export function RightPanel() {
                   persist(u)
                 }}
                   className={`flex-1 px-3 py-2 rounded-xl text-xs font-medium transition-all border ${
-                    active ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-[#1a1a35] text-[#555] border-[#2a2a50] hover:border-[#3a3a60]'
+                    active ? 'bg-accent/20 text-blue-400 border-blue-500/40' : 'bg-surface-overlay text-text-muted border-border-default hover:border-border-strong'
                   }`}>
                   {opt.label}
                 </button>
@@ -1475,18 +1475,18 @@ export function RightPanel() {
       )}
 
       {/* Brief Description */}
-      <div className="p-4 border-b border-[#1e1e38]">
+      <div className="p-4 border-b border-border-subtle">
         <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-2 flex items-center gap-1.5"><FileText className="w-3.5 h-3.5" /> Description</h3>
         {briefEdit !== null ? (
-          <textarea value={briefEdit} onChange={e => setBriefEdit(e.target.value)} onBlur={handleBriefBlur} autoFocus className="w-full h-16 px-3 py-2 text-sm bg-[#1a1a35] text-[#ddd] rounded-xl border border-[#2a2a50] focus:border-blue-500/50 focus:outline-none resize-none" />
+          <textarea value={briefEdit} onChange={e => setBriefEdit(e.target.value)} onBlur={handleBriefBlur} autoFocus className="w-full h-16 px-3 py-2 text-sm bg-surface-overlay text-text-primary rounded-xl border border-border-default focus:border-blue-500/50 focus:outline-none resize-none" />
         ) : (
-          <p className="text-sm text-[#999] cursor-pointer hover:text-white transition-colors min-h-[2rem] px-3 py-2 bg-[#1a1a35] rounded-xl border border-[#1e1e38]" onClick={() => setBriefEdit(ann?.brief_description ?? '')}>{ann?.brief_description || 'Click to add...'}</p>
+          <p className="text-sm text-text-muted cursor-pointer hover:text-white transition-colors min-h-[2rem] px-3 py-2 bg-surface-overlay rounded-xl border border-border-subtle" onClick={() => setBriefEdit(ann?.brief_description ?? '')}>{ann?.brief_description || 'Click to add...'}</p>
         )}
       </div>
 
       {/* Ego Driving Judgment */}
       {ann && (
-        <div className="p-4 border-b border-[#1e1e38]">
+        <div className="p-4 border-b border-border-subtle">
           <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-2">Ego Driving Judgment</h3>
           <div className="flex gap-2">
             {[
@@ -1504,7 +1504,7 @@ export function RightPanel() {
                   persist(u)
                 }}
                   className={`flex-1 flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl text-xs font-medium transition-all border ${
-                    active ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : 'bg-[#1a1a35] text-[#555] border-[#2a2a50] hover:border-[#3a3a60]'
+                    active ? 'bg-accent/20 text-blue-400 border-blue-500/40' : 'bg-surface-overlay text-text-muted border-border-default hover:border-border-strong'
                   }`}>
                   <span className="text-lg">{opt.icon}</span>
                   <span>{opt.label}</span>
@@ -1517,7 +1517,7 @@ export function RightPanel() {
 
       {ann?.eventful !== false && <>
       {/* Selected Segment — Properties */}
-      <div className="p-5 border-b border-[#1e1e38]">
+      <div className="p-5 border-b border-border-subtle">
         <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-3">Properties</h3>
         {(sel || selectedPath === 'ego_main') ? (
           <div className="flex flex-col gap-1">
@@ -1538,7 +1538,7 @@ export function RightPanel() {
 
             {sel && <>
             {/* Time inputs (common to all) */}
-            <div className="flex gap-3 pt-4 border-t border-[#1e1e38]">
+            <div className="flex gap-3 pt-4 border-t border-border-subtle">
               <label className="flex-1">
                 <span className={labelCls}>Start (s)</span>
                 <input type="number" step={0.1} value={sel.t0.toFixed(1)} onChange={e => handleTimeChange(+e.target.value, sel.t1)} className={inputCls} />
@@ -1552,7 +1552,7 @@ export function RightPanel() {
             {/* Illegal toggle */}
             {canHaveIllegal && (
               <div className="pt-2">
-                <button onClick={handleToggleIllegal} className={`w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl text-sm font-semibold transition-all shadow-sm ${sel.illegal ? 'bg-red-500/20 text-red-400 border border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.2)]' : 'bg-[#1a1a35] text-[#666] border border-[#2a2a50] hover:border-red-500/30 hover:text-red-400'}`}>
+                <button onClick={handleToggleIllegal} className={`w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl text-sm font-semibold transition-all shadow-sm ${sel.illegal ? 'bg-red-500/20 text-red-400 border border-red-500/40 shadow-[0_0_12px_rgba(239,68,68,0.2)]' : 'bg-surface-overlay text-text-muted border border-border-default hover:border-red-500/30 hover:text-red-400'}`}>
                   <AlertTriangle className="w-5 h-5" /> {sel.illegal ? 'ILLEGAL — click to remove' : 'Mark as Illegal'}
                 </button>
               </div>
@@ -1560,8 +1560,8 @@ export function RightPanel() {
 
             {/* Because_of (causality) */}
             {canHaveBecause && (
-              <div className="pt-3 border-t border-[#1e1e38]">
-                <span className="text-[11px] text-[#556] font-bold uppercase tracking-wider block mb-2">Because of (causality)</span>
+              <div className="pt-3 border-t border-border-subtle">
+                <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider block mb-2">Because of (causality)</span>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {(sel.because_of || []).map((c, i) => (
                     <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] bg-red-500/15 text-red-400 border border-red-500/20">
@@ -1569,7 +1569,7 @@ export function RightPanel() {
                       <button onClick={() => handleRemoveBecause(c)} className="hover:text-white"><X className="w-3.5 h-3.5" /></button>
                     </span>
                   ))}
-                  {!(sel.because_of?.length) && <span className="text-[11px] text-[#444] italic">Use the dropdown below or Ctrl+click on the timeline.</span>}
+                  {!(sel.because_of?.length) && <span className="text-[11px] text-text-disabled italic">Use the dropdown below or Ctrl+click on the timeline.</span>}
                 </div>
                 {(() => {
                   const existing = new Set(sel.because_of || [])
@@ -1681,7 +1681,7 @@ export function RightPanel() {
                               }
                             }}
                             placeholder="Short description…"
-                            className="flex-1 bg-[#1a1a35] border border-[#2a2a50] rounded-lg px-3 py-1.5 text-[12px] text-white placeholder-[#444] focus:outline-none focus:border-red-500/50"
+                            className="flex-1 bg-surface-overlay border border-border-default rounded-lg px-3 py-1.5 text-[12px] text-white placeholder-[#444] focus:outline-none focus:border-red-500/50"
                           />
                           <button
                             onClick={() => {
@@ -1694,7 +1694,7 @@ export function RightPanel() {
                           >Add</button>
                           <button
                             onClick={() => { setBecauseOtherMode(false); setBecauseOtherText('') }}
-                            className="px-2 py-1.5 rounded-lg bg-[#1a1a35] text-[#666] border border-[#2a2a50] text-[12px] hover:text-white"
+                            className="px-2 py-1.5 rounded-lg bg-surface-overlay text-text-muted border border-border-default text-[12px] hover:text-white"
                           ><X className="w-3 h-3" /></button>
                         </div>
                       )}
@@ -1706,40 +1706,40 @@ export function RightPanel() {
 
             {/* Link_to (Shift+click on timeline to add) */}
             {canHaveBecause && (
-              <div className="pt-3 border-t border-[#1e1e38]">
-                <span className="text-[11px] text-[#556] font-bold uppercase tracking-wider block mb-2">Link To <span className="font-normal normal-case">(optional)</span></span>
+              <div className="pt-3 border-t border-border-subtle">
+                <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider block mb-2">Link To <span className="font-normal normal-case">(optional)</span></span>
                 <AgentIdPicker label="Link To (Shift+click on timeline)" value={(selMeta.link_to as string[]) || []}
                   onChange={v => updateField('link_to', v)} ann={ann} />
               </div>
             )}
 
             {/* Delete + Raw attrs — well separated */}
-            <div className="pt-5 mt-2 border-t border-[#1e1e38] space-y-3">
+            <div className="pt-5 mt-2 border-t border-border-subtle space-y-3">
               <div className="flex items-center gap-3">
                 <button onClick={handleDelete} className="flex-1 flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl text-sm font-semibold bg-red-600/10 text-red-400 border border-red-600/20 hover:bg-red-600/20 hover:border-red-600/40 transition-all shadow-sm">
                   <Trash2 className="w-5 h-5" /> Delete Segment
                 </button>
-                <button onClick={() => setAttrsOpen(!attrsOpen)} className="flex items-center gap-1.5 px-4 py-3.5 rounded-2xl text-[11px] text-[#556] hover:text-[#888] bg-[#1a1a35] border border-[#2a2a50] transition-all">
+                <button onClick={() => setAttrsOpen(!attrsOpen)} className="flex items-center gap-1.5 px-4 py-3.5 rounded-2xl text-[11px] text-text-muted hover:text-text-secondary bg-surface-overlay border border-border-default transition-all">
                   {attrsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />} Raw
                 </button>
               </div>
-              {attrsOpen && <pre className="text-[9px] text-[#666] bg-[#0e0e20] p-3 rounded-xl overflow-auto max-h-32">{JSON.stringify(sel.meta, null, 2)}</pre>}
+              {attrsOpen && <pre className="text-[9px] text-text-muted bg-surface-sunken p-3 rounded-xl overflow-auto max-h-32">{JSON.stringify(sel.meta, null, 2)}</pre>}
             </div>
             </>}
           </div>
         ) : (
-          <p className="text-[11px] text-[#444] italic">Click a segment on the timeline</p>
+          <p className="text-[11px] text-text-disabled italic">Click a segment on the timeline</p>
         )}
       </div>
 
       {/* Coverage */}
-      <div className="p-4 border-b border-[#1e1e38]">
+      <div className="p-4 border-b border-border-subtle">
         <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-2 flex items-center gap-1.5"><BarChart3 className="w-3.5 h-3.5" /> Coverage</h3>
         <div className="space-y-2">
-          {[{ label: 'Ego Actions', pct: egoActCov, color: 'bg-blue-500' }, { label: 'Ego Containment', pct: egoContCov, color: 'bg-cyan-500' }].map(m => (
+          {[{ label: 'Ego Actions', pct: egoActCov, color: 'bg-accent' }, { label: 'Ego Containment', pct: egoContCov, color: 'bg-cyan-500' }].map(m => (
             <div key={m.label}>
-              <div className="flex justify-between text-[10px] text-[#666] mb-1"><span>{m.label}</span><span>{m.pct.toFixed(0)}%</span></div>
-              <div className="h-2 bg-[#1a1a35] rounded-full overflow-hidden"><div className={`h-full ${m.color} rounded-full transition-all`} style={{ width: `${Math.min(100, m.pct)}%` }} /></div>
+              <div className="flex justify-between text-[10px] text-text-muted mb-1"><span>{m.label}</span><span>{m.pct.toFixed(0)}%</span></div>
+              <div className="h-2 bg-surface-overlay rounded-full overflow-hidden"><div className={`h-full ${m.color} rounded-full transition-all`} style={{ width: `${Math.min(100, m.pct)}%` }} /></div>
             </div>
           ))}
         </div>
@@ -1747,15 +1747,15 @@ export function RightPanel() {
 
       {/* Causality */}
       {causal.length > 0 && (
-        <div className="p-4 border-b border-[#1e1e38]">
+        <div className="p-4 border-b border-border-subtle">
           <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#556] mb-2 flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Causality</h3>
           <div className="space-y-1 max-h-28 overflow-y-auto">
             {causal.map((c, i) => (
-              <button key={i} onClick={() => selectPath(c.id)} className="w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] hover:bg-[#1a1a35] transition-colors">
-                <span className={`w-1.5 h-1.5 rounded-full ${c.track === 'ego_act' ? 'bg-blue-500' : 'bg-purple-500'}`} />
-                <span className="text-[#ccc] truncate">{c.label}</span>
-                <span className="text-[#444]">-&gt;</span>
-                <span className="text-[#999] truncate">{c.cause}</span>
+              <button key={i} onClick={() => selectPath(c.id)} className="w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] hover:bg-surface-overlay transition-colors">
+                <span className={`w-1.5 h-1.5 rounded-full ${c.track === 'ego_act' ? 'bg-accent' : 'bg-purple-500'}`} />
+                <span className="text-text-secondary truncate">{c.label}</span>
+                <span className="text-text-disabled">-&gt;</span>
+                <span className="text-text-muted truncate">{c.cause}</span>
               </button>
             ))}
           </div>
@@ -1768,15 +1768,15 @@ export function RightPanel() {
 
       {/* Bottom actions */}
       <div>
-      <div className="p-5 border-t border-[#1e1e38] space-y-3">
-        <button onClick={handleExport} disabled={!selectedClipId || !bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-[#1a1a35] text-[#999] border border-[#2a2a50] hover:bg-[#222245] hover:text-white text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
+      <div className="p-5 border-t border-border-subtle space-y-3">
+        <button onClick={handleExport} disabled={!selectedClipId || !bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-surface-overlay text-text-muted border border-border-default hover:bg-surface-hover hover:text-white text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
           <Download className="w-5 h-5" /> Export JSON
         </button>
-        <button onClick={() => loadJsonRef.current?.click()} disabled={!bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-[#1a1a35] text-[#999] border border-[#2a2a50] hover:bg-[#222245] hover:text-white text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
+        <button onClick={() => loadJsonRef.current?.click()} disabled={!bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-surface-overlay text-text-muted border border-border-default hover:bg-surface-hover hover:text-white text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
           <Upload className="w-5 h-5" /> Load JSON
         </button>
         <input ref={loadJsonRef} type="file" accept=".json" onChange={loadJson} className="hidden" />
-        <button onClick={handleClear} disabled={!selectedClipId || !bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-[#1a1a35] text-[#555] border border-[#2a2a50] hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
+        <button onClick={handleClear} disabled={!selectedClipId || !bundle} className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-surface-overlay text-text-muted border border-border-default hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 text-sm font-semibold transition-all disabled:opacity-30 shadow-sm">
           <Trash2 className="w-5 h-5" /> Clear All Annotations
         </button>
       </div>

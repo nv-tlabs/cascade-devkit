@@ -59,21 +59,21 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex flex-col h-full bg-[#13132a] border-r border-[#2a2a45] overflow-x-hidden overflow-y-hidden">
-      <header className="shrink-0 p-3 border-b border-[#2a2a45]">
-        <h1 className="text-[#e0e0e0] font-semibold text-sm">causal-av-annotator</h1>
-        <p className="text-[10px] text-[#8888aa] mt-0.5">{clips.length} clip{clips.length === 1 ? '' : 's'}</p>
+    <aside className="flex flex-col h-full bg-surface-raised border-r border-border-default overflow-x-hidden overflow-y-hidden">
+      <header className="shrink-0 p-3 border-b border-border-default">
+        <h1 className="text-text-primary font-semibold text-sm">causal-av-annotator</h1>
+        <p className="text-[10px] text-text-muted mt-0.5">{clips.length} clip{clips.length === 1 ? '' : 's'}</p>
       </header>
 
-      <div className="px-3 py-2 border-b border-[#2a2a45]">
+      <div className="px-3 py-2 border-b border-border-default">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#666] pointer-events-none" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted pointer-events-none" />
           <input
             type="text"
             placeholder="Search clips..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full py-1.5 pl-8 pr-2 text-xs bg-[#1e1e3a] border border-[#2a2a45] rounded text-[#e0e0e0] placeholder:text-[#666] focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full py-1.5 pl-8 pr-2 text-xs bg-surface-overlay border border-border-default rounded text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
       </div>
@@ -91,13 +91,13 @@ export function Sidebar() {
                 onClick={() => requestSelect(c.clip_id)}
                 className={`w-full text-left p-2 rounded transition-colors flex items-center gap-2.5 ${
                   selected
-                    ? 'bg-[#2a2a50] border-l-[3px] border-l-blue-500'
-                    : 'bg-transparent border-l-[3px] border-l-transparent hover:bg-[#222245]'
+                    ? 'bg-surface-hover border-l-[3px] border-l-blue-500'
+                    : 'bg-transparent border-l-[3px] border-l-transparent hover:bg-surface-hover'
                 }`}
               >
-                <Icon className="w-4 h-4 text-[#666] flex-shrink-0" />
+                <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <code className="block text-[11px] font-mono text-[#e0e0e0] truncate">
+                  <code className="block text-[11px] font-mono text-text-primary truncate">
                     {c.clip_id.length > 16 ? c.clip_id.slice(0, 8) + '…' : c.clip_id}
                   </code>
                 </div>
@@ -107,17 +107,17 @@ export function Sidebar() {
           )
         })}
         {filtered.length === 0 && (
-          <li className="text-[11px] text-[#666] italic px-2 py-3">No clips match.</li>
+          <li className="text-[11px] text-text-muted italic px-2 py-3">No clips match.</li>
         )}
       </ul>
 
       <Dialog.Root open={pendingClipId !== null} onOpenChange={(open) => { if (!open) setPendingClipId(null) }}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[400px] max-w-[90vw] rounded-2xl border border-[#2a2a50] bg-[#13132a] p-5 shadow-2xl">
-            <Dialog.Title className="text-sm font-semibold text-[#e0e0e0]">Unsaved changes</Dialog.Title>
-            <Dialog.Description className="mt-2 text-xs text-[#8888aa]">
-              Save changes to <code className="text-[#e0e0e0]">{currentClipId ?? '...'}</code> before switching?
+          <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[400px] max-w-[90vw] rounded-2xl border border-border-default bg-surface-raised p-5 shadow-2xl">
+            <Dialog.Title className="text-sm font-semibold text-text-primary">Unsaved changes</Dialog.Title>
+            <Dialog.Description className="mt-2 text-xs text-text-muted">
+              Save changes to <code className="text-text-primary">{currentClipId ?? '...'}</code> before switching?
             </Dialog.Description>
             {saveError ? (
               <p className="mt-3 text-[11px] text-red-300/90 italic">
@@ -127,7 +127,7 @@ export function Sidebar() {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setPendingClipId(null)}
-                className="px-3 py-1.5 rounded-lg text-xs bg-[#1a1a35] text-[#8888aa] border border-[#2a2a50] hover:text-[#e0e0e0]"
+                className="px-3 py-1.5 rounded-lg text-xs bg-surface-overlay text-text-muted border border-border-default hover:text-text-primary"
               >
                 Cancel
               </button>
@@ -141,7 +141,7 @@ export function Sidebar() {
                 onClick={confirmSaveAndSwitch}
                 disabled={saveDisabled || savingInDialog}
                 title={saveDisabled ? 'Unlock the bundle first to enable Save' : 'Save then switch'}
-                className="px-3 py-1.5 rounded-lg text-xs bg-blue-500/20 text-blue-300 border border-blue-500/40 hover:bg-blue-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 rounded-lg text-xs bg-accent/20 text-blue-300 border border-blue-500/40 hover:bg-accent/30 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {savingInDialog ? 'Saving…' : 'Save'}
               </button>

@@ -701,7 +701,7 @@ export function VideoPlayer() {
   }, [])
 
   if (!selectedClipId) {
-    return <div className="h-full flex items-center justify-center bg-[#0a0a18] text-[#444] text-base">Select a video from the sidebar</div>
+    return <div className="h-full flex items-center justify-center bg-surface-sunken text-text-disabled text-base">Select a video from the sidebar</div>
   }
 
   const hasEntitySelected = highlightedEntity != null
@@ -716,7 +716,7 @@ export function VideoPlayer() {
           <video ref={videoRef} className="max-w-full max-h-full object-contain" onLoadedMetadata={onMeta} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onError={onVideoError} playsInline preload="auto" />
           {videoError ? (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="max-w-md mx-4 px-4 py-3 rounded bg-[#1a0a0a]/95 border border-red-900/60 text-sm text-red-200 text-center pointer-events-auto">
+              <div className="max-w-md mx-4 px-4 py-3 rounded bg-danger-bg border border-danger/40 text-sm text-danger text-center pointer-events-auto">
                 <div className="font-semibold text-red-300 mb-1">Video unavailable</div>
                 <div className="text-xs text-red-200/90 whitespace-pre-wrap">{videoError}</div>
               </div>
@@ -731,29 +731,29 @@ export function VideoPlayer() {
         {zoomLevel > 1 ? (
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-10">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-[#aaa] bg-[#1a1a2e]/90 rounded font-mono" style={{ padding: '4px 8px' }}>{Math.round(zoomLevel * 100)}%</span>
+              <span className="text-xs text-text-secondary bg-surface-overlay/90 rounded font-mono" style={{ padding: '4px 8px' }}>{Math.round(zoomLevel * 100)}%</span>
               <button onClick={resetZoom} title="Reset zoom (fit)"
-                className="w-7 h-7 flex items-center justify-center rounded-lg bg-[#1a1a2e]/90 text-[#aaa] hover:text-white hover:bg-[#2a2a4a] transition-all">
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-surface-overlay/90 text-text-secondary hover:text-white hover:bg-surface-hover transition-all">
                 <Maximize className="w-3.5 h-3.5" />
               </button>
             </div>
-            <span className="text-[10px] text-[#666] bg-[#1a1a2e]/70 px-2 py-1 rounded opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Drag to pan</span>
+            <span className="text-[10px] text-text-muted bg-surface-overlay/70 px-2 py-1 rounded opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Drag to pan</span>
           </div>
         ) : (
           <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1 pointer-events-none">
-            <span className="text-[10px] text-[#aaa] bg-[#1a1a2e]/95 px-2 py-1 rounded opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Scroll to zoom</span>
+            <span className="text-[10px] text-text-secondary bg-surface-overlay/95 px-2 py-1 rounded opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">Scroll to zoom</span>
             {keypointsVisible ? (
-              <div className="text-[10px] bg-[#1a1a2e]/95 px-2 py-1 rounded flex flex-col items-end gap-0.5 opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">
-                <span className="text-[#ccc] font-medium">Keypoints</span>
+              <div className="text-[10px] bg-surface-overlay/95 px-2 py-1 rounded flex flex-col items-end gap-0.5 opacity-0 group-hover/video:opacity-100 transition-opacity duration-300">
+                <span className="text-text-secondary font-medium">Keypoints</span>
                 {!hasEntitySelected ? (
-                  <span className="text-[#bbb]">select an entity in the timeline</span>
+                  <span className="text-text-secondary">select an entity in the timeline</span>
                 ) : selectedKeypointCount === 0 ? (
                   <span className="text-amber-300">click video to place</span>
                 ) : (
                   <>
-                    <span className="text-[#bbb]">click to add</span>
-                    <span className="text-[#bbb]">drag to move</span>
-                    <span className="text-[#bbb]">right-click to delete</span>
+                    <span className="text-text-secondary">click to add</span>
+                    <span className="text-text-secondary">drag to move</span>
+                    <span className="text-text-secondary">right-click to delete</span>
                   </>
                 )}
               </div>
@@ -762,45 +762,45 @@ export function VideoPlayer() {
         )}
       </div>
 
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-[#111128] border-t border-[#1e1e38]">
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-surface-raised border-t border-border-subtle">
         <div className="flex items-center gap-2 flex-1 basis-0 justify-start">
-          <button onClick={toggle} className="w-9 h-9 flex items-center justify-center rounded-lg bg-blue-500 text-white hover:bg-blue-400 transition-all shadow-md">
+          <button onClick={toggle} className="w-9 h-9 flex items-center justify-center rounded-lg bg-accent text-white hover:bg-blue-400 transition-all shadow-md">
             {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
           </button>
-          <div className="flex items-center gap-1 bg-[#1e1e3a] rounded-lg p-1">
-            <button onClick={() => jump(-1)} title="Jump back 1s" className="w-8 h-8 flex items-center justify-center rounded-lg text-[#888] hover:text-white hover:bg-[#2a2a4a] transition-all">
+          <div className="flex items-center gap-1 bg-surface-overlay rounded-lg p-1">
+            <button onClick={() => jump(-1)} title="Jump back 1s" className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-white hover:bg-surface-hover transition-all">
               <ChevronsLeft className="w-4 h-4" />
             </button>
-            <button onClick={() => step(-1)} title="Step back 1 frame" className="w-8 h-8 flex items-center justify-center rounded-lg text-[#888] hover:text-white hover:bg-[#2a2a4a] transition-all">
+            <button onClick={() => step(-1)} title="Step back 1 frame" className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-white hover:bg-surface-hover transition-all">
               <SkipBack className="w-4 h-4" />
             </button>
-            <button onClick={() => step(1)} title="Step forward 1 frame" className="w-8 h-8 flex items-center justify-center rounded-lg text-[#888] hover:text-white hover:bg-[#2a2a4a] transition-all">
+            <button onClick={() => step(1)} title="Step forward 1 frame" className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-white hover:bg-surface-hover transition-all">
               <SkipForward className="w-4 h-4" />
             </button>
-            <button onClick={() => jump(1)} title="Jump forward 1s" className="w-8 h-8 flex items-center justify-center rounded-lg text-[#888] hover:text-white hover:bg-[#2a2a4a] transition-all">
+            <button onClick={() => jump(1)} title="Jump forward 1s" className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-white hover:bg-surface-hover transition-all">
               <ChevronsRight className="w-4 h-4" />
             </button>
           </div>
-          <div className="flex items-center gap-1 bg-[#1e1e3a] rounded-lg p-1 ml-2">
+          <div className="flex items-center gap-1 bg-surface-overlay rounded-lg p-1 ml-2">
             {[0.5, 1, 2, 3].map(s => (
               <button key={s} onClick={() => setSpeed(s)}
-                className={`w-8 h-8 flex items-center justify-center text-xs font-semibold rounded-lg transition-all tabular-nums ${speed === s ? 'bg-[#2a2a4a] text-white' : 'text-[#888] hover:text-white'}`}>
+                className={`w-8 h-8 flex items-center justify-center text-xs font-semibold rounded-lg transition-all tabular-nums ${speed === s ? 'bg-surface-hover text-white' : 'text-text-muted hover:text-white'}`}>
                 {s}x
               </button>
             ))}
           </div>
         </div>
         <div className="flex-1 flex justify-center">
-          <span className="text-[#888] text-xs font-mono tabular-nums">{fmt(playheadTime)} / {fmt(duration)}</span>
+          <span className="text-text-muted text-xs font-mono tabular-nums">{fmt(playheadTime)} / {fmt(duration)}</span>
         </div>
         <div className="flex items-center gap-2 flex-1 basis-0 justify-end">
-          <div className="flex items-center gap-1 bg-[#1e1e3a] rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-surface-overlay rounded-lg p-1">
             <button onClick={toggleKeypointsVisible} title={keypointsVisible ? 'Hide keypoints (B)' : 'Show keypoints (B)'}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${keypointsVisible ? 'bg-[#2a2a4a] text-blue-400' : 'text-[#888] hover:text-white'}`}>
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${keypointsVisible ? 'bg-surface-hover text-blue-400' : 'text-text-muted hover:text-white'}`}>
               <MapPin className="w-4 h-4" />
             </button>
           </div>
-          <div className="flex items-center gap-1 bg-[#1e1e3a] rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-surface-overlay rounded-lg p-1">
             {([
               { key: 'becauseOf',    label: 'B', color: '#f97316', title: 'Because Of' },
               { key: 'linkTo',       label: 'L', color: '#60a5fa', title: 'Link To' },
@@ -809,7 +809,7 @@ export function VideoPlayer() {
               { key: 'actionTarget', label: 'T', color: '#10b981', title: 'Action Target' },
             ] as const).map(({ key, label, color, title }) => (
               <button key={key} onClick={() => toggleArrowType(key)} title={`${arrowTypes[key] ? 'Hide' : 'Show'} ${title} arrows`}
-                className={`w-8 h-8 flex items-center justify-center rounded-lg text-[18px] font-bold transition-all leading-none ${arrowTypes[key] ? 'bg-[#2a2a4a]' : 'hover:text-white'}`}
+                className={`w-8 h-8 flex items-center justify-center rounded-lg text-[18px] font-bold transition-all leading-none ${arrowTypes[key] ? 'bg-surface-hover' : 'hover:text-white'}`}
                 style={{ color: arrowTypes[key] ? color : '#888' }}>
                 {label}
               </button>

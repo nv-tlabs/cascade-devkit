@@ -108,12 +108,12 @@ export default function App() {
   }, [dirty])
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-[#0c0c1a]">
+    <div className="h-screen w-screen flex overflow-hidden bg-surface-sunken">
       <div className="w-[240px] flex-shrink-0 flex flex-col">
         <Sidebar />
       </div>
 
-      <div ref={containerElRef} className="flex-1 flex flex-col min-w-0 overflow-hidden border-x border-[#1e1e38]">
+      <div ref={containerElRef} className="flex-1 flex flex-col min-w-0 overflow-hidden border-x border-border-subtle">
         <LockBar />
         <div
           className="flex-shrink-0"
@@ -123,10 +123,8 @@ export default function App() {
         </div>
         <div
           onMouseDown={onSplitterMouseDown}
-          className="flex-shrink-0 cursor-row-resize"
-          style={{ height: 6, background: '#1e1e38' }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(59,130,246,0.4)')}
-          onMouseLeave={e => (e.currentTarget.style.background = '#1e1e38')}
+          className="flex-shrink-0 cursor-row-resize bg-border-subtle hover:bg-accent/40 transition-colors"
+          style={{ height: 6 }}
         />
         <div className="flex-1 min-h-[180px] overflow-hidden">
           <Timeline />

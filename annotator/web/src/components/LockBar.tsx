@@ -38,7 +38,7 @@ export function LockBar() {
         </span>
         <button
           onClick={() => setConfirming(false)}
-          className="px-2 py-0.5 rounded text-[10px] bg-[#1a1a35] text-[#aaa] border border-[#2a2a50] hover:text-white transition-colors"
+          className="px-2 py-0.5 rounded text-[10px] bg-surface-overlay text-text-secondary border border-border-default hover:text-white transition-colors"
         >
           Cancel
         </button>
@@ -55,11 +55,11 @@ export function LockBar() {
   // --- Server read-only ---
   if (serverReadOnly) {
     return (
-      <div className="flex-shrink-0 h-9 px-3 flex items-center gap-2 border-b border-[#1e1e38] bg-[#13132a] text-[#8888aa]">
+      <div className="flex-shrink-0 h-9 px-3 flex items-center gap-2 border-b border-border-subtle bg-surface-raised text-text-muted">
         <Lock className="w-3.5 h-3.5" />
         <span className="text-[11px] font-medium">Locked — server is read-only</span>
         {filePath && (
-          <code className="text-[10px] font-mono text-[#666] truncate ml-1">· {filePath}</code>
+          <code className="text-[10px] font-mono text-text-muted truncate ml-1">· {filePath}</code>
         )}
         {dirty && <DirtyIndicator />}
         <div className="flex-1" />
@@ -72,11 +72,11 @@ export function LockBar() {
   // --- Locked (default) ---
   if (locked) {
     return (
-      <div className="flex-shrink-0 h-9 px-3 flex items-center gap-2 border-b border-[#1e1e38] bg-[#13132a] text-[#8888aa]">
+      <div className="flex-shrink-0 h-9 px-3 flex items-center gap-2 border-b border-border-subtle bg-surface-raised text-text-muted">
         <Lock className="w-3.5 h-3.5" />
         <span className="text-[11px] font-medium">Locked — read-only</span>
         {filePath && (
-          <code className="text-[10px] font-mono text-[#666] truncate ml-1">· {filePath}</code>
+          <code className="text-[10px] font-mono text-text-muted truncate ml-1">· {filePath}</code>
         )}
         {dirty && <DirtyIndicator />}
         <div className="flex-1" />
@@ -106,7 +106,7 @@ export function LockBar() {
       {saveError && <SaveError message={saveError} onDismiss={() => setSaveError(null)} />}
       <button
         onClick={() => lock()}
-        className="px-2.5 py-0.5 rounded text-[10px] bg-[#1a1a35] text-[#aaa] border border-[#2a2a50] hover:bg-[#252550] hover:text-white transition-colors font-semibold"
+        className="px-2.5 py-0.5 rounded text-[10px] bg-surface-overlay text-text-secondary border border-border-default hover:bg-surface-hover hover:text-white transition-colors font-semibold"
       >
         Lock
       </button>

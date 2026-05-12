@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, GripVertical } from 'lucide-react'
 import { useStore } from '../lib/store'
+import { readEntityCssVar } from '../lib/timeline-utils'
 import type { TrackId } from '../lib/types'
 
 interface LabelCategory {
   trackId: TrackId
   name: string
-  color: string
+  // CSS variable name referenced from index.css's @theme block.
+  colorVar: string
+  colorFallback: string
   labels: string[]
 }
 
@@ -14,13 +17,15 @@ const LABEL_CATEGORIES: LabelCategory[] = [
   {
     trackId: 'light',
     name: 'Traffic Lights',
-    color: '#ef4444',
+    colorVar: '--color-entity-light',
+    colorFallback: '#ef4444',
     labels: ['TrafficLight'],
   },
   {
     trackId: 'env',
     name: 'Environments',
-    color: '#22c55e',
+    colorVar: '--color-entity-env',
+    colorFallback: '#22c55e',
     labels: [
       'oxd:Road', 'fst:LaneMerge', 'fst:LaneFork',
       'oxd:TIntersection', 'oxd:YIntersection', 'oxd:CrossRoad',
@@ -34,7 +39,8 @@ const LABEL_CATEGORIES: LabelCategory[] = [
   {
     trackId: 'ego_act',
     name: 'Ego Actions',
-    color: '#3b82f6',
+    colorVar: '--color-entity-ego',
+    colorFallback: '#3b82f6',
     labels: [
       'oxd:Stop', 'oxd:NotMove', 'fst:Enter', 'fst:Exit',
       'fst:Creep', 'fst:Yield', 'oxd:Decelerate',
@@ -48,7 +54,8 @@ const LABEL_CATEGORIES: LabelCategory[] = [
   {
     trackId: 'obj',
     name: 'Objects',
-    color: '#f59e0b',
+    colorVar: '--color-entity-object',
+    colorFallback: '#f59e0b',
     labels: [
       'fst:StopSign', 'fst:YieldSign', 'fst:SpeedLimitSign',
       'Merge ahead', 'Adjacent lanes ahead', 'Do not enter',
@@ -60,7 +67,8 @@ const LABEL_CATEGORIES: LabelCategory[] = [
   {
     trackId: 'agent_pose',
     name: 'Agent Types',
-    color: '#a855f7',
+    colorVar: '--color-entity-agent',
+    colorFallback: '#a855f7',
     labels: [
       'oxd:Car', 'oxd:Truck', 'PublicBus',
       'oxd:EmergencyVehicle', 'Heavy-duty vehicle',
@@ -72,7 +80,8 @@ const LABEL_CATEGORIES: LabelCategory[] = [
   {
     trackId: 'agent_act',
     name: 'Agent Actions',
-    color: '#c084fc',
+    colorVar: '--color-entity-agent-2',
+    colorFallback: '#c084fc',
     labels: [
       'fst:Park', 'oxd:Stop', 'oxd:NotMove',
       'fst:Yield', 'oxd:Decelerate',
@@ -87,7 +96,17 @@ const DRAG_DATA_KEY = 'application/x-silav-label'
 
 export function LabelPalette() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const { selectedClipId } = useStore()
+  const { selectedClipId, effectiveTheme } = useStore()
+  // Resolve entity colors from CSS variables, memoized by theme so the
+  // palette flips atomically when the user changes themes.
+  const categoryColors = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const cat of LABEL_CATEGORIES) {
+      map[cat.name] = readEntityCssVar(cat.colorVar, cat.colorFallback)
+    }
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveTheme])
 
   const toggleCategory = (name: string) => {
     setExpanded((prev) => ({ ...prev, [name]: !prev[name] }))
@@ -101,23 +120,24 @@ export function LabelPalette() {
 
   if (!selectedClipId) {
     return (
-      <div className="flex-shrink-0 h-9 flex items-center px-3 bg-[#16162b] border-b border-[#2a2a45]">
-        <span className="text-[10px] text-[#666] uppercase tracking-wider">Label palette — select a clip</span>
+      <div className="flex-shrink-0 h-9 flex items-center px-3 bg-surface-raised border-b border-border-default">
+        <span className="text-[10px] text-text-muted uppercase tracking-wider">Label palette — select a clip</span>
       </div>
     )
   }
 
   return (
-    <div className="flex-shrink-0 min-h-[36px] bg-[#16162b] border-b border-[#2a2a45] overflow-hidden">
+    <div className="flex-shrink-0 min-h-[36px] bg-surface-raised border-b border-border-default overflow-hidden">
       <div className="flex flex-wrap items-start gap-x-4 gap-y-2 px-3 py-2">
         {LABEL_CATEGORIES.map((cat) => {
           const isExpanded = expanded[cat.name] ?? false
+          const color = categoryColors[cat.name] ?? cat.colorFallback
           return (
             <div key={cat.name} className="flex flex-col gap-1">
               <button
                 type="button"
                 onClick={() => toggleCategory(cat.name)}
-                className="flex items-center gap-1 text-[10px] font-medium text-[#a0a0c0] hover:text-[#e0e0f0] transition-colors"
+                className="flex items-center gap-1 text-[10px] font-medium text-text-secondary hover:text-text-primary transition-colors"
               >
                 {isExpanded ? (
                   <ChevronDown className="w-3 h-3" />
@@ -135,8 +155,8 @@ export function LabelPalette() {
                       onDragStart={(e) => handleDragStart(e, cat.trackId, label)}
                       className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] cursor-grab active:cursor-grabbing border border-transparent hover:border-current/40 transition-colors"
                       style={{
-                        backgroundColor: `${cat.color}20`,
-                        color: cat.color,
+                        backgroundColor: `${color}20`,
+                        color,
                       }}
                     >
                       <GripVertical className="w-2.5 h-2.5 opacity-60 flex-shrink-0" />

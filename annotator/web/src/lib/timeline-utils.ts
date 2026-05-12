@@ -308,9 +308,30 @@ export interface TrackConfig {
   _collapsed?: boolean
 }
 
-const EGO_ACTION_TRACK: TrackConfig = { id: 'ego_act', name: 'Ego Actions', color: '#3b82f6', group: 'Ego' }
-
 export type DynamicGroup = 'Environments' | 'Objects' | 'TrafficLights' | 'Agents' | 'EgoContainment'
+
+/**
+ * Resolve a `--color-entity-*` CSS variable from <html>. Returns the trimmed
+ * value or an empty string when unavailable (SSR / tests). Callers should
+ * fall back to a sensible default when the result is empty.
+ *
+ * Reading CSS vars on each render is cheap (a single property lookup), but
+ * callers are expected to memoize on `effectiveTheme` so the values flip
+ * atomically when the theme changes.
+ */
+export function readEntityCssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return v || fallback
+}
+
+const ENTITY_DEFAULTS = {
+  env: '#22c55e',
+  object: '#f59e0b',
+  agent: '#a855f7',
+  light: '#ef4444',
+  ego: '#3b82f6',
+}
 
 export function buildTrackList(
   _ann: SilAvAnnotation | undefined,
@@ -320,30 +341,42 @@ export function buildTrackList(
   _egoContTrackCount: number = 1,
   lightTrackCount: number = 1
 ): TrackConfig[] {
+  const envColor = readEntityCssVar('--color-entity-env', ENTITY_DEFAULTS.env)
+  const objColor = readEntityCssVar('--color-entity-object', ENTITY_DEFAULTS.object)
+  const lightColor = readEntityCssVar('--color-entity-light', ENTITY_DEFAULTS.light)
+  const agentColor = readEntityCssVar('--color-entity-agent', ENTITY_DEFAULTS.agent)
+  const egoColor = readEntityCssVar('--color-entity-ego', ENTITY_DEFAULTS.ego)
+
   const envTracks: TrackConfig[] = []
   for (let i = 0; i < envTrackCount; i++) {
-    envTracks.push({ id: `env_${i}`, name: `Env Track ${i + 1}`, color: '#22c55e', group: 'Environments' })
+    envTracks.push({ id: `env_${i}`, name: `Env Track ${i + 1}`, color: envColor, group: 'Environments' })
   }
 
   const objTracks: TrackConfig[] = []
   for (let i = 0; i < objectTrackCount; i++) {
-    objTracks.push({ id: `obj_${i}`, name: `Object Track ${i + 1}`, color: '#f59e0b', group: 'Objects' })
+    objTracks.push({ id: `obj_${i}`, name: `Object Track ${i + 1}`, color: objColor, group: 'Objects' })
   }
 
   const lightTracks: TrackConfig[] = []
   for (let i = 0; i < lightTrackCount; i++) {
-    lightTracks.push({ id: `light_${i}`, name: `Light Track ${i + 1}`, color: '#ef4444', group: 'TrafficLights' })
+    lightTracks.push({ id: `light_${i}`, name: `Light Track ${i + 1}`, color: lightColor, group: 'TrafficLights' })
   }
 
   const agentTracks: TrackConfig[] = []
   for (let i = 0; i < agentTrackCount; i++) {
-    agentTracks.push({ id: `agent_${i}`, name: `Agent Track ${i + 1}`, color: '#a855f7', group: 'Agents' })
+    agentTracks.push({ id: `agent_${i}`, name: `Agent Track ${i + 1}`, color: agentColor, group: 'Agents' })
   }
 
-  return [...envTracks, ...lightTracks, ...objTracks, ...agentTracks, EGO_ACTION_TRACK]
+  const egoTrack: TrackConfig = { id: 'ego_act', name: 'Ego Actions', color: egoColor, group: 'Ego' }
+  return [...envTracks, ...lightTracks, ...objTracks, ...agentTracks, egoTrack]
 }
 
-export const TRACK_CONFIG = [EGO_ACTION_TRACK]
+// TRACK_CONFIG is referenced as a const elsewhere — keep a single default
+// ego-action entry. Consumers that need theme-reactive colors should call
+// buildTrackList() inside a useMemo keyed on `effectiveTheme`.
+export const TRACK_CONFIG: TrackConfig[] = [
+  { id: 'ego_act', name: 'Ego Actions', color: ENTITY_DEFAULTS.ego, group: 'Ego' },
+]
 
 /** Migrate legacy ego action types to new enum values (in-place). */
 function migrateEgoActions(ann: SilAvAnnotation): void {

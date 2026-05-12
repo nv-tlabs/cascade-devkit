@@ -114,12 +114,22 @@ const GROUP_GAP = 6
 const TRACK_GAP = 4
 const BOTTOM_PADDING = 40
 
-const CANVAS_BG = '#111125'
-const TRACK_BG_A = '#151530'
-const TRACK_BG_B = '#181840'
-const RULER_BG = '#0d0d1a'
+// Canvas colors are resolved from CSS variables so they flip with the
+// theme. The hard-coded fallbacks here only apply when the canvas paints
+// during SSR or before the document is ready (impossible in practice but
+// kept for safety).
+const CANVAS_BG_FALLBACK = '#111125'
+const TRACK_BG_A_FALLBACK = '#151530'
+const TRACK_BG_B_FALLBACK = '#181840'
+const RULER_BG_FALLBACK = '#0d0d1a'
 const SEGMENT_RADIUS = 3
 const LABEL_MIN_WIDTH = 40
+
+function readCssColor(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return v || fallback
+}
 
 function adjustColor(hex: string, amount: number): string {
   const num = parseInt(hex.slice(1), 16)
@@ -376,6 +386,7 @@ export function Timeline() {
     zoomLevel, scrollOffset,
     envTrackCount, objectTrackCount, lightTrackCount, agentTrackCount, egoContTrackCount,
     arrowTypes, keypointsVisible,
+    effectiveTheme,
     setPlayhead, selectPath, updateBundle, undo, setZoom, setScroll,
     setEnvTrackCount, setObjectTrackCount, setLightTrackCount, setAgentTrackCount, setEgoContTrackCount: _setEgoContTrackCount,
   } = useStore()
@@ -479,7 +490,9 @@ export function Timeline() {
     }
     const trackList = buildTrackList(bundle?.annotation, envTrackCount, objectTrackCount, agentTrackCount, egoContTrackCount, lightTrackCount)
     return { tracks: byTrack, allTrackList: trackList }
-  }, [segments, bundle?.annotation, envTrackCount, objectTrackCount, lightTrackCount, agentTrackCount, egoContTrackCount])
+    // effectiveTheme is included so entity colors (read from CSS vars in
+    // buildTrackList) flip atomically with the theme.
+  }, [segments, bundle?.annotation, envTrackCount, objectTrackCount, lightTrackCount, agentTrackCount, egoContTrackCount, effectiveTheme])
 
   const trackList = useMemo(() => {
     if (collapsedGroups.size === 0) return allTrackList
@@ -639,6 +652,18 @@ export function Timeline() {
     selectPath(null)
   }, [bundle, envTrackCount, objectTrackCount, lightTrackCount, agentTrackCount, persistBundle, selectPath, setEnvTrackCount, setObjectTrackCount, setLightTrackCount, setAgentTrackCount])
 
+  // Canvas palette resolved from CSS variables. Keyed on effectiveTheme so
+  // theme flips produce a fresh palette and force a redraw via the dep
+  // array of the draw effect.
+  const canvasColors = useMemo(() => ({
+    bg: readCssColor('--color-surface-raised', CANVAS_BG_FALLBACK),
+    trackA: readCssColor('--color-surface-overlay', TRACK_BG_A_FALLBACK),
+    trackB: readCssColor('--color-surface-hover', TRACK_BG_B_FALLBACK),
+    ruler: readCssColor('--color-surface-sunken', RULER_BG_FALLBACK),
+    raised: readCssColor('--color-surface-raised', '#13132a'),
+    muted: readCssColor('--color-text-muted', '#8a8aaa'),
+  }), [effectiveTheme])
+
   // --- Drawing ---
   useEffect(() => {
     const canvas = canvasRef.current
@@ -658,7 +683,7 @@ export function Timeline() {
       canvas.style.height = `${h}px`
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, w, h)
-      ctx.fillStyle = CANVAS_BG
+      ctx.fillStyle = canvasColors.bg
       ctx.fillRect(0, 0, w, h)
 
       const pps = (w * zoomLevel) / Math.max(duration, 1)
@@ -668,11 +693,11 @@ export function Timeline() {
 
       // Header — split into scrubber lane (top) + ruler lane (bottom)
       const rulerTop = SCRUBBER_LANE_HEIGHT
-      ctx.fillStyle = '#13132a'
+      ctx.fillStyle = canvasColors.raised
       ctx.fillRect(0, 0, w, SCRUBBER_LANE_HEIGHT)
-      ctx.fillStyle = RULER_BG
+      ctx.fillStyle = canvasColors.ruler
       ctx.fillRect(0, rulerTop, w, HEADER_HEIGHT - rulerTop)
-      ctx.strokeStyle = '#2a2a4a'
+      ctx.strokeStyle = canvasColors.trackA
       ctx.lineWidth = 1
       ctx.beginPath(); ctx.moveTo(0, rulerTop + 0.5); ctx.lineTo(w, rulerTop + 0.5); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(0, HEADER_HEIGHT + 0.5); ctx.lineTo(w, HEADER_HEIGHT + 0.5); ctx.stroke()
@@ -690,11 +715,11 @@ export function Timeline() {
         const x = t2x(t)
         if (x >= -20 && x <= w + 20) {
           const major = t % 1 === 0
-          ctx.strokeStyle = major ? '#3a3a5a' : '#2a2a4a'
+          ctx.strokeStyle = major ? canvasColors.trackB : canvasColors.trackA
           const tickLen = major ? 5 : 3
           ctx.beginPath(); ctx.moveTo(x, rulerTop); ctx.lineTo(x, rulerTop + tickLen); ctx.stroke()
           if (major) {
-            ctx.fillStyle = '#8a8aaa'
+            ctx.fillStyle = canvasColors.muted
             const label = t === 0 || t + 1 > duration ? `${t}` : `${t}s`
             const halfW = ctx.measureText(label).width / 2
             ctx.textAlign = x - halfW < 0 ? 'left' : x + halfW > w ? 'right' : 'center'
@@ -717,9 +742,9 @@ export function Timeline() {
         // Draw gap above track (group gap or agent track gap)
         if (rowIdx > 0) {
           const gap = getTrackGap(trackList, rowIdx - 1)
-          if (gap > 0) { ctx.fillStyle = CANVAS_BG; ctx.fillRect(0, y - gap, w, gap) }
+          if (gap > 0) { ctx.fillStyle = canvasColors.bg; ctx.fillRect(0, y - gap, w, gap) }
         }
-        ctx.fillStyle = rowIdx % 2 === 0 ? TRACK_BG_A : TRACK_BG_B
+        ctx.fillStyle = rowIdx % 2 === 0 ? canvasColors.trackA : canvasColors.trackB
         ctx.fillRect(0, y, w, h)
         ctx.strokeStyle = '#1a1a35'; ctx.lineWidth = 1; ctx.strokeRect(0, y, w, h)
         if (track._collapsed) {
@@ -750,7 +775,7 @@ export function Timeline() {
         // Draw subtrack divider lines — only when the main track has a parent entity
         const _mainPopulated = hasMainTrackEntity(track.group, track.id, bundle?.annotation)
         if (_mainPopulated && track.group === 'Environments') {
-          ctx.strokeStyle = CANVAS_BG; ctx.lineWidth = 0.5
+          ctx.strokeStyle = canvasColors.bg; ctx.lineWidth = 0.5
           ctx.beginPath(); ctx.moveTo(0, y + ENV_MAIN_HEIGHT); ctx.lineTo(w, y + ENV_MAIN_HEIGHT); ctx.stroke()
           const envCondRows = lightLaneCounts.get(`${track.id}_cond`) ?? 1
           for (let ri = 1; ri < envCondRows; ri++) {
@@ -759,7 +784,7 @@ export function Timeline() {
           }
         }
         if (_mainPopulated && track.group === 'Objects') {
-          ctx.strokeStyle = CANVAS_BG; ctx.lineWidth = 0.5
+          ctx.strokeStyle = canvasColors.bg; ctx.lineWidth = 0.5
           const _objContRows = lightLaneCounts.get(track.id) ?? 1
           const _objStateY = getObjStateRowY(_objContRows)
           ctx.beginPath(); ctx.moveTo(0, y + OBJ_CONT_ROW_Y); ctx.lineTo(w, y + OBJ_CONT_ROW_Y); ctx.stroke()
@@ -770,7 +795,7 @@ export function Timeline() {
           ctx.beginPath(); ctx.moveTo(0, y + _objStateY); ctx.lineTo(w, y + _objStateY); ctx.stroke()
         }
         if (_mainPopulated && track.group === 'TrafficLights') {
-          ctx.strokeStyle = CANVAS_BG; ctx.lineWidth = 0.5
+          ctx.strokeStyle = canvasColors.bg; ctx.lineWidth = 0.5
           // Draw divider at main/subtrack boundary
           ctx.beginPath(); ctx.moveTo(0, y + ENV_MAIN_HEIGHT); ctx.lineTo(w, y + ENV_MAIN_HEIGHT); ctx.stroke()
           // Draw physical containment row dividers
@@ -796,7 +821,7 @@ export function Timeline() {
           }
         }
         if (_mainPopulated && track.group === 'Ego') {
-          ctx.strokeStyle = CANVAS_BG; ctx.lineWidth = 0.5
+          ctx.strokeStyle = canvasColors.bg; ctx.lineWidth = 0.5
           const egoContRows = lightLaneCounts.get('ego_act') ?? 1
           const egoInflRowsDiv = lightLaneCounts.get('ego_act_infl') ?? 0
           // Containment base divider
@@ -821,7 +846,7 @@ export function Timeline() {
           }
         }
         if (_mainPopulated && track.group === 'Agents') {
-          ctx.strokeStyle = CANVAS_BG; ctx.lineWidth = 0.5
+          ctx.strokeStyle = canvasColors.bg; ctx.lineWidth = 0.5
           const agentContRows = lightLaneCounts.get(track.id) ?? 1
           const agentInflRowsDiv = lightLaneCounts.get(`${track.id}_infl`) ?? 0
           // Containment base divider
@@ -1417,7 +1442,7 @@ export function Timeline() {
     }
     draw()
     return () => cancelAnimationFrame(rafId)
-  }, [duration, playheadTime, selectedPath, trackList, tracks, zoomLevel, getLiveScrollOffset, mousePos, segments, arrowTypes, verticalScroll, lightLaneCounts, keypointsVisible, bundle])
+  }, [duration, playheadTime, selectedPath, trackList, tracks, zoomLevel, getLiveScrollOffset, mousePos, segments, arrowTypes, verticalScroll, lightLaneCounts, keypointsVisible, bundle, canvasColors])
 
   // --- Mouse down ---
   const handleCanvasMouseDown = useCallback(
@@ -3277,29 +3302,29 @@ export function Timeline() {
 
   // --- Render ---
   if (bundle?.annotation?.eventful === false) {
-    return <div className="h-full flex items-center justify-center bg-[#0a0a18] text-[#444] text-sm">Nominal driving — no annotation needed</div>
+    return <div className="h-full flex items-center justify-center bg-surface-sunken text-text-disabled text-sm">Nominal driving — no annotation needed</div>
   }
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-[#2a2a4a] bg-[#0d0d1a]">
-        <button type="button" onClick={zoomIn} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[#252540] text-[#8a8aaa] text-[10px] transition-colors" title="Zoom in"><ZoomIn className="w-3.5 h-3.5" /><span>Zoom in</span></button>
-        <button type="button" onClick={zoomOut} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[#252540] text-[#8a8aaa] text-[10px] transition-colors" title="Zoom out"><ZoomOut className="w-3.5 h-3.5" /><span>Zoom out</span></button>
-        <button type="button" onClick={zoomFit} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[#252540] text-[#8a8aaa] text-[10px] transition-colors" title="Fit timeline"><Maximize2 className="w-3.5 h-3.5" /><span>Fill timeline</span></button>
-        <div className="flex items-center gap-3 ml-auto text-[10px] text-[#667]">
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-[#151530] border border-[#2a2a4a] rounded text-[9px] text-[#8a8aaa] font-mono">Del</kbd><span>Delete</span></div>
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-[#151530] border border-[#2a2a4a] rounded text-[9px] text-[#8a8aaa] font-mono">&larr; &rarr;</kbd><span>Frame step</span></div>
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-[#151530] border border-[#2a2a4a] rounded text-[9px] text-[#8a8aaa] font-mono">Space</kbd><span>Play/Pause</span></div>
-          <span className="w-px h-3 bg-[#2a2a4a]" />
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-[#151530] border border-[#2a2a4a] rounded text-[9px] text-[#8a8aaa] font-mono">Right-click</kbd><span>Create</span></div>
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-[#151530] border border-[#2a2a4a] rounded text-[9px] text-[#8a8aaa] font-mono">Shift+click</kbd><span>Link</span></div>
-          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-[#151530] border border-[#2a2a4a] rounded text-[9px] text-[#8a8aaa] font-mono">Ctrl+click</kbd><span>Because of</span></div>
+      <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border-default bg-surface-sunken">
+        <button type="button" onClick={zoomIn} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-surface-hover text-text-muted text-[10px] transition-colors" title="Zoom in"><ZoomIn className="w-3.5 h-3.5" /><span>Zoom in</span></button>
+        <button type="button" onClick={zoomOut} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-surface-hover text-text-muted text-[10px] transition-colors" title="Zoom out"><ZoomOut className="w-3.5 h-3.5" /><span>Zoom out</span></button>
+        <button type="button" onClick={zoomFit} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-surface-hover text-text-muted text-[10px] transition-colors" title="Fit timeline"><Maximize2 className="w-3.5 h-3.5" /><span>Fill timeline</span></button>
+        <div className="flex items-center gap-3 ml-auto text-[10px] text-text-muted">
+          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Del</kbd><span>Delete</span></div>
+          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">&larr; &rarr;</kbd><span>Frame step</span></div>
+          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Space</kbd><span>Play/Pause</span></div>
+          <span className="w-px h-3 bg-surface-hover" />
+          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Right-click</kbd><span>Create</span></div>
+          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Shift+click</kbd><span>Link</span></div>
+          <div className="flex items-center gap-1.5"><kbd className="px-1.5 py-0.5 bg-surface-raised border border-border-default rounded text-[9px] text-text-muted font-mono">Ctrl+click</kbd><span>Because of</span></div>
         </div>
       </div>
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Label panel */}
-        <div className="flex-shrink-0 border-r border-[#2a2a4a] overflow-hidden" style={{ width: LABEL_PANEL_WIDTH, backgroundColor: CANVAS_BG }} onWheel={handleWheel}>
-          <div style={{ height: HEADER_HEIGHT }} className="border-b border-[#2a2a4a]" />
+        <div className="flex-shrink-0 border-r border-border-default overflow-hidden" style={{ width: LABEL_PANEL_WIDTH, backgroundColor: canvasColors.bg }} onWheel={handleWheel}>
+          <div style={{ height: HEADER_HEIGHT }} className="border-b border-border-default" />
           <div style={{ transform: `translateY(-${verticalScroll}px)` }}>
           {trackList.map(({ id, name, color, group, _collapsed }, i) => {
             const prev = trackList[i - 1]
@@ -3315,8 +3340,8 @@ export function Timeline() {
               return (
                 <div
                   key={`collapsed_${group}`}
-                  className="flex flex-col border-b border-[#1a1a35]"
-                  style={{ height: COLLAPSED_GROUP_HEIGHT, marginTop: gapAbove, backgroundColor: i % 2 === 0 ? TRACK_BG_A : TRACK_BG_B, borderLeft: `3px solid ${color}50` }}
+                  className="flex flex-col border-b border-border-subtle"
+                  style={{ height: COLLAPSED_GROUP_HEIGHT, marginTop: gapAbove, backgroundColor: i % 2 === 0 ? canvasColors.trackA : canvasColors.trackB, borderLeft: `3px solid ${color}50` }}
                 >
                   <div
                     className="flex items-center gap-1.5 mx-1 mt-1 px-1.5 py-0.5 rounded cursor-pointer hover:brightness-125 transition-all"
@@ -3335,8 +3360,8 @@ export function Timeline() {
             return (
               <div
                 key={id}
-                className="relative flex flex-col justify-start pt-0.5 gap-0.5 px-2 border-b border-[#1a1a35]"
-                style={{ height: getTrackHeight(group, id, lightLaneCounts), marginTop: gapAbove, backgroundColor: i % 2 === 0 ? TRACK_BG_A : TRACK_BG_B, borderLeft: `3px solid ${color}50` }}
+                className="relative flex flex-col justify-start pt-0.5 gap-0.5 px-2 border-b border-border-subtle"
+                style={{ height: getTrackHeight(group, id, lightLaneCounts), marginTop: gapAbove, backgroundColor: i % 2 === 0 ? canvasColors.trackA : canvasColors.trackB, borderLeft: `3px solid ${color}50` }}
               >
                 {subLabels.map((sl, si) => sl.label ? (
                   <span
@@ -3359,7 +3384,7 @@ export function Timeline() {
                     <div className="flex-1" />
                     {isDynamic && (
                       <button type="button" onClick={() => handleAddTrack(group as DynamicGroup)}
-                        className="w-3.5 h-3.5 flex items-center justify-center rounded hover:bg-[#252540] text-[#6b6b8a] hover:text-green-400 transition-colors flex-shrink-0"
+                        className="w-3.5 h-3.5 flex items-center justify-center rounded hover:bg-surface-hover text-text-disabled hover:text-green-400 transition-colors flex-shrink-0"
                         title={`Add ${group.toLowerCase()} track`}>
                         <Plus className="w-2.5 h-2.5" />
                       </button>
@@ -3368,11 +3393,11 @@ export function Timeline() {
                 )}
                 <div className="flex items-center gap-1">
                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                  <span className="text-[10px] text-[#a0a0c0] truncate flex-1">{name}</span>
+                  <span className="text-[10px] text-text-secondary truncate flex-1">{name}</span>
                   {isDynamic && trackIdx >= 0 && (
                     <button type="button"
                       onClick={() => handleRemoveTrack(group as DynamicGroup, trackIdx)}
-                      className="w-3.5 h-3.5 flex items-center justify-center rounded hover:bg-[#252540] text-transparent hover:text-red-400 transition-colors"
+                      className="w-3.5 h-3.5 flex items-center justify-center rounded hover:bg-surface-hover text-transparent hover:text-red-400 transition-colors"
                       title={`Remove ${name}`}
                     >
                       <Minus className="w-2.5 h-2.5" />
