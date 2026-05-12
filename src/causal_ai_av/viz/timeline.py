@@ -45,6 +45,7 @@ variant lands in PR-4.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from causal_ai_av.viz.colors import entity_color
@@ -58,11 +59,56 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
 
 
 # Five track-group rows, top → bottom. Order is the annotator's reading
-# order (environments at the top, ego at the bottom). y indices are
-# integers so we can stick to categorical-style ticks while still placing
-# rect shapes with floating-point ±0.4 offsets.
+# order (environments at the top, ego at the bottom). The y-axis is
+# now built band-by-band (one band per populated (group, family, sh_index)
+# triple) — `_TRACK_GROUPS` keeps the *group* reading order. See
+# `_BAND_ORDER_BY_GROUP` for the family ordering inside each group.
 _TRACK_GROUPS: tuple[str, ...] = ("Env", "Lights", "Objects", "Agents", "Ego")
 _GROUP_ROW: dict[str, int] = {name: i for i, name in enumerate(_TRACK_GROUPS)}
+
+# Per-group family ordering. The annotator paints distinct labeled bands
+# in this order within each group; we mirror it here so the y-axis tick
+# layout reads the same way. For Lights, signal_head / state /
+# env_control bands are repeated per signal head — that repetition is
+# resolved dynamically in `_band_keys_for_segments` from the segments'
+# `_sh_index` meta. For other groups the third tuple slot is always
+# `None`.
+#
+# Sources (`tools/annotator/web/src/components/Timeline.tsx:230-275`):
+#   - Env:      parent → condition
+#   - Lights:   parent → physical_containment → (per sh: signal_head →
+#               env_control → state)
+#   - Objects:  parent → containment → state
+#   - Agents:   parent → containment → pose → influence → action →
+#               property   (pose lives between containment and influence,
+#               matching the annotator at line 245-254)
+#   - Ego:      containment → influence → action → property   (no parent
+#               bar; `ego_act` is one synthetic track id with no parent
+#               entity to flag visibility for)
+_BAND_ORDER_BY_GROUP: dict[str, tuple[str, ...]] = {
+    "Env": ("parent", "condition"),
+    "Lights": (
+        "parent",
+        "physical_containment",
+        # per-signal-head bands handled separately
+        "signal_head",
+        "env_control",
+        "state",
+    ),
+    "Objects": ("parent", "containment", "state"),
+    "Agents": ("parent", "containment", "pose", "influence", "action", "property"),
+    "Ego": ("containment", "influence", "action", "property"),
+}
+
+# Families that, in the Lights group, are repeated per signal head and
+# need an `sh_index` discriminator. The painter walks signal heads in
+# ascending index and emits one band per (family, sh_index) per head.
+_PER_SH_FAMILIES_LIGHTS: tuple[str, ...] = ("signal_head", "env_control", "state")
+
+# `BandKey` — `(group, family, sh_index | None)`. `sh_index` is the
+# 0-based signal head index for Lights' per-head bands; `None` for all
+# other bands.
+BandKey = tuple[str, str, "int | None"]
 
 # Arrow-family colors. See module docstring for the choice rationale.
 # Invariant: values here must be disjoint from `entity_color()`'s row
@@ -118,40 +164,125 @@ def _segment_center_x(seg: Segment) -> float:
     return (seg.t0 + seg.t1) / 2.0
 
 
-# Sub-lane geometry.
+# Band / lane geometry.
 #
-# A group row covers `[row - _ROW_HALF_HEIGHT, row + _ROW_HALF_HEIGHT]`. With
-# `lane_count` lanes inside, each lane is a horizontal stripe of height
-# `2 * _ROW_HALF_HEIGHT / lane_count`. Lane 0 sits at the "top" of the
-# row (which renders at the bottom of the row in data coordinates because
-# `yaxis.range` is reversed in `_paint_timeline_onto`).
+# Each populated band gets one integer "band row" of unit height. A band
+# row at index `r` covers `[r - _ROW_HALF_HEIGHT, r + _ROW_HALF_HEIGHT]`,
+# with `lane_count` lanes inside (each lane a stripe of height
+# `2 * _ROW_HALF_HEIGHT / lane_count`). Lane 0 sits at the "top" of the
+# row (which renders at the bottom of the row in data coordinates
+# because `yaxis.range` is reversed).
 _ROW_HALF_HEIGHT: float = 0.4
 
 
-def _lane_band(group: str, lane: int, lane_count: int) -> tuple[float, float]:
-    """Return `(y0, y1)` for a segment painted at `lane` in `group`.
-
-    `lane_count` is the deepest stack within the group — every segment in
-    the same group shares the same lane height so the band tiling looks
-    even.
-    """
-    row = _GROUP_ROW[group]
+def _lane_band(band_row: int, lane: int, lane_count: int) -> tuple[float, float]:
+    """Return `(y0, y1)` for a segment painted at `lane` inside `band_row`."""
     total = 2.0 * _ROW_HALF_HEIGHT
     lane_h = total / max(lane_count, 1)
-    y0 = row - _ROW_HALF_HEIGHT + lane * lane_h
+    y0 = band_row - _ROW_HALF_HEIGHT + lane * lane_h
     y1 = y0 + lane_h
     return y0, y1
 
 
-def _segment_top_y(group: str, lane: int = 0, lane_count: int = 1) -> float:
+def _segment_top_y(band_row: int, lane: int = 0, lane_count: int = 1) -> float:
     """y-coordinate of a segment's top edge (used as arrow anchor).
 
     With the yaxis range reversed (top → bottom), "top" in data
     coordinates is the *larger* y value of the lane band — that's the
     edge that visually faces away from the rows below.
     """
-    _y0, y1 = _lane_band(group, lane, lane_count)
+    _y0, y1 = _lane_band(band_row, lane, lane_count)
     return y1
+
+
+def _segment_band_key(seg: Segment) -> BandKey | None:
+    """Map a segment to its `(group, family, sh_index | None)` band.
+
+    Returns `None` for segments whose `track_id` doesn't resolve to a
+    known group — they get dropped from the figure rather than crashing.
+    """
+    group = _track_id_to_group(seg.track_id)
+    if group is None:
+        return None
+    family = seg.family
+    if group == "Lights" and family in _PER_SH_FAMILIES_LIGHTS:
+        sh_idx = (seg.meta or {}).get("_sh_index")
+        if isinstance(sh_idx, int):
+            return (group, family, sh_idx)
+        # Defensive — annotation_to_segments always sets _sh_index on
+        # per-head light segments. If absent, group under index 0.
+        return (group, family, 0)
+    return (group, family, None)
+
+
+def _band_label(key: BandKey) -> str:
+    """Y-axis tick text for a band.
+
+    Format:
+      - `"Group · family"` for top-level bands.
+      - `"Lights · sh<i> · family"` for per-signal-head bands.
+      - The Lights `env_control` family renders as
+        `"Lights · sh<i> · env_control (containment)"` to mirror the
+        annotator's actual on-screen label ("containment", with the
+        family name in parens for disambiguation).
+    """
+    group, family, sh_idx = key
+    if sh_idx is not None:
+        if family == "env_control":
+            return f"{group} · sh{sh_idx} · env_control (containment)"
+        return f"{group} · sh{sh_idx} · {family}"
+    if group == "Lights" and family == "physical_containment":
+        # The annotator labels this band "TL control" (Timeline.tsx:261).
+        return f"{group} · physical_containment (TL control)"
+    return f"{group} · {family}"
+
+
+def _populated_bands(segments: list[Segment]) -> list[BandKey]:
+    """Return the ordered list of populated `(group, family, sh_idx)` bands.
+
+    Empty bands are dropped — they don't reserve y-axis space. The order
+    is the annotator's reading order (Env → Lights → Objects → Agents
+    → Ego), with `_BAND_ORDER_BY_GROUP` driving the family sub-order
+    inside each group. For Lights' per-signal-head bands the order is
+    `signal_head_0 → env_control_0 → state_0 → signal_head_1 → ...`.
+    """
+    # Bucket segments by (group, family, sh_idx). Build up the set of
+    # populated keys; ordering is imposed by the canonical lists below.
+    populated: set[BandKey] = set()
+    sh_indices_per_light: set[int] = set()
+    for seg in segments:
+        key = _segment_band_key(seg)
+        if key is None:
+            continue
+        populated.add(key)
+        if key[0] == "Lights" and key[2] is not None:
+            sh_indices_per_light.add(key[2])
+
+    ordered: list[BandKey] = []
+    for group in _TRACK_GROUPS:
+        families = _BAND_ORDER_BY_GROUP.get(group, ())
+        if group == "Lights":
+            # Non-per-head families first (parent, physical_containment),
+            # then per-head bands stride-emitted in head order.
+            for family in families:
+                if family in _PER_SH_FAMILIES_LIGHTS:
+                    continue
+                key = (group, family, None)
+                if key in populated:
+                    ordered.append(key)
+            for sh_idx in sorted(sh_indices_per_light):
+                for family in _PER_SH_FAMILIES_LIGHTS:
+                    if family not in families:
+                        continue
+                    key = (group, family, sh_idx)
+                    if key in populated:
+                        ordered.append(key)
+        else:
+            for family in families:
+                key = (group, family, None)
+                if key in populated:
+                    ordered.append(key)
+    return ordered
 
 
 # Inline-label font size, in points. Tuned for the 24px-per-lane
@@ -271,6 +402,32 @@ def _segments_by_entity_id(
     return by_id
 
 
+@dataclass(frozen=True)
+class PaintResult:
+    """What `_paint_timeline_onto` reports back to the caller.
+
+    Attributes:
+        bands: ordered list of populated `(group, family, sh_idx)`
+            band keys, top → bottom on the y-axis. Empty bands were
+            already dropped.
+        band_lane_counts: per-band lane count after greedy lane
+            assignment. Used to size the figure proportionally to the
+            deepest stack per band.
+        y_range: `(y_min, y_max)` data-coordinate range of the painted
+            timeline. Callers (the widget's playhead line in
+            particular) read this back so their overlay shapes span
+            the full band stack, not the legacy 5-row integer grid.
+        total_lanes: convenience aggregate — `sum(band_lane_counts)`.
+            Falls back to a sentinel >0 when no bands are populated so
+            the adaptive-height path still produces a non-zero figure.
+    """
+
+    bands: tuple[BandKey, ...]
+    band_lane_counts: dict[BandKey, int]
+    y_range: tuple[float, float]
+    total_lanes: int
+
+
 def _paint_timeline_onto(
     fig: "go.Figure",
     seq: "Sequence",
@@ -284,7 +441,8 @@ def _paint_timeline_onto(
     entity_kinds: list[str] | None = None,
     agent_ids: list[str] | None = None,
     track_groups: list[str] | None = None,
-) -> dict[str, int]:
+    show_inline_labels: bool = True,
+) -> PaintResult:
     """Append timeline shapes for `seq` onto `fig`, on the given axes.
 
     Factored out of `render_timeline` so the PR-4 widget can paint the
@@ -321,14 +479,19 @@ def _paint_timeline_onto(
             `"Agents"`, `"Ego"`. Rows not in the whitelist drop their
             tick labels too, so the y-axis collapses to the visible
             rows. `None` = all five groups.
+        show_inline_labels: when False, suppress every inline label
+            annotation; hover tooltips still fire. Defaults to True
+            (the historical behaviour). Callers wanting a maximally
+            compact timeline (very short clips, dashboard cards)
+            pass `False` so the rectangles stay clean.
 
     Returns:
-        Per-group lane counts — `{"Env": 1, "Lights": 1, "Objects": 1,
-        "Agents": 3, "Ego": 1}`. Callers use this to size the figure
-        proportionally to the deepest stack (see `render_timeline` and
-        `widget.ClipPlayer`'s adaptive-height path). The figure itself
-        is also mutated in place — shapes / annotations / hover traces
-        are appended onto `fig`.
+        A `PaintResult` describing the painted band stack — band keys
+        in y-axis order, per-band lane counts, the y-coordinate range,
+        and the total lane count. Callers use it to size the figure
+        proportionally to the deepest stack per band (see
+        `render_timeline` and `widget.ClipPlayer`'s adaptive-height
+        path). The figure itself is also mutated in place.
 
     Filter semantics:
         - The three filters AND together: a segment is drawn only if
@@ -400,6 +563,15 @@ def _paint_timeline_onto(
     allowed_ids: set[str] = {s.id for s in segments if _segment_allowed(s)}
 
     # ---------------------------------------------------------------
+    # 1a. Decide the populated bands BEFORE the highlight band so the
+    #     yellow rect spans the actual y-range. Filter segments first
+    #     so dropped families don't reserve y-axis space.
+    # ---------------------------------------------------------------
+    visible_segments = [s for s in segments if s.id in allowed_ids]
+    band_keys: list[BandKey] = _populated_bands(visible_segments)
+    band_row: dict[BandKey, int] = {key: i for i, key in enumerate(band_keys)}
+
+    # ---------------------------------------------------------------
     # 1. Optional highlight band — drawn first so it sits *under* the
     #    segment rectangles in z-order. Plotly draws shapes in their
     #    list order; the renderer adds them to layout.shapes so the
@@ -409,13 +581,15 @@ def _paint_timeline_onto(
         h0, h1 = float(highlight[0]), float(highlight[1])
         if h0 > h1:
             h0, h1 = h1, h0
+        highlight_y0 = -0.5
+        highlight_y1 = (len(band_keys) - 0.5) if band_keys else 0.5
         shapes.append(
             {
                 "type": "rect",
                 "x0": h0,
                 "x1": h1,
-                "y0": -0.5,
-                "y1": len(_TRACK_GROUPS) - 0.5,
+                "y0": highlight_y0,
+                "y1": highlight_y1,
                 "xref": xref,
                 "yref": yref,
                 "fillcolor": "yellow",
@@ -431,42 +605,47 @@ def _paint_timeline_onto(
         )
 
     # ---------------------------------------------------------------
-    # 2. One rectangle per segment, stacked into sub-lanes.
+    # 2. One rectangle per segment, stacked into sub-lanes inside its
+    #    family band.
     #
-    #    Greedy lane assignment via `assign_lanes` runs per `track_id`
-    #    (mirroring the annotator's `assignTracks`). To paint inside a
-    #    *group row*, we further roll up lane counts per group — the
-    #    deepest stack across all of the group's track ids wins, so
-    #    every segment in the same group ends up on a uniform lane
-    #    grid. This is the same idea as the annotator's grouping in
-    #    `Timeline.tsx`: subtracks share the parent's vertical budget.
+    #    `assign_lanes` (the port of the annotator's `assignTracks`)
+    #    still runs per `track_id`, but we scope the lane-grid to each
+    #    `(group, family, sh_idx)` band so neighboring families don't
+    #    inflate each other's vertical budget. Each band's lane count
+    #    is the deepest stack among its own segments.
     # ---------------------------------------------------------------
-    paintable: list[tuple[Segment, str, str]] = []
-    for seg in segments:
-        if seg.id not in allowed_ids:
-            continue
-        group = _track_id_to_group(seg.track_id)
-        if group is None:
+    paintable: list[tuple[Segment, BandKey, str]] = []
+    for seg in visible_segments:
+        key = _segment_band_key(seg)
+        if key is None:
             continue
         kind = _segment_kind(seg.track_id)
         if kind is None:
             continue
-        paintable.append((seg, group, kind))
+        paintable.append((seg, key, kind))
 
-    seg_lane = assign_lanes([s for s, _, _ in paintable])
-    # Roll lane indices up to per-group lane counts so the lane band
-    # tiling is uniform within a group (otherwise neighbouring track
-    # ids would paint at different y-heights and read as a ragged
-    # lattice).
-    group_lane_count: dict[str, int] = {g: 1 for g in _TRACK_GROUPS}
-    for seg, group, _ in paintable:
-        lane = seg_lane.get(seg.id, 0)
-        group_lane_count[group] = max(group_lane_count[group], lane + 1)
+    # Lane assignment is scoped per band — the annotator's behavior is
+    # that each labeled stripe ("containment", "actions", ...) owns its
+    # own lane grid. Run `assign_lanes` once per band rather than once
+    # globally so a deep stack in one band doesn't push other bands'
+    # segments to higher lane indices.
+    seg_lane: dict[str, int] = {}
+    band_lane_count: dict[BandKey, int] = {key: 1 for key in band_keys}
+    by_band: dict[BandKey, list[Segment]] = {}
+    for seg, key, _ in paintable:
+        by_band.setdefault(key, []).append(seg)
+    for key, band_segments in by_band.items():
+        sub_lanes = assign_lanes(band_segments)
+        seg_lane.update(sub_lanes)
+        if sub_lanes:
+            band_lane_count[key] = max(band_lane_count[key], max(sub_lanes.values()) + 1)
 
-    # Cache `(group, lane) -> (y0, y1)` for the segment loop and the
-    # arrow-anchor loop.
-    def _band_for(group: str, lane: int) -> tuple[float, float]:
-        return _lane_band(group, lane, group_lane_count[group])
+    # Cache `(band_key, lane) -> (y0, y1)` for the segment loop and the
+    # arrow-anchor loop. The band_row is its index in the populated
+    # band list — empty bands were already dropped, so the y-axis
+    # collapses to populated bands only.
+    def _band_for(key: BandKey, lane: int) -> tuple[float, float]:
+        return _lane_band(band_row[key], lane, band_lane_count[key])
 
     # Collect inline annotation entries (text drawn on top of each
     # rectangle) and hover-overlay traces (invisible scatter markers at
@@ -478,9 +657,15 @@ def _paint_timeline_onto(
     xa = _xref_to_axis(xref)
     ya = _yref_to_axis(yref)
 
-    for seg, group, kind in paintable:
+    # Cache the seg-id → band key so the arrow loop can recover the
+    # right band row even when the segment isn't in `paintable` (e.g.,
+    # a containment arrow whose target is an Env parent on a different
+    # band).
+    seg_band: dict[str, BandKey] = {seg.id: key for seg, key, _ in paintable}
+
+    for seg, key, kind in paintable:
         lane = seg_lane.get(seg.id, 0)
-        y0, y1 = _band_for(group, lane)
+        y0, y1 = _band_for(key, lane)
         shapes.append(
             {
                 "type": "rect",
@@ -504,7 +689,10 @@ def _paint_timeline_onto(
         # Inline label — centered on the rectangle. Suppressed for
         # very narrow segments where the truncated text would clip.
         seg_width = max(seg.t1 - seg.t0, 0.0)
-        if seg_width >= _INLINE_LABEL_MIN_WIDTH_S:
+        if (
+            show_inline_labels
+            and seg_width >= _INLINE_LABEL_MIN_WIDTH_S
+        ):
             annotations.append(
                 {
                     "x": (seg.t0 + seg.t1) / 2.0,
@@ -564,18 +752,21 @@ def _paint_timeline_onto(
         # both ends must be present for the bezier to make sense.
         if src.id not in allowed_ids or tgt.id not in allowed_ids:
             return
-        src_group = _track_id_to_group(src.track_id)
-        tgt_group = _track_id_to_group(tgt.track_id)
-        if src_group is None or tgt_group is None:
+        src_key = seg_band.get(src.id)
+        tgt_key = seg_band.get(tgt.id)
+        if src_key is None or tgt_key is None:
             return
         x0 = _segment_center_x(src)
         x1 = _segment_center_x(tgt)
-        # Anchor each end of the bezier to its segment's lane band so
+        # Anchor each end of the bezier to its segment's band+lane so
         # multi-lane stacks don't collapse arrows onto the same edge.
+        # With family bands, the band_row is its index in the populated
+        # band list — the arrow's y follows the segment to its NEW band
+        # rather than the legacy whole-group row center.
         src_lane = seg_lane.get(src.id, 0)
         tgt_lane = seg_lane.get(tgt.id, 0)
-        y0 = _segment_top_y(src_group, src_lane, group_lane_count[src_group])
-        y1 = _segment_top_y(tgt_group, tgt_lane, group_lane_count[tgt_group])
+        y0 = _segment_top_y(band_row[src_key], src_lane, band_lane_count[src_key])
+        y1 = _segment_top_y(band_row[tgt_key], tgt_lane, band_lane_count[tgt_key])
         shapes.append(
             {
                 "type": "path",
@@ -776,33 +967,31 @@ def _paint_timeline_onto(
                     _add_arrow(src, by_id.get(target_id), "action_target")
 
     # ---------------------------------------------------------------
-    # 4. Axis layout — locked range, group-name ticks. Figure-wide
-    #    settings (template / height / margins) are the caller's
-    #    responsibility so this helper composes inside a multi-subplot
-    #    figure without overwriting the host's chrome.
+    # 4. Axis layout — one tick per populated band, labeled
+    #    "Group · family" (or "Group · sh{i} · family" for per-head
+    #    light bands). Figure-wide settings (template / height /
+    #    margins) are the caller's responsibility so this helper
+    #    composes inside a multi-subplot figure without overwriting
+    #    the host's chrome.
     #
     #    Append the new shapes after any shapes already on `fig` so
     #    callers can pre-paint playheads or other overlays without
     #    losing them.
     # ---------------------------------------------------------------
-    # When `track_groups` filters the y-axis, drop unrendered rows from
-    # the tick layout AND tighten the y-range to the visible band so
-    # the figure doesn't render with empty rows.
-    visible_rows: list[tuple[int, str]] = [
-        (_GROUP_ROW[g], g) for g in _TRACK_GROUPS if g in allowed_groups
-    ]
-    if visible_rows:
-        ticks_vals = [r for r, _ in visible_rows]
-        ticks_text = [g for _, g in visible_rows]
-        y_min = min(ticks_vals) - 0.5
-        y_max = max(ticks_vals) + 0.5
-    else:
-        # Pathological: caller asked for zero groups. Keep something
-        # sane so Plotly still renders a frame.
-        ticks_vals = list(range(len(_TRACK_GROUPS)))
-        ticks_text = list(_TRACK_GROUPS)
+    if band_keys:
+        ticks_vals = [band_row[k] for k in band_keys]
+        ticks_text = [_band_label(k) for k in band_keys]
         y_min = -0.5
-        y_max = len(_TRACK_GROUPS) - 0.5
+        y_max = len(band_keys) - 0.5
+    else:
+        # No populated bands — caller filtered everything out, or the
+        # bundle has no entities. Keep something sane so Plotly still
+        # renders a frame; tests pin both the zero-band and empty-bundle
+        # paths.
+        ticks_vals = []
+        ticks_text = []
+        y_min = -0.5
+        y_max = 0.5
 
     existing_shapes = list(fig.layout.shapes or ())
     existing_annotations = list(fig.layout.annotations or ())
@@ -820,6 +1009,7 @@ def _paint_timeline_onto(
                 "tickmode": "array",
                 "tickvals": ticks_vals,
                 "ticktext": ticks_text,
+                "tickfont": {"size": 10},
                 "range": [y_max, y_min],  # top → bottom
                 "showgrid": False,
                 "zeroline": False,
@@ -833,7 +1023,13 @@ def _paint_timeline_onto(
     for trace in hover_traces:
         fig.add_trace(trace)
 
-    return group_lane_count
+    total_lanes = sum(band_lane_count.values()) if band_lane_count else 0
+    return PaintResult(
+        bands=tuple(band_keys),
+        band_lane_counts=dict(band_lane_count),
+        y_range=(y_min, y_max),
+        total_lanes=total_lanes,
+    )
 
 
 # Vertical pixels per lane band for the adaptive-height path. Drives
@@ -842,15 +1038,25 @@ def _paint_timeline_onto(
 # cleanly without clipping the row above/below.
 _PX_PER_LANE: int = 24
 
-# Minimum total timeline height in pixels. With no overlap the five
-# group rows × 1 lane each would still want some breathing room; this
-# is the floor before lane stacking adds more.
+# Minimum total timeline height in pixels. Even a sparse band stack
+# needs some breathing room; this is the floor before band/lane
+# stacking grows the figure further.
 _MIN_TIMELINE_PX: int = 240
 
 
-def _timeline_px_for(group_lane_count: dict[str, int]) -> int:
-    """Compute the adaptive timeline height in pixels."""
-    total_lanes = sum(group_lane_count.values()) or len(_TRACK_GROUPS)
+def _timeline_px_for(paint: "PaintResult | dict[str, int]") -> int:
+    """Compute the adaptive timeline height in pixels.
+
+    Accepts either the modern `PaintResult` or the legacy
+    `dict[str, int]` per-group lane count (kept for backwards
+    compatibility with any out-of-tree caller wired to the old return
+    type). Internally everything sums to a total lane count, multiplies
+    by `_PX_PER_LANE`, and clamps to `_MIN_TIMELINE_PX`.
+    """
+    if isinstance(paint, PaintResult):
+        total_lanes = paint.total_lanes or 1
+    else:
+        total_lanes = sum(paint.values()) or 1
     return max(_MIN_TIMELINE_PX, total_lanes * _PX_PER_LANE)
 
 
@@ -911,7 +1117,7 @@ def render_timeline(
     import plotly.graph_objects as go
 
     fig = go.Figure()
-    group_lane_count = _paint_timeline_onto(
+    paint = _paint_timeline_onto(
         fig,
         seq,
         xref="x",
@@ -925,7 +1131,7 @@ def render_timeline(
         track_groups=track_groups,
     )
     resolved_height = (
-        int(height) if height is not None else _timeline_px_for(group_lane_count)
+        int(height) if height is not None else _timeline_px_for(paint)
     )
     fig.update_layout(
         template="plotly_dark",
