@@ -688,6 +688,37 @@ class Sequence:
             if resolved_highlight is None:
                 resolved_highlight = (float(iv.start), float(iv.end))
 
+        # 6. Clamp the resolved window to the video's actual timestamp
+        # range. The parent dataset's video manifests rarely start at
+        # exactly t=0us (real clips have non-zero first-frame offsets),
+        # so a window of `[0, duration_s]` will trip
+        # `SeekVideoReader.decode_images_from_timestamps([0])` with
+        # `ValueError: requested timestamps must be within the range
+        # of timestamps`. We pull `seq.video.timestamps` (np.int64 μs)
+        # and clamp `t_start` / `t_end` to the actual covered span.
+        # If the video isn't reachable yet (no parent dataset wired in,
+        # cache miss, etc.) we fall through with the raw window — the
+        # eventual decode error is more informative than us papering
+        # over an unloaded reader here.
+        try:
+            ts = self.video.timestamps
+            video_t_min = float(ts.min()) / 1e6
+            video_t_max = float(ts.max()) / 1e6
+        except Exception:
+            video_t_min, video_t_max = 0.0, duration
+
+        # If the requested window sits entirely outside the video's
+        # coverage, snapping silently to a 1-frame sliver would hide
+        # the misconfiguration. Surface it instead.
+        if t_end < video_t_min or t_start > video_t_max:
+            raise ValueError(
+                f"requested window [{t_start}, {t_end}] is outside the "
+                f"video's timestamp coverage [{video_t_min}, {video_t_max}]"
+            )
+
+        t_start = max(t_start, video_t_min)
+        t_end = min(t_end, video_t_max)
+
         return ClipPlayer(
             self,
             t_start=t_start,
