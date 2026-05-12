@@ -427,14 +427,26 @@ class Sequence:
         self._cameras: _CamerasView | None = None
         self._triplets: list[CausalTriplet] | None = None
 
-        # Eagerly load egomotion *if* a parent is available, per the spec.
+        # Eagerly load egomotion *if* a parent is available.
         # `get_clip_feature(clip_id, "egomotion")` already returns an
         # `Interpolator[EgomotionState]` (see physical_ai_av/dataset.py),
         # so we cache it directly.
+        #
+        # The egomotion chunk lives in the parent HF dataset and isn't
+        # always cached locally — `ds.download_clips(...)` pulls per-clip
+        # video, not per-chunk egomotion. If the cache is incomplete, the
+        # parent's `open_file` raises `FileNotFoundError`. Swallow that
+        # and leave the slot as `None`; consumers that actually need
+        # egomotion raise a clear error via their own guards. The viz
+        # API path never reads egomotion, so a carousel over
+        # cache-incomplete clips Just Works.
         if parent is not None:
-            self._egomotion_interpolator = parent.get_clip_feature(
-                self.clip_id, "egomotion"
-            )
+            try:
+                self._egomotion_interpolator = parent.get_clip_feature(
+                    self.clip_id, "egomotion"
+                )
+            except FileNotFoundError:
+                self._egomotion_interpolator = None
 
     # -- constructors ---------------------------------------------------------
 
@@ -505,14 +517,37 @@ class Sequence:
 
     @property
     def egomotion_interpolator(self) -> Any:
-        """The eagerly-loaded `Interpolator[EgomotionState]` from the parent."""
-        if self._egomotion_interpolator is None:
-            # Parent must be present and egomotion fetch was deferred (e.g.
-            # because no parent was wired in). Re-attempt to give a clear error.
-            parent = self._require_parent()
+        """The eagerly-loaded `Interpolator[EgomotionState]` from the parent.
+
+        Raises `RuntimeError` with actionable guidance when the egomotion
+        chunk wasn't cached locally (the eager load in `__init__` caught
+        `FileNotFoundError` and left this slot as `None`). The viz API
+        never reaches this property, so cache-incomplete clips can still
+        be rendered; only direct consumers of ego-relative quantities
+        hit the guard.
+        """
+        if self._egomotion_interpolator is not None:
+            return self._egomotion_interpolator
+        # Either no parent was wired in (`Sequence.from_annotation` path —
+        # `_require_parent` raises the canonical "no parent" error), or
+        # `__init__` swallowed a `FileNotFoundError` on the eager load.
+        # Re-attempt the fetch so a cache that was populated between
+        # construction and access just works; rewrap any remaining
+        # `FileNotFoundError` as a clear, actionable `RuntimeError`.
+        parent = self._require_parent()
+        try:
             self._egomotion_interpolator = parent.get_clip_feature(
                 self.clip_id, "egomotion"
             )
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                f"egomotion data not loaded for clip {self.clip_id!r}: "
+                "the egomotion chunk isn't in the parent HF cache. Call "
+                f"`dataset.download_clips([{self.clip_id!r}])` (or otherwise "
+                "ensure the egomotion chunk is cached) before requesting "
+                "ego-relative quantities. The viz API does not require "
+                "egomotion."
+            ) from exc
         return self._egomotion_interpolator
 
     # -- queries --------------------------------------------------------------
