@@ -427,14 +427,26 @@ class Sequence:
         self._cameras: _CamerasView | None = None
         self._triplets: list[CausalTriplet] | None = None
 
-        # Eagerly load egomotion *if* a parent is available, per the spec.
+        # Eagerly load egomotion *if* a parent is available.
         # `get_clip_feature(clip_id, "egomotion")` already returns an
         # `Interpolator[EgomotionState]` (see physical_ai_av/dataset.py),
         # so we cache it directly.
+        #
+        # The egomotion chunk lives in the parent HF dataset and isn't
+        # always cached locally — `ds.download_clips(...)` pulls per-clip
+        # video, not per-chunk egomotion. If the cache is incomplete, the
+        # parent's `open_file` raises `FileNotFoundError`. Swallow that
+        # and leave the slot as `None`; consumers that actually need
+        # egomotion raise a clear error via their own guards. The viz
+        # API path never reads egomotion, so a carousel over
+        # cache-incomplete clips Just Works.
         if parent is not None:
-            self._egomotion_interpolator = parent.get_clip_feature(
-                self.clip_id, "egomotion"
-            )
+            try:
+                self._egomotion_interpolator = parent.get_clip_feature(
+                    self.clip_id, "egomotion"
+                )
+            except FileNotFoundError:
+                self._egomotion_interpolator = None
 
     # -- constructors ---------------------------------------------------------
 
