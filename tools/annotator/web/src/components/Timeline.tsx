@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
+import { Fragment, useRef, useEffect, useCallback, useMemo, useState } from 'react'
 import { useStore } from '../lib/store'
 import {
   annotationToSegments,
@@ -59,6 +59,15 @@ const OBJ_LIGHT_TRACK_HEIGHT = getObjTrackHeight(1) // 66 — single-containment
 // Layout per light: [Main] [PhysCont] [gap] [SH1 bar] [SH1 cont] [SH1 states...] [gap] [SH2 bar] [SH2 cont] [SH2 states...] ...
 const SH_GAP = 4
 const COLLAPSED_GROUP_HEIGHT = 24
+// Height reserved above each non-collapsed group's first track for the
+// category header pill ("AGENTS", "OBJECTS", ...). Lives in the gap
+// region so the track row's top slot stays free for the track-name row
+// alone — otherwise the name row would collide with the first subtrack
+// label ("containment") which is absolutely-positioned at
+// AGENT_SUBTRACK_BASE / ENV_MAIN_HEIGHT (=30). Collapsed groups already
+// render the header as their only row, so no extra space is reserved
+// when the next group's first track is collapsed.
+const CATEGORY_HEADER_HEIGHT = 24
 
 /** Compute total subtrack rows for a traffic light based on its signal heads. */
 function getLightPhysContRows(light: { containment?: unknown[] }): number {
@@ -265,16 +274,29 @@ function getSubtrackRowLabels(group: string, trackId: string, lightLaneCounts: M
   return out
 }
 
-/** Gap after track i (group gap or agent-to-agent gap). */
+/** Gap after track i (group gap or agent-to-agent gap).
+ *
+ * When the next track starts a new group and is non-collapsed, the gap
+ * is widened by CATEGORY_HEADER_HEIGHT so the panel can render the
+ * group's header pill in that space rather than steal space from the
+ * track row itself (which would collide with the first subtrack label).
+ * Collapsed groups already use their single row as their header, so no
+ * extra space is reserved when the next track is collapsed.
+ */
 function getTrackGap(trackList: { group: string; id: string; _collapsed?: boolean }[], i: number): number {
   if (i + 1 >= trackList.length) return 0
-  if (trackList[i].group !== trackList[i + 1].group) return GROUP_GAP
+  if (trackList[i].group !== trackList[i + 1].group) {
+    return GROUP_GAP + (trackList[i + 1]._collapsed ? 0 : CATEGORY_HEADER_HEIGHT)
+  }
   if (!trackList[i]._collapsed && trackList[i].group === trackList[i + 1].group) return TRACK_GAP
   return 0
 }
 
 function getTrackY(trackList: { group: string; id: string; _collapsed?: boolean }[], rowIdx: number, lightLaneCounts?: Map<string, number>): number {
   let y = HEADER_HEIGHT
+  // The first track is always first-in-group; reserve header space for
+  // non-collapsed groups so the canvas paint and panel render stay aligned.
+  if (trackList.length > 0 && !trackList[0]._collapsed) y += CATEGORY_HEADER_HEIGHT
   for (let i = 0; i < rowIdx; i++) {
     y += getTrackHeight(trackList[i].group, trackList[i].id, lightLaneCounts, trackList[i]._collapsed)
     y += getTrackGap(trackList, i)
@@ -3410,21 +3432,18 @@ export function Timeline() {
             }
 
             const subLabels = getSubtrackRowLabels(group, id, lightLaneCounts, bundle?.annotation)
+            // Header pill for the group lives in the gap above the row,
+            // not inside it — keeps the row's top slot clear so the
+            // track-name row doesn't collide with the first absolutely-
+            // positioned subtrack label ("containment").
+            const headerSpaceAbove = Math.max(0, gapAbove - CATEGORY_HEADER_HEIGHT)
             return (
-              <div
-                key={id}
-                className="relative flex flex-col justify-start pt-0.5 gap-0.5 px-2 border-b border-border-subtle"
-                style={{ height: getTrackHeight(group, id, lightLaneCounts), marginTop: gapAbove, backgroundColor: i % 2 === 0 ? canvasColors.trackA : canvasColors.trackB, borderLeft: `3px solid ${color}50` }}
-              >
-                {subLabels.map((sl, si) => sl.label ? (
-                  <span
-                    key={si}
-                    className="absolute right-2 text-[9px] uppercase tracking-wider pointer-events-none select-none"
-                    style={{ top: sl.y + 1, height: COND_SUBTRACK_HEIGHT - 2, lineHeight: `${COND_SUBTRACK_HEIGHT - 2}px`, color: `${sl.color}cc` }}
-                  >{sl.label}</span>
-                ) : null)}
+              <Fragment key={id}>
                 {isFirstInGroup && (
-                  <div className="flex items-center gap-1">
+                  <div
+                    className="flex items-center gap-1 px-2"
+                    style={{ height: CATEGORY_HEADER_HEIGHT, marginTop: headerSpaceAbove }}
+                  >
                     <div
                       className="flex items-center gap-1.5 px-3 py-1 rounded-md cursor-pointer hover:brightness-125 transition-all"
                       style={{}}
@@ -3444,6 +3463,17 @@ export function Timeline() {
                     )}
                   </div>
                 )}
+                <div
+                  className="relative flex flex-col justify-start pt-0.5 gap-0.5 px-2 border-b border-border-subtle"
+                  style={{ height: getTrackHeight(group, id, lightLaneCounts), marginTop: isFirstInGroup ? 0 : gapAbove, backgroundColor: i % 2 === 0 ? canvasColors.trackA : canvasColors.trackB, borderLeft: `3px solid ${color}50` }}
+                >
+                {subLabels.map((sl, si) => sl.label ? (
+                  <span
+                    key={si}
+                    className="absolute right-2 text-[9px] uppercase tracking-wider pointer-events-none select-none"
+                    style={{ top: sl.y + 1, height: COND_SUBTRACK_HEIGHT - 2, lineHeight: `${COND_SUBTRACK_HEIGHT - 2}px`, color: `${sl.color}cc` }}
+                  >{sl.label}</span>
+                ) : null)}
                 <div className="flex items-center gap-1">
                   <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
                   <span className="text-[11px] text-text-secondary truncate flex-1">{name}</span>
@@ -3457,7 +3487,8 @@ export function Timeline() {
                     </button>
                   )}
                 </div>
-              </div>
+                </div>
+              </Fragment>
             )
           })}
           </div>

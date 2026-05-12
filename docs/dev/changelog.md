@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 fix(annotator): timeline category header no longer overlaps first track name (#32)
 - 2026-05-12 chore(make): annotator-dev target forwards optional PORT= variable (#31)
 - 2026-05-12 feat(viz): rich timeline — labels, sub-lanes, arrowheads, filter kwargs (#29)
 - 2026-05-12 fix(dataset): Sequence handles missing egomotion gracefully (#28)
