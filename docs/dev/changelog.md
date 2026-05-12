@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 docs(user): drop legacy "old" form from scenario examples in query_language.md (#19)
 - 2026-05-12 chore(license): add SPDX Apache-2.0 headers to all current source files (#18)
 - 2026-05-12 feat(query): MatchSet retains a weakref back to its source dataset (closes #13) (#17)
 - 2026-05-12 docs(user): lead query_language.md with worked examples, demote spec sections (#16)
