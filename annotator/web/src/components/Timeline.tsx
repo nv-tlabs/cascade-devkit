@@ -397,7 +397,7 @@ function ZoomButton({
           type="button"
           onClick={onClick}
           aria-label={label}
-          className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover text-xs transition-colors"
+          className="h-7 px-3 inline-flex items-center gap-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover text-xs transition-colors"
         >
           <Icon className="w-3.5 h-3.5" />
           <span>{label}</span>
@@ -419,7 +419,7 @@ function ZoomButton({
 function Kb({ keys, desc }: { keys: string; desc: string }) {
   return (
     <div className="flex items-center gap-2 text-[11px] text-text-muted">
-      <kbd className="font-mono text-[10px] h-5 px-1.5 inline-flex items-center bg-surface-overlay border border-border-default rounded-md text-text-secondary">
+      <kbd className="font-mono text-[10px] h-5 px-2 inline-flex items-center bg-surface-overlay border border-border-default rounded-md text-text-secondary">
         {keys}
       </kbd>
       <span>{desc}</span>
@@ -3357,7 +3357,7 @@ export function Timeline() {
   return (
     <div className="h-full flex flex-col">
       <Tooltip.Provider delayDuration={200}>
-        <div className="flex-shrink-0 h-9 px-4 flex items-center gap-1 border-b border-border-default bg-surface-sunken">
+        <div className="flex-shrink-0 h-9 px-4 flex items-center gap-2 border-b border-border-default bg-surface-sunken">
           <ZoomButton onClick={zoomIn} icon={ZoomIn} label="Zoom in" />
           <ZoomButton onClick={zoomOut} icon={ZoomOut} label="Zoom out" />
           <ZoomButton onClick={zoomFit} icon={Maximize2} label="Fill timeline" />
@@ -3395,7 +3395,7 @@ export function Timeline() {
                   style={{ height: COLLAPSED_GROUP_HEIGHT, marginTop: gapAbove, backgroundColor: i % 2 === 0 ? canvasColors.trackA : canvasColors.trackB, borderLeft: `3px solid ${color}50` }}
                 >
                   <div
-                    className="flex items-center gap-1.5 mx-1 mt-1 px-1.5 py-0.5 rounded-md cursor-pointer hover:brightness-125 transition-all"
+                    className="flex items-center gap-1.5 mx-1 mt-1 px-2 py-1 rounded-md cursor-pointer hover:brightness-125 transition-all"
                     style={{}}
                     onClick={() => toggleGroupCollapse(group)}
                     title={`Expand ${group}`}
@@ -3417,14 +3417,14 @@ export function Timeline() {
                 {subLabels.map((sl, si) => sl.label ? (
                   <span
                     key={si}
-                    className="absolute right-1 text-[9px] uppercase tracking-wider pointer-events-none select-none"
+                    className="absolute right-2 text-[9px] uppercase tracking-wider pointer-events-none select-none"
                     style={{ top: sl.y + 1, height: COND_SUBTRACK_HEIGHT - 2, lineHeight: `${COND_SUBTRACK_HEIGHT - 2}px`, color: `${sl.color}cc` }}
                   >{sl.label}</span>
                 ) : null)}
                 {isFirstInGroup && (
                   <div className="flex items-center gap-1">
                     <div
-                      className="flex items-center gap-1 px-1.5 py-0.5 rounded-md cursor-pointer hover:brightness-125 transition-all"
+                      className="flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer hover:brightness-125 transition-all"
                       style={{}}
                       onClick={() => toggleGroupCollapse(group)}
                       title={`Collapse ${group}`}

@@ -729,7 +729,7 @@ export function VideoPlayer() {
           {videoError ? (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="max-w-md mx-4 px-4 py-3 rounded-md bg-danger-bg border border-danger/40 text-sm text-danger text-center pointer-events-auto">
-                <div className="font-semibold text-danger mb-1">Video unavailable</div>
+                <div className="font-semibold text-danger mb-1.5">Video unavailable</div>
                 <div className="text-xs text-danger whitespace-pre-wrap">{videoError}</div>
               </div>
             </div>
@@ -743,7 +743,7 @@ export function VideoPlayer() {
         {zoomLevel > 1 ? (
           <div className="absolute top-2 right-2 flex flex-col items-end gap-1 z-10">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-text-secondary bg-surface-overlay/90 rounded-md font-mono" style={{ padding: '4px 8px' }}>{Math.round(zoomLevel * 100)}%</span>
+              <span className="h-7 inline-flex items-center text-xs text-text-secondary bg-surface-overlay/90 rounded-md font-mono px-2.5">{Math.round(zoomLevel * 100)}%</span>
               <button onClick={resetZoom} title="Reset zoom (fit)"
                 className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-overlay/90 text-text-secondary hover:text-white hover:bg-surface-hover transition-all">
                 <Maximize className="w-3.5 h-3.5" />
@@ -776,7 +776,7 @@ export function VideoPlayer() {
 
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 bg-surface-raised border-t border-border-subtle">
         <div className="flex items-center gap-2 flex-1 basis-0 justify-start">
-          <button onClick={toggle} className="w-9 h-9 flex items-center justify-center rounded-md bg-accent text-white hover:bg-blue-400 transition-all shadow-md">
+          <button onClick={toggle} className="w-8 h-8 flex items-center justify-center rounded-md bg-accent text-white hover:bg-blue-400 transition-all shadow-md">
             {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
           </button>
           <div className="flex items-center gap-1 bg-surface-overlay rounded-md p-1">
@@ -812,7 +812,7 @@ export function VideoPlayer() {
               <MapPin className="w-4 h-4" />
             </button>
           </div>
-          <span className="text-[10px] uppercase tracking-wider text-text-muted mr-1">Arrows</span>
+          <span className="text-[10px] uppercase tracking-wider text-text-muted mr-2">Arrows</span>
           <Tooltip.Provider delayDuration={150}>
             <div className="flex items-center gap-1 bg-surface-overlay rounded-md p-1">
               {([
@@ -830,7 +830,7 @@ export function VideoPlayer() {
                       <button
                         onClick={() => toggleArrowType(key)}
                         aria-label={`${active ? 'Hide' : 'Show'} ${title} arrows`}
-                        className={`h-8 w-8 inline-flex items-center justify-center rounded-md text-[18px] font-bold transition-colors leading-none ${active ? 'bg-surface-hover' : 'hover:bg-surface-hover'}`}
+                        className={`h-8 w-8 inline-flex items-center justify-center rounded-md text-[16px] font-bold transition-colors leading-none ${active ? 'bg-surface-hover' : 'hover:bg-surface-hover'}`}
                         style={{ color: active ? color : 'var(--color-text-muted)' }}
                       >
                         {label}
