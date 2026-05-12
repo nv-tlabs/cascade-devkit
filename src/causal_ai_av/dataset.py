@@ -286,7 +286,7 @@ class CausalAVDataset(PhysicalAIAVDatasetInterface):
         """Run a DSL query over every clip in the dataset.
 
         Returns a single MatchSet whose entries reference entities
-        across the corpus. See `docs/query_language.md`.
+        across the corpus. See `docs/user/query_language.md`.
         """
         return find_on_dataset(self, dsl)
 

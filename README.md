@@ -79,7 +79,7 @@ ds.group_by("agent.type = vehicle or agent.type = vru", key="agent.type")
 ```
 
 The DSL composes over entities and their attributes. Full grammar in
-[`docs/query_language.md`](docs/query_language.md). A taste:
+[`docs/user/query_language.md`](docs/user/query_language.md). A taste:
 
 ```text
 agent(type = ped, action(jaywalk = true)) and ego.action in (stop, yield, decel)
@@ -182,7 +182,9 @@ tools/
   annotator/   # local FastAPI + React annotation tool (see below)
 
 docs/
-  query_language.md   # DSL specification (grammar + semantics)
+  user/
+    query_language.md  # DSL specification (grammar + semantics)
+    annotator.md       # annotator UI guide
 
 examples/      # runnable Python scripts
 notebooks/     # Jupyter notebooks (built from scripts/build_notebooks.py)
