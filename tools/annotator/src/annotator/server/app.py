@@ -35,8 +35,8 @@ from annotator.server.video import (
 
 LOG = logging.getLogger(__name__)
 
-# `annotator/web/dist` resolved relative to this file:
-#   annotator/src/annotator/server/app.py  →  annotator/web/dist
+# `tools/annotator/web/dist` resolved relative to this file:
+#   tools/annotator/src/annotator/server/app.py  →  tools/annotator/web/dist
 _DEFAULT_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 
@@ -167,7 +167,7 @@ def create_app(
         )
     else:
         LOG.warning(
-            "Frontend dist not found at %s — run `cd annotator/web && npm run build`. "
+            "Frontend dist not found at %s — run `cd tools/annotator/web && npm run build`. "
             "Server will still serve /api/* routes.",
             dist,
         )

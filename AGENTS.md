@@ -16,7 +16,7 @@ exposes a small query language for searching the corpus by entity,
 attribute, time, and cause. User-facing docs live in
 [`README.md`](README.md). The annotation tool — a local FastAPI + React
 app for editing the JSON bundles — ships under
-[`annotator/`](annotator/).
+[`tools/annotator/`](tools/annotator/).
 
 ## Start here
 
@@ -47,8 +47,9 @@ If you are new to the repo, read in this order:
 | `src/causal_ai_av/` | Python DevKit: schema, I/O, dataset, query DSL |
 | `src/causal_ai_av/spec/` | Pydantic models for the annotation JSON (schema `2.0.0`) |
 | `src/causal_ai_av/query/` | DSL lexer + parser + evaluator |
-| `annotator/` | Local FastAPI + React annotation tool (separate workspace member) |
-| `annotator/web/` | Vite + React 19 + Tailwind v4 frontend |
+| `tools/` | User-facing utilities layered on the DevKit |
+| `tools/annotator/` | Local FastAPI + React annotation tool (uv workspace member) |
+| `tools/annotator/web/` | Vite + React 19 + Tailwind v4 frontend |
 | `tests/` | pytest suite |
 | `examples/` | Runnable Python scripts; see README "Examples and notebooks" |
 | `notebooks/` | Jupyter notebooks (built from `scripts/build_notebooks.py`) |
@@ -65,12 +66,12 @@ truth; this table mirrors `make help`. If you add a new verb, update
 
 | Verb | What it does |
 |------|--------------|
-| `make install` | `uv sync --all-extras` + `npm install` in `annotator/web` |
+| `make install` | `uv sync --all-extras` + `npm install` in `tools/annotator/web` |
 | `make test` | Run the full pytest suite |
 | `make lint` | `ruff check` on Python + `npm run lint` on the annotator frontend |
 | `make fmt` | `ruff format` on Python |
 | `make annotator-dev DATA=<path>` | Launch the annotator backend pointed at a directory of clips or videos |
-| `make annotator-build` | Build the annotator frontend bundle (`annotator/web/dist`) |
+| `make annotator-build` | Build the annotator frontend bundle (`tools/annotator/web/dist`) |
 | `make help` | Print every target with its description |
 
 ## Testing
@@ -118,7 +119,7 @@ the short version for agents:
 | Path | Why |
 |------|-----|
 | `meta/` | Gitignored working notes — local-only by convention. |
-| `.venv/`, `node_modules/`, `annotator/web/dist/` | Generated; rebuild with `make install` / `make annotator-build`. |
+| `.venv/`, `node_modules/`, `tools/annotator/web/dist/` | Generated; rebuild with `make install` / `make annotator-build`. |
 | `*.bak` | Annotator first-save backups of user data. |
 | `pyproject.toml` `[build-system]` | uv build-system pin — discuss before changing. |
 

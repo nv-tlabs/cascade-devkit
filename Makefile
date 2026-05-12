@@ -14,14 +14,14 @@ help:  ## Show this help and exit.
 
 install:  ## Install Python deps (all extras + groups) and the annotator's npm deps.
 	uv sync --all-extras
-	cd annotator/web && npm install
+	cd tools/annotator/web && npm install
 
 test:  ## Run the full pytest suite.
 	uv run pytest
 
 lint:  ## Lint Python (ruff) and the annotator frontend (eslint).
 	uv run ruff check .
-	cd annotator/web && npm run lint
+	cd tools/annotator/web && npm run lint
 
 fmt:  ## Format Python with ruff.
 	uv run ruff format .
@@ -33,5 +33,5 @@ annotator-dev:  ## Launch the annotator backend. Pass DATA=<path/to/clips-or-vid
 	fi
 	uv run causal-av-annotate $(DATA)
 
-annotator-build:  ## Build the annotator frontend bundle (annotator/web/dist).
-	cd annotator/web && npm run build
+annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/dist).
+	cd tools/annotator/web && npm run build
