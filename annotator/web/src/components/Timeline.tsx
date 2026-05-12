@@ -1515,7 +1515,7 @@ export function Timeline() {
           previousUserSelect = document.body.style.userSelect
           document.body.style.userSelect = 'none'
         }
-        canvas.style.cursor = 'grabbing'
+        canvas.style.cursor = 'col-resize'
         const updateFromClientX = (clientX: number) => {
           const r = canvas.getBoundingClientRect()
           const edgeOverflow =
@@ -2930,7 +2930,7 @@ export function Timeline() {
   const handleCanvasMouseLeave = useCallback(() => { setMousePos(null) }, [])
 
   const getCursorAt = useCallback((mx: number, myRaw: number): string => {
-    if (dragState) return dragState.mode === 'move' ? 'grabbing' : 'ew-resize'
+    if (dragState) return dragState.mode === 'move' ? 'grabbing' : 'col-resize'
     const container = containerRef.current; if (!container) return 'default'
     const w = container.clientWidth
     const pps = (w * zoomLevel) / Math.max(duration, 1)
@@ -2938,7 +2938,7 @@ export function Timeline() {
     const t2x = (t: number) => (t - liveScrollOffset) * pps
     if (myRaw < HEADER_HEIGHT) {
       const phX = t2x(playheadTime)
-      if (myRaw < SCRUBBER_LANE_HEIGHT && Math.abs(mx - phX) <= 10) return 'grab'
+      if (myRaw < SCRUBBER_LANE_HEIGHT && Math.abs(mx - phX) <= 10) return 'col-resize'
       return 'pointer'
     }
     const my = myRaw + verticalScroll
@@ -2975,7 +2975,7 @@ export function Timeline() {
           }
           if (!kps?.length) continue
           for (const kp of kps) {
-            if (Math.abs(t2x(parseTs(kp.timestamp)) - mx) <= HIT_PX) return 'default'
+            if (Math.abs(t2x(parseTs(kp.timestamp)) - mx) <= HIT_PX) return 'pointer'
           }
         }
       }
@@ -2995,7 +2995,7 @@ export function Timeline() {
           const kps = light.signal_heads?.[hi]?.keypoints
           if (!kps?.length) continue
           for (const kp of kps) {
-            if (Math.abs(t2x(parseTs(kp.timestamp)) - mx) <= HIT_PX) return 'default'
+            if (Math.abs(t2x(parseTs(kp.timestamp)) - mx) <= HIT_PX) return 'pointer'
           }
         }
       }
@@ -3108,14 +3108,14 @@ export function Timeline() {
       const { top: segTop, bottom: segBottom } = getSegBoundsCursor(seg)
       const x0 = t2x(seg.t0), x1 = t2x(seg.t1)
       if (mx < x0 - EDGE_ZONE || mx > x1 + EDGE_ZONE || my < segTop || my > segBottom) continue
-      if (mx >= x0 - EDGE_ZONE && mx <= x0 + EDGE_ZONE) return 'ew-resize'
-      if (mx >= x1 - EDGE_ZONE && mx <= x1 + EDGE_ZONE) return 'ew-resize'
-      if (mx >= x0 && mx <= x1) return 'grab'
+      if (mx >= x0 - EDGE_ZONE && mx <= x0 + EDGE_ZONE) return 'col-resize'
+      if (mx >= x1 - EDGE_ZONE && mx <= x1 + EDGE_ZONE) return 'col-resize'
+      if (mx >= x0 && mx <= x1) return 'pointer'
     }
     return 'default'
   }, [duration, getLiveScrollOffset, trackList, tracks, zoomLevel, dragState, verticalScroll, lightLaneCounts, keypointsVisible, bundle, playheadTime])
 
-  const [cursor, setCursor] = useState('crosshair')
+  const [cursor, setCursor] = useState('default')
   const updateCursor = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.ctrlKey || e.shiftKey) { setCursor('default'); return }
     const canvas = canvasRef.current; if (!canvas) return

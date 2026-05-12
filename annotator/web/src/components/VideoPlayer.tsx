@@ -631,7 +631,7 @@ export function VideoPlayer() {
       if (!keypointsVisible) { canvas.style.cursor = 'default'; return }
       const { cx, cy } = canvasPointFromEvent(e)
       const hit = hitTestMarker(cx, cy)
-      canvas.style.cursor = hit ? 'move' : 'crosshair'
+      canvas.style.cursor = hit ? 'move' : 'pointer'
     }
 
     const onMouseUp = (e: MouseEvent) => {
