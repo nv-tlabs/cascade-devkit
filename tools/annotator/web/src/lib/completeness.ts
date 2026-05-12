@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 import type { SilAvAnnotation, TimelineSegment } from './types'
 import { annotationToSegments } from './timeline-utils'
 import { ACTION_LINK_TO_CONFIG, QUANTITY_ELIGIBLE_OBJECT_TYPES } from './attribute-cycling'

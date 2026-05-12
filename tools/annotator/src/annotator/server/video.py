@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Video resolution + HEVC→H.264 transcode for the annotator server.
 
 The browser's HTML5 `<video>` element does not play HEVC/H.265, but the

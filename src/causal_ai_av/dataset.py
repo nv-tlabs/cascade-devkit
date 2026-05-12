@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """`CausalAVDataset` + `Sequence` — the user-facing DevKit entry points.
 
 `CausalAVDataset` is a thin subclass of `physical_ai_av.PhysicalAIAVDatasetInterface`.

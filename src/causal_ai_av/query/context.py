@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Context windows — *what else was happening* during a match.
 
 Given a clip-relative `[t0, t1]` window (typically a `Match.interval`),

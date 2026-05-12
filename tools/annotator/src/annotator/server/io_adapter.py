@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Adapter between source paths on disk and `AnnotationBundle` objects.
 
 This module is the only place in the server that talks to `causal_ai_av.io`.

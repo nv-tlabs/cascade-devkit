@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """HuggingFace I/O for AV Causal annotation JSON files.
 
 Requires the optional `hf` extra (`pip install causal_ai_av[hf]`), which pulls

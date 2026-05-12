@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Sensor data beyond the canonical front camera.
 
 The Physical AI AV Dataset ships every clip with a 7-camera rig, a

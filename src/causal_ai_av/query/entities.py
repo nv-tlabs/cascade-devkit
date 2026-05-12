@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Entity descriptors for the DSL.
 
 Each "entity kind" in the DSL (`clip`, `agent`, `ego`, `env`, `cond`,
