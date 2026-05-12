@@ -60,25 +60,29 @@ export function Sidebar() {
 
   return (
     <aside className="flex flex-col h-full bg-surface-raised border-r border-border-default overflow-x-hidden overflow-y-hidden">
-      <header className="shrink-0 px-4 py-3 border-b border-border-default">
+      <header className="shrink-0 px-5 py-4 border-b border-border-default">
         <h1 className="text-text-primary font-semibold text-sm">causal-av-annotator</h1>
         <p className="text-xs font-medium text-text-muted mt-0.5">{clips.length} clip{clips.length === 1 ? '' : 's'}</p>
       </header>
 
-      <div className="px-4 py-3 border-b border-border-default">
+      <div className="px-5 py-3 border-b border-border-default">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
+            width={16}
+            height={16}
+          />
           <input
             type="text"
             placeholder="Search clips..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full h-9 pl-10 pr-3 text-sm bg-surface-overlay border border-border-default rounded-md text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+            className="w-full h-10 pl-10 pr-3 text-sm bg-surface-overlay border border-border-default rounded-md text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
           />
         </div>
       </div>
 
-      <ul className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-1">
+      <ul className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-1.5">
         {filtered.map((c) => {
           const selected = c.clip_id === selectedClipId
           const Icon = c.kind === 'annotated' ? FileText : Film

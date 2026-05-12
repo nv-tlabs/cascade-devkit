@@ -144,7 +144,10 @@
   --color-entity-light-soft-border: rgba(194, 37, 58, 0.30);
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+/* Tailwind v4's preflight already sets `box-sizing: border-box` and zeroes
+   margin/padding on all elements. An additional `* { padding: 0 }` here
+   would defeat every Tailwind padding utility (`pl-*`, `px-*`, etc.) so
+   we deliberately do NOT redefine those rules. */
 
 body {
   font-family: var(--font-sans);
