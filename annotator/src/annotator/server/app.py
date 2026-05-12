@@ -146,6 +146,20 @@ def create_app(
 
     dist = dist_dir if dist_dir is not None else _DEFAULT_DIST
     if dist.is_dir():
+        index_path = dist / "index.html"
+
+        # Serve index.html with no-cache headers so browsers don't pin a stale
+        # HTML pointing at hashed asset names that have been replaced by a
+        # fresh build. The hashed assets themselves under /assets/* are
+        # content-addressed and safe to cache aggressively (StaticFiles default).
+        @app.get("/", include_in_schema=False)
+        def index() -> FileResponse:
+            return FileResponse(
+                index_path,
+                media_type="text/html",
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
+
         app.mount(
             "/",
             StaticFiles(directory=str(dist), html=True),
