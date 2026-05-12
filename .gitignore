@@ -16,3 +16,7 @@ __pycache__/
 
 # Local environment variables — see .env.example for the template
 .env
+
+# Output artifacts from runnable examples (rendered frames, timeline
+# figures, …). Examples write here; not tracked.
+examples/_out/

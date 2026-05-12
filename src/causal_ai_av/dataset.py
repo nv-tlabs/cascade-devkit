@@ -8,10 +8,9 @@ It extends the parent with:
 - per-clip `Sequence` objects bundling the annotation with the parent's
   egomotion / video features,
 - point-in-time and windowed state queries (`Sequence.state_at`),
-- a placeholder `Sequence.visualize` that the annotator subsystem will replace.
-
-The visualize implementation is intentionally minimal; the spec calls it out
-as a placeholder that the annotator subsystem will rewrite.
+- `Sequence.visualize` — a polymorphic dispatcher into the
+  `causal_ai_av.viz` package; returns a ``ClipPlayer`` widget for
+  scrub-and-play, or a ``PIL.Image`` for headless single-frame use.
 """
 
 from __future__ import annotations
@@ -543,61 +542,160 @@ class Sequence:
             return self._state_at_instant(t)
         return self._state_over_range(t, t_end)
 
-    # -- visualize (placeholder) ---------------------------------------------
+    # -- visualize ------------------------------------------------------------
 
     def visualize(
-        self, t: float | None = None, t_end: float | None = None
-    ) -> dict:
-        """Return a single-frame visualization payload.
+        self,
+        t: float | tuple[float, float] | None = None,
+        *,
+        match: Match | None = None,
+        context: ContextWindow | None = None,
+        pad: float = 1.0,
+        static: bool = False,
+        fps: float = 8.0,
+        highlight: tuple[float, float] | None = None,
+        arrows: dict[str, bool] | None = None,
+    ) -> Any:
+        """Visualize this clip's video + timeline.
 
-        Placeholder implementation per the spec; the full multi-track playback
-        will land with the annotator subsystem.
+        Dispatches based on which argument is set:
+
+        - ``seq.visualize()`` → ``ClipPlayer`` over the full clip.
+        - ``seq.visualize(t=2.5)`` → ``ClipPlayer`` centered on ``t=2.5`` s
+          (±1 s window, clamped to the clip bounds).
+        - ``seq.visualize(t=2.5, static=True)`` → ``PIL.Image`` of that
+          single frame, decoded headlessly via ``viz.render_frame``.
+        - ``seq.visualize(t=(2.0, 5.0))`` → ``ClipPlayer`` over the
+          explicit window.
+        - ``seq.visualize(match=m)`` → ``ClipPlayer`` over
+          ``m.interval ± pad`` with ``m.interval`` painted as the yellow
+          highlight band. The padded window is clamped to
+          ``[0, duration_s]``.
+        - ``seq.visualize(context=cw)`` → ``ClipPlayer`` over
+          ``cw.interval``; the context window's interval is also
+          painted as the highlight when no explicit highlight is passed.
+
+        Exactly one of ``t`` / ``match`` / ``context`` may be set
+        (passing more than one raises ``ValueError``).
+
+        Args:
+            t: scalar timestamp to scrub to, tuple ``(t0, t1)`` window,
+                or ``None`` for the whole clip.
+            match: a ``Match`` whose ``interval`` selects the playback
+                window (``pad`` widens it). ``clip_id`` must match this
+                sequence.
+            context: a ``ContextWindow``. Its ``interval`` selects the
+                playback window. ``clip_id`` must match this sequence.
+            pad: seconds of padding applied on either side of
+                ``match.interval``. Ignored when ``match`` is ``None``.
+            static: when ``True`` and ``t`` is a scalar, return a
+                ``PIL.Image`` instead of building a ``ClipPlayer``.
+                Combining ``static=True`` with a tuple or with ``t=None``
+                raises ``ValueError``.
+            fps: forwarded to ``ClipPlayer`` (scrub rate, frames /
+                second). Ignored in the static path.
+            highlight: explicit highlight band passed through to
+                ``ClipPlayer``. When ``match`` or ``context`` is set,
+                the interval that came in alongside the match takes
+                priority — matching the carousel's behavior.
+            arrows: per-family arrow-on/off toggles forwarded to
+                ``ClipPlayer``.
+
+        Returns:
+            ``PIL.Image.Image`` when ``static=True`` and ``t`` is a
+            scalar. Otherwise ``causal_ai_av.viz.ClipPlayer``.
+
+        Raises:
+            ValueError: if more than one of ``t`` / ``match`` /
+                ``context`` is set; if ``static=True`` is paired with a
+                non-scalar ``t``; if ``match`` / ``context`` refer to a
+                different ``clip_id``.
+            ImportError: if the optional ``[viz]`` extra is not
+                installed (Pillow / Plotly / ipywidgets).
         """
-        # Resolve the "target moment" per the spec.
-        if t is None and t_end is None:
-            target = self.duration_s / 2.0
-        elif t is None and t_end is not None:
-            target = t_end / 2.0  # shouldn't happen in practice; defensive
-        elif t is not None and t_end is None:
-            target = t
-        else:
-            assert t is not None and t_end is not None
-            target = (t + t_end) / 2.0
+        # 1. Mutual exclusion — at most one of t / match / context.
+        provided = sum(arg is not None for arg in (t, match, context))
+        if provided > 1:
+            raise ValueError(
+                "visualize() takes at most one of `t`, `match`, `context`; "
+                "got multiple."
+            )
 
-        state = self.state_at(t, t_end) if t is not None else self.state_at(target)
+        # 2. clip_id consistency for match / context.
+        if match is not None and match.clip_id != self.clip_id:
+            raise ValueError(
+                f"match is from a different clip "
+                f"(match.clip_id={match.clip_id!r}, sequence.clip_id={self.clip_id!r})"
+            )
+        if context is not None and context.clip_id != self.clip_id:
+            raise ValueError(
+                f"context is from a different clip "
+                f"(context.clip_id={context.clip_id!r}, "
+                f"sequence.clip_id={self.clip_id!r})"
+            )
 
-        # Strict-match bboxes for every agent at the target moment.
-        bboxes: list[BoundingBox] = []
-        for agent in self.annotation.annotation.agents:
-            frame = _strict_bbox_frame(agent.bounding_boxes, target, self.fps)
-            if frame is None:
-                continue
-            box = _bbox_for_agent(frame, agent.id)
-            if box is not None:
-                bboxes.append(box)
+        # 3. static=True only makes sense for a scalar `t`.
+        scalar_t = isinstance(t, (int, float)) and not isinstance(t, bool)
+        if static and not scalar_t:
+            raise ValueError(
+                f"static=True requires a scalar `t` (single-frame render); "
+                f"got t={t!r}"
+            )
 
-        # Frame decode — best-effort. We never raise here: the parent stack
-        # may be absent (notebook / test path) and the placeholder shouldn't
-        # surface that to the caller.
-        frame_image: Any | None = None
+        # 4. Lazy import — viz is an optional extra, and the dataset
+        # module must remain importable without Pillow / Plotly /
+        # ipywidgets on the path. Failures surface at call time only.
         try:
-            import numpy as np  # local import; numpy is a transitive parent dep
+            from causal_ai_av.viz import ClipPlayer, render_frame
+        except ImportError as exc:
+            raise ImportError(
+                "Sequence.visualize() requires the 'viz' extra. Install with: "
+                "pip install 'causal-ai-av[viz]'"
+            ) from exc
 
-            video = self.video
-            # SeekVideoReader.timestamps are in the parent's native units
-            # (microseconds). Convert seconds → microseconds.
-            requested = np.asarray([int(round(target * 1_000_000))], dtype=np.int64)
-            images, _ = video.decode_images_from_timestamps(requested)
-            frame_image = images[0]
-        except Exception:  # pragma: no cover — placeholder path
-            frame_image = None
+        duration = float(self.duration_s) if self.duration_s else 0.0
 
-        return {
-            "frame": frame_image,
-            "state": state,
-            "bboxes": bboxes,
-            "note": "placeholder; full multi-track playback comes with the annotator subsystem",
-        }
+        # 5. Resolve the playback window + highlight from the dispatch matrix.
+        t_start: float = 0.0
+        t_end: float = duration
+        resolved_highlight: tuple[float, float] | None = highlight
+
+        if scalar_t:
+            assert isinstance(t, (int, float))
+            t_val = float(t)
+            if static:
+                # Headless single-frame path bypasses ClipPlayer.
+                return render_frame(self, t_val)
+            t_start = max(0.0, t_val - 1.0)
+            t_end = min(duration, t_val + 1.0)
+        elif isinstance(t, tuple):
+            t0, t1 = t
+            t_start = float(t0)
+            t_end = float(t1)
+        elif match is not None:
+            if match.interval is not None:
+                m0, m1 = float(match.interval.start), float(match.interval.end)
+                t_start = max(0.0, m0 - float(pad))
+                t_end = min(duration, m1 + float(pad))
+                resolved_highlight = (m0, m1)
+            else:
+                # Whole-clip match — fall through to the full clip span.
+                t_start, t_end = 0.0, duration
+        elif context is not None:
+            iv = context.interval
+            t_start = float(iv.start)
+            t_end = float(iv.end)
+            if resolved_highlight is None:
+                resolved_highlight = (float(iv.start), float(iv.end))
+
+        return ClipPlayer(
+            self,
+            t_start=t_start,
+            t_end=t_end,
+            fps=fps,
+            highlight=resolved_highlight,
+            arrows=arrows,
+        )
 
     # -- state_at implementation ---------------------------------------------
 
