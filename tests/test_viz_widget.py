@@ -185,8 +185,11 @@ def test_clipplayer_constructs_without_raising() -> None:
     seq = _seq_with_fake_video()
     player = ClipPlayer(seq)
     assert isinstance(player._fig, go.FigureWidget)
-    # Image trace was added in row 1, col 1 — its axis is the primary x/y.
-    assert len(player._fig.data) == 1
+    # The video Image trace is added before `_paint_timeline_onto`, so
+    # it sits at `data[0]`; the hover-overlay scatter traces emitted by
+    # the painter follow. `_apply_t` writes to `data[0]` and relies on
+    # that invariant, so pin both.
+    assert len(player._fig.data) >= 1
     assert player._fig.data[0].type == "image"
 
 
@@ -331,3 +334,26 @@ def test_repr_mimebundle_has_html_and_widget_view_keys() -> None:
     widget_view = bundle["application/vnd.jupyter.widget-view+json"]
     assert isinstance(widget_view, dict)
     assert "model_id" in widget_view
+
+
+# ---------------------------------------------------------------------------
+# 10. Filter kwarg propagation
+# ---------------------------------------------------------------------------
+
+
+def test_filter_kwargs_forwarded_to_timeline_subplot() -> None:
+    """`ClipPlayer(seq, entity_kinds=["agent"])` paints only agent-row
+    segment shapes on the timeline subplot."""
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq, entity_kinds=["agent"])
+    seg_shapes = [
+        s
+        for s in _bottom_subplot_shapes(player._fig)
+        if s.get("name", "").startswith("segment:")
+    ]
+    assert seg_shapes, "expected at least one agent-row segment shape"
+    for s in seg_shapes:
+        mid = (float(s["y0"]) + float(s["y1"])) / 2.0
+        # Agents row is index 3; band spans roughly [2.6, 3.4] across
+        # all lane configurations.
+        assert 2.5 <= mid <= 3.5, f"non-Agent shape leaked through filter: {s}"

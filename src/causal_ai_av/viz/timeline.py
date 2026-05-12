@@ -48,7 +48,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from causal_ai_av.viz.colors import entity_color
-from causal_ai_av.viz.segments import Segment, annotation_to_segments
+from causal_ai_av.viz.segments import Segment, annotation_to_segments, assign_lanes
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     import plotly.graph_objects as go
@@ -118,9 +118,77 @@ def _segment_center_x(seg: Segment) -> float:
     return (seg.t0 + seg.t1) / 2.0
 
 
-def _segment_top_y(group: str) -> float:
-    """y-coordinate of a segment's top edge (used as arrow anchor)."""
-    return _GROUP_ROW[group] + 0.4
+# Sub-lane geometry.
+#
+# A group row covers `[row - _ROW_HALF_HEIGHT, row + _ROW_HALF_HEIGHT]`. With
+# `lane_count` lanes inside, each lane is a horizontal stripe of height
+# `2 * _ROW_HALF_HEIGHT / lane_count`. Lane 0 sits at the "top" of the
+# row (which renders at the bottom of the row in data coordinates because
+# `yaxis.range` is reversed in `_paint_timeline_onto`).
+_ROW_HALF_HEIGHT: float = 0.4
+
+
+def _lane_band(group: str, lane: int, lane_count: int) -> tuple[float, float]:
+    """Return `(y0, y1)` for a segment painted at `lane` in `group`.
+
+    `lane_count` is the deepest stack within the group — every segment in
+    the same group shares the same lane height so the band tiling looks
+    even.
+    """
+    row = _GROUP_ROW[group]
+    total = 2.0 * _ROW_HALF_HEIGHT
+    lane_h = total / max(lane_count, 1)
+    y0 = row - _ROW_HALF_HEIGHT + lane * lane_h
+    y1 = y0 + lane_h
+    return y0, y1
+
+
+def _segment_top_y(group: str, lane: int = 0, lane_count: int = 1) -> float:
+    """y-coordinate of a segment's top edge (used as arrow anchor).
+
+    With the yaxis range reversed (top → bottom), "top" in data
+    coordinates is the *larger* y value of the lane band — that's the
+    edge that visually faces away from the rows below.
+    """
+    _y0, y1 = _lane_band(group, lane, lane_count)
+    return y1
+
+
+# Maximum characters for an inline segment label. Anything longer gets
+# truncated with an ellipsis; the full label always lives in the hover
+# tooltip.
+_INLINE_LABEL_MAX_CHARS: int = 14
+
+# A segment must be at least this wide (in seconds) to qualify for an
+# inline label. Narrower segments suppress the inline annotation and
+# rely on hover-only — otherwise the text would clip outside the
+# rectangle and read as noise. Pinned by a regression test on the
+# `~5 s vs ~0.05 s` divide called out in the design doc.
+_INLINE_LABEL_MIN_WIDTH_S: float = 0.3
+
+
+def _truncate_label(label: str, *, max_chars: int = _INLINE_LABEL_MAX_CHARS) -> str:
+    """Truncate `label` to `max_chars`, appending `…` when shortened."""
+    if len(label) <= max_chars:
+        return label
+    return label[: max(0, max_chars - 1)].rstrip() + "…"
+
+
+def _xref_to_axis(xref: str) -> str:
+    """Translate a shape's `xref` (`"x"`, `"x2"`, …) to a trace's `xaxis`.
+
+    Plotly uses the same string for both — `"x"` for the primary
+    subplot, `"x2"` for the second, etc. The function is a no-op alias
+    but keeps the caller's intent explicit: shape `xref` and trace
+    `xaxis` are semantically distinct fields even though they share a
+    representation.
+    """
+    return xref
+
+
+def _yref_to_axis(yref: str) -> str:
+    """Translate a shape's `yref` to a trace's `yaxis`."""
+    return yref
 
 
 def _bezier_path(x0: float, y0: float, x1: float, y1: float) -> str:
@@ -205,14 +273,19 @@ def _paint_timeline_onto(
     yaxis_key: str = "yaxis",
     highlight: tuple[float, float] | None = None,
     arrows: dict[str, bool] | None = None,
+    entity_kinds: list[str] | None = None,
+    agent_ids: list[str] | None = None,
+    track_groups: list[str] | None = None,
 ) -> None:
     """Append timeline shapes for `seq` onto `fig`, on the given axes.
 
     Factored out of `render_timeline` so the PR-4 widget can paint the
     same timeline onto the bottom subplot of a `FigureWidget` without
     rebuilding the rasterization logic from scratch. Mutates `fig` in
-    place — appends shapes to `fig.layout.shapes` and updates the
-    `xaxis_key` / `yaxis_key` axis settings.
+    place — appends shapes to `fig.layout.shapes`, label annotations to
+    `fig.layout.annotations`, and invisible hover-scatter traces to
+    `fig.data`, then updates the `xaxis_key` / `yaxis_key` axis
+    settings.
 
     Args:
         fig: the Plotly Figure (or FigureWidget) to paint onto.
@@ -229,10 +302,30 @@ def _paint_timeline_onto(
             `"because_of"`, `"link_to"`, `"containment"`, `"influence"`,
             `"action_target"`. Missing keys default to `True`. Unknown
             keys are ignored.
+        entity_kinds: optional whitelist of segment kinds to draw.
+            Recognized values are `"env"`, `"light"`, `"object"`,
+            `"agent"`, `"ego"`. `None` = all kinds.
+        agent_ids: optional whitelist of `Agent.id` values. Only
+            restricts segments whose kind is `"agent"`; segments of
+            other kinds are untouched. `None` = all agents.
+        track_groups: optional whitelist of group rows to render.
+            Recognized values are `"Env"`, `"Lights"`, `"Objects"`,
+            `"Agents"`, `"Ego"`. Rows not in the whitelist drop their
+            tick labels too, so the y-axis collapses to the visible
+            rows. `None` = all five groups.
 
     Returns:
         None. `fig` is mutated.
+
+    Filter semantics:
+        - The three filters AND together: a segment is drawn only if
+          its group is in `track_groups`, its kind is in
+          `entity_kinds`, and (for agent kinds) its agent id is in
+          `agent_ids`.
+        - Arrow filtering follows segment filtering: an arrow whose
+          source or target segment was filtered out is dropped.
     """
+    import plotly.graph_objects as go
     bundle = seq.annotation
     duration = float(seq.duration_s) if seq.duration_s else 0.0
 
@@ -243,12 +336,55 @@ def _paint_timeline_onto(
             if k in enabled_arrows:
                 enabled_arrows[k] = bool(v)
 
+    # Resolve filter whitelists. `None` means "all", which we mirror by
+    # building a set populated with every legal value.
+    allowed_kinds: set[str] = (
+        {"env", "light", "object", "agent", "ego"}
+        if entity_kinds is None
+        else set(entity_kinds)
+    )
+    allowed_groups: set[str] = (
+        set(_TRACK_GROUPS) if track_groups is None else set(track_groups)
+    )
+    allowed_agent_ids: set[str] | None = (
+        None if agent_ids is None else set(agent_ids)
+    )
+
     shapes: list[dict[str, Any]] = []
 
     # Flatten the bundle into segments via PR-1's port. Empty bundles
     # produce an empty list — we'll still emit shapes-free axis layout,
     # which is what the spec asks for.
     segments = annotation_to_segments(bundle)
+
+    # ---------------------------------------------------------------
+    # Segment-level filter. Used both for the rectangle/label loop
+    # and for the arrow-endpoint check.
+    # ---------------------------------------------------------------
+    ann_for_filter = bundle.annotation
+    agent_id_by_index: dict[int, str] = {
+        i: a.id for i, a in enumerate(ann_for_filter.agents) if a.id
+    }
+
+    def _segment_allowed(seg: Segment) -> bool:
+        group = _track_id_to_group(seg.track_id)
+        if group is None or group not in allowed_groups:
+            return False
+        kind = _segment_kind(seg.track_id)
+        if kind is None or kind not in allowed_kinds:
+            return False
+        if kind == "agent" and allowed_agent_ids is not None:
+            ai = (seg.meta or {}).get("_agentIndex")
+            if not isinstance(ai, int):
+                return False
+            agent_id = agent_id_by_index.get(ai)
+            if agent_id is None or agent_id not in allowed_agent_ids:
+                return False
+        return True
+
+    # Cache the predicate result so arrow lookups can short-circuit
+    # quickly when the source / target segment was filtered out.
+    allowed_ids: set[str] = {s.id for s in segments if _segment_allowed(s)}
 
     # ---------------------------------------------------------------
     # 1. Optional highlight band — drawn first so it sits *under* the
@@ -282,25 +418,63 @@ def _paint_timeline_onto(
         )
 
     # ---------------------------------------------------------------
-    # 2. One rectangle per segment. Drop segments whose track id
-    #    doesn't map into one of the five groups (defensive — the
-    #    schema currently only emits the five we know about).
+    # 2. One rectangle per segment, stacked into sub-lanes.
+    #
+    #    Greedy lane assignment via `assign_lanes` runs per `track_id`
+    #    (mirroring the annotator's `assignTracks`). To paint inside a
+    #    *group row*, we further roll up lane counts per group — the
+    #    deepest stack across all of the group's track ids wins, so
+    #    every segment in the same group ends up on a uniform lane
+    #    grid. This is the same idea as the annotator's grouping in
+    #    `Timeline.tsx`: subtracks share the parent's vertical budget.
     # ---------------------------------------------------------------
+    paintable: list[tuple[Segment, str, str]] = []
     for seg in segments:
+        if seg.id not in allowed_ids:
+            continue
         group = _track_id_to_group(seg.track_id)
         if group is None:
             continue
         kind = _segment_kind(seg.track_id)
         if kind is None:
             continue
-        row = _GROUP_ROW[group]
+        paintable.append((seg, group, kind))
+
+    seg_lane = assign_lanes([s for s, _, _ in paintable])
+    # Roll lane indices up to per-group lane counts so the lane band
+    # tiling is uniform within a group (otherwise neighbouring track
+    # ids would paint at different y-heights and read as a ragged
+    # lattice).
+    group_lane_count: dict[str, int] = {g: 1 for g in _TRACK_GROUPS}
+    for seg, group, _ in paintable:
+        lane = seg_lane.get(seg.id, 0)
+        group_lane_count[group] = max(group_lane_count[group], lane + 1)
+
+    # Cache `(group, lane) -> (y0, y1)` for the segment loop and the
+    # arrow-anchor loop.
+    def _band_for(group: str, lane: int) -> tuple[float, float]:
+        return _lane_band(group, lane, group_lane_count[group])
+
+    # Collect inline annotation entries (text drawn on top of each
+    # rectangle) and hover-overlay traces (invisible scatter markers at
+    # segment centres carrying a tooltip with the full label, window,
+    # and track id). Plotly shapes don't support hover natively; an
+    # overlay trace is the standard idiom.
+    annotations: list[dict[str, Any]] = []
+    hover_traces: list[go.Scatter] = []
+    xa = _xref_to_axis(xref)
+    ya = _yref_to_axis(yref)
+
+    for seg, group, kind in paintable:
+        lane = seg_lane.get(seg.id, 0)
+        y0, y1 = _band_for(group, lane)
         shapes.append(
             {
                 "type": "rect",
                 "x0": seg.t0,
                 "x1": seg.t1,
-                "y0": row - 0.4,
-                "y1": row + 0.4,
+                "y0": y0,
+                "y1": y1,
                 "xref": xref,
                 "yref": yref,
                 "fillcolor": entity_color(kind),
@@ -312,6 +486,46 @@ def _paint_timeline_onto(
                 "layer": "above",
                 "name": f"segment:{seg.id}",
             }
+        )
+
+        # Inline label — centered on the rectangle. Suppressed for
+        # very narrow segments where the truncated text would clip.
+        seg_width = max(seg.t1 - seg.t0, 0.0)
+        if seg_width >= _INLINE_LABEL_MIN_WIDTH_S:
+            annotations.append(
+                {
+                    "x": (seg.t0 + seg.t1) / 2.0,
+                    "y": (y0 + y1) / 2.0,
+                    "xref": xref,
+                    "yref": yref,
+                    "text": _truncate_label(seg.label),
+                    "showarrow": False,
+                    "font": {"size": 10, "color": "#0f172a"},
+                    "name": f"label:{seg.id}",
+                }
+            )
+
+        # Hover overlay — invisible scatter marker at the segment
+        # midpoint. `opacity=0` keeps it from drawing, `size=20` makes
+        # the hover hitbox generous, and `hovertext` carries the full
+        # tooltip body (label / window / track id).
+        hover_traces.append(
+            go.Scatter(
+                x=[(seg.t0 + seg.t1) / 2.0],
+                y=[(y0 + y1) / 2.0],
+                xaxis=xa,
+                yaxis=ya,
+                mode="markers",
+                marker={"size": 20, "opacity": 0, "color": entity_color(kind)},
+                hoverinfo="text",
+                hovertext=(
+                    f"{seg.label}<br>"
+                    f"[{seg.t0:.2f}s – {seg.t1:.2f}s]<br>"
+                    f"track: {seg.track_id}"
+                ),
+                showlegend=False,
+                name=f"hover:segment:{seg.id}",
+            )
         )
 
     # ---------------------------------------------------------------
@@ -332,14 +546,23 @@ def _paint_timeline_onto(
     ) -> None:
         if src is None or tgt is None:
             return
+        # Drop the arrow if either endpoint was filtered out (per
+        # `entity_kinds` / `agent_ids` / `track_groups`). Symmetric:
+        # both ends must be present for the bezier to make sense.
+        if src.id not in allowed_ids or tgt.id not in allowed_ids:
+            return
         src_group = _track_id_to_group(src.track_id)
         tgt_group = _track_id_to_group(tgt.track_id)
         if src_group is None or tgt_group is None:
             return
         x0 = _segment_center_x(src)
         x1 = _segment_center_x(tgt)
-        y0 = _segment_top_y(src_group)
-        y1 = _segment_top_y(tgt_group)
+        # Anchor each end of the bezier to its segment's lane band so
+        # multi-lane stacks don't collapse arrows onto the same edge.
+        src_lane = seg_lane.get(src.id, 0)
+        tgt_lane = seg_lane.get(tgt.id, 0)
+        y0 = _segment_top_y(src_group, src_lane, group_lane_count[src_group])
+        y1 = _segment_top_y(tgt_group, tgt_lane, group_lane_count[tgt_group])
         shapes.append(
             {
                 "type": "path",
@@ -351,6 +574,76 @@ def _paint_timeline_onto(
                 "layer": "above",
                 "name": f"arrow:{family}:{src.id}->{tgt.id}",
             }
+        )
+
+        # Arrowhead at the target end. Plotly's SVG `path` shape doesn't
+        # render arrowheads, so we add a rotated triangle marker via a
+        # `go.Scatter` trace. The angle is computed from the bezier's
+        # tangent at t=1, which for a quadratic curve through control
+        # point `(mid_x, ctrl_y)` is `(x1 - mid_x, y1 - ctrl_y)` in
+        # data coords. With the reversed y-axis, flip dy when feeding
+        # `atan2` so the triangle points along the on-screen direction.
+        import math
+
+        mid_x = (x0 + x1) / 2.0
+        ctrl_y = max(y0, y1) + 0.8
+        dx = x1 - mid_x
+        dy = y1 - ctrl_y
+        # Convert tangent vector to a Plotly `marker.angle` (degrees
+        # clockwise from "north", which is +y in screen space).
+        # Screen-y points "up" in Plotly's default but the timeline
+        # uses a reversed yaxis, so the on-screen y direction is `-dy`
+        # in data coords.
+        screen_dy = -dy
+        angle_rad = math.atan2(dx, screen_dy)
+        angle_deg = math.degrees(angle_rad)
+        hover_traces.append(
+            go.Scatter(
+                x=[x1],
+                y=[y1],
+                xaxis=xa,
+                yaxis=ya,
+                mode="markers",
+                marker={
+                    "symbol": "triangle-up",
+                    "size": 10,
+                    "angle": angle_deg,
+                    "color": _ARROW_COLORS[family],
+                    "line": {"width": 0},
+                },
+                hoverinfo="text",
+                hovertext=(
+                    f"{family}<br>"
+                    f"{src.label}<br>"
+                    f"  → {tgt.label}"
+                ),
+                showlegend=False,
+                name=f"arrowhead:{family}:{src.id}->{tgt.id}",
+            )
+        )
+
+        # Mid-arc hover hotspot — invisible marker at the bezier
+        # midpoint so the bezier line itself is hoverable end-to-end
+        # rather than only at the arrowhead.
+        bezier_mid_x = 0.25 * x0 + 0.5 * mid_x + 0.25 * x1
+        bezier_mid_y = 0.25 * y0 + 0.5 * ctrl_y + 0.25 * y1
+        hover_traces.append(
+            go.Scatter(
+                x=[bezier_mid_x],
+                y=[bezier_mid_y],
+                xaxis=xa,
+                yaxis=ya,
+                mode="markers",
+                marker={"size": 18, "opacity": 0, "color": _ARROW_COLORS[family]},
+                hoverinfo="text",
+                hovertext=(
+                    f"{family}<br>"
+                    f"{src.label}<br>"
+                    f"  → {tgt.label}"
+                ),
+                showlegend=False,
+                name=f"hover:arrow:{family}:{src.id}->{tgt.id}",
+            )
         )
 
     # 3a. because_of — read straight off the Segment dataclass.
@@ -473,9 +766,30 @@ def _paint_timeline_onto(
     #    callers can pre-paint playheads or other overlays without
     #    losing them.
     # ---------------------------------------------------------------
+    # When `track_groups` filters the y-axis, drop unrendered rows from
+    # the tick layout AND tighten the y-range to the visible band so
+    # the figure doesn't render with empty rows.
+    visible_rows: list[tuple[int, str]] = [
+        (_GROUP_ROW[g], g) for g in _TRACK_GROUPS if g in allowed_groups
+    ]
+    if visible_rows:
+        ticks_vals = [r for r, _ in visible_rows]
+        ticks_text = [g for _, g in visible_rows]
+        y_min = min(ticks_vals) - 0.5
+        y_max = max(ticks_vals) + 0.5
+    else:
+        # Pathological: caller asked for zero groups. Keep something
+        # sane so Plotly still renders a frame.
+        ticks_vals = list(range(len(_TRACK_GROUPS)))
+        ticks_text = list(_TRACK_GROUPS)
+        y_min = -0.5
+        y_max = len(_TRACK_GROUPS) - 0.5
+
     existing_shapes = list(fig.layout.shapes or ())
+    existing_annotations = list(fig.layout.annotations or ())
     fig.update_layout(
         shapes=existing_shapes + shapes,
+        annotations=existing_annotations + annotations,
         **{
             xaxis_key: {
                 "title": "Time (s)",
@@ -485,14 +799,20 @@ def _paint_timeline_onto(
             },
             yaxis_key: {
                 "tickmode": "array",
-                "tickvals": list(range(len(_TRACK_GROUPS))),
-                "ticktext": list(_TRACK_GROUPS),
-                "range": [len(_TRACK_GROUPS) - 0.5, -0.5],  # top → bottom
+                "tickvals": ticks_vals,
+                "ticktext": ticks_text,
+                "range": [y_max, y_min],  # top → bottom
                 "showgrid": False,
                 "zeroline": False,
             },
         },
     )
+
+    # Append the hover-overlay traces last so any pre-existing traces
+    # (e.g. the widget's video-frame Image at index 0) keep their
+    # positions in `fig.data`.
+    for trace in hover_traces:
+        fig.add_trace(trace)
 
 
 def render_timeline(
@@ -500,6 +820,9 @@ def render_timeline(
     *,
     highlight: tuple[float, float] | None = None,
     arrows: dict[str, bool] | None = None,
+    entity_kinds: list[str] | None = None,
+    agent_ids: list[str] | None = None,
+    track_groups: list[str] | None = None,
 ) -> "go.Figure":
     """Return a Plotly Figure showing the clip's annotation timeline.
 
@@ -523,12 +846,22 @@ def render_timeline(
             `"because_of"`, `"link_to"`, `"containment"`, `"influence"`,
             `"action_target"`. Missing keys default to `True`. Unknown
             keys are ignored.
+        entity_kinds: optional kind whitelist (`"env"`, `"light"`,
+            `"object"`, `"agent"`, `"ego"`). `None` = all kinds.
+        agent_ids: optional `Agent.id` whitelist. Restricts only the
+            `"agent"` kind. `None` = all agents.
+        track_groups: optional group-row whitelist (`"Env"`, `"Lights"`,
+            `"Objects"`, `"Agents"`, `"Ego"`). Rows not in the
+            whitelist drop from the y-axis layout. `None` = all groups.
 
     Returns:
-        A `plotly.graph_objects.Figure`. The Figure has zero traces; the
-        timeline is built entirely from `layout.shapes` so that the
-        widget can replace just the playhead line without touching the
-        rest of the figure.
+        A `plotly.graph_objects.Figure`. The visible rectangles, arrows,
+        and inline labels live in `layout.shapes` + `layout.annotations`
+        (so the widget can replace just the playhead line without
+        touching the rest of the figure). The Figure also carries one
+        invisible `go.Scatter` trace per segment/arrow purely to
+        provide hover tooltips — Plotly shapes don't support hover
+        natively.
     """
     import plotly.graph_objects as go
 
@@ -542,6 +875,9 @@ def render_timeline(
         yaxis_key="yaxis",
         highlight=highlight,
         arrows=arrows,
+        entity_kinds=entity_kinds,
+        agent_ids=agent_ids,
+        track_groups=track_groups,
     )
     fig.update_layout(
         template="plotly_dark",

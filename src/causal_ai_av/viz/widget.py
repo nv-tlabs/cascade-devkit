@@ -70,6 +70,12 @@ class ClipPlayer:
             yellow band on the bottom subplot.
         arrows: forwarded to `_paint_timeline_onto`; per-family
             arrow-on/off toggles.
+        entity_kinds: forwarded to `_paint_timeline_onto`; kind
+            whitelist. See `render_timeline` for valid values.
+        agent_ids: forwarded to `_paint_timeline_onto`; `Agent.id`
+            whitelist.
+        track_groups: forwarded to `_paint_timeline_onto`; group-row
+            whitelist.
 
     Display protocol:
         - In Jupyter / JupyterLab the widget renders inline through
@@ -97,6 +103,9 @@ class ClipPlayer:
         fps: float = _DEFAULT_FPS,
         highlight: tuple[float, float] | None = None,
         arrows: dict[str, bool] | None = None,
+        entity_kinds: list[str] | None = None,
+        agent_ids: list[str] | None = None,
+        track_groups: list[str] | None = None,
     ) -> None:
         # Defer the optional-extra imports so importing this module
         # without `[viz]` doesn't blow up at module load — only at
@@ -169,6 +178,9 @@ class ClipPlayer:
             yaxis_key="yaxis2",
             highlight=highlight,
             arrows=arrows,
+            entity_kinds=entity_kinds,
+            agent_ids=agent_ids,
+            track_groups=track_groups,
         )
 
         # ------------------------------------------------------------

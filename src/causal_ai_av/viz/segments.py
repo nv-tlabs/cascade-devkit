@@ -635,4 +635,101 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
     return segs
 
 
-__all__ = ["Segment", "annotation_to_segments"]
+# -----------------------------------------------------------------------------
+# Lane assignment — Python port of the annotator's `assignTracks`.
+# -----------------------------------------------------------------------------
+
+# Meta keys we consult for a producer-supplied lane index, in priority order
+# matching the annotator's `assignTracks(..., key)` call sites in
+# `tools/annotator/web/src/lib/timeline-utils.ts`. We try the most specific
+# subtrack lane key first, then fall back to `_track_index`. Stable: missing
+# keys default to None (no hint) — never crash.
+_LANE_HINT_KEYS: tuple[str, ...] = (
+    "_cond_track_index",
+    "_cont_track_index",
+    "_influence_track_index",
+    "_prop_track_index",
+    "_track_index",
+)
+
+
+def _lane_hint(seg: Segment) -> int | None:
+    """Return the producer-supplied lane index for `seg`, or None.
+
+    Mirrors the TS `assignTracks(items, key)` "existing lane" preservation
+    behaviour: if the annotator already wrote a lane index onto the entity
+    (e.g., during an edit session), prefer it over a re-computed value.
+    """
+    if not seg.meta:
+        return None
+    for key in _LANE_HINT_KEYS:
+        v = seg.meta.get(key)
+        if isinstance(v, int) and v >= 0:
+            return v
+    return None
+
+
+def assign_lanes(segments: list[Segment]) -> dict[str, int]:
+    """Greedy lane assignment within each `track_id`.
+
+    Per `track_id`, sort segments by `(t0, t1)`. For each segment: if it
+    carries a producer-supplied lane hint (`_cond_track_index`,
+    `_cont_track_index`, `_influence_track_index`, `_prop_track_index`,
+    `_track_index`) and that lane is free at this `t0`, keep it.
+    Otherwise, place the segment on the lowest-index lane whose last
+    segment's `t1` is `<= t0` (no overlap). The output is the smallest
+    lane count that accommodates the worst-case overlap stack.
+
+    Ports `assignTracks` from
+    `tools/annotator/web/src/lib/timeline-utils.ts:197`. The TS version
+    mutates `item[key]` in place; we instead return a mapping so
+    `Segment` can remain immutable.
+
+    Args:
+        segments: a flat list of `Segment`s. Caller controls grouping —
+            we group by `track_id` ourselves.
+
+    Returns:
+        Mapping `segment.id -> lane_index` (0-based, dense within each
+        `track_id`). Lane indices are not coordinated across track ids;
+        the renderer is responsible for stacking lanes within a group
+        row.
+    """
+    # Group by track_id while preserving stable per-group ordering.
+    by_track: dict[str, list[Segment]] = {}
+    for seg in segments:
+        by_track.setdefault(seg.track_id, []).append(seg)
+
+    lanes: dict[str, int] = {}
+    for items in by_track.values():
+        # Sort by (t0, t1). Ties on t0 break by t1 so longer-overlap
+        # items get placed first — matches the TS `a.start - b.start ||
+        # a.end - b.end` comparator.
+        ordered = sorted(items, key=lambda s: (s.t0, s.t1))
+        track_ends: list[float] = []
+        for seg in ordered:
+            hint = _lane_hint(seg)
+            if hint is not None:
+                # Extend `track_ends` so `hint` is addressable, then
+                # accept the hint iff the lane is free at `seg.t0`.
+                while len(track_ends) <= hint:
+                    track_ends.append(float("-inf"))
+                if track_ends[hint] <= seg.t0:
+                    track_ends[hint] = seg.t1
+                    lanes[seg.id] = hint
+                    continue
+            # Otherwise: lowest free lane.
+            placed = False
+            for lane_idx, end in enumerate(track_ends):
+                if end <= seg.t0:
+                    track_ends[lane_idx] = seg.t1
+                    lanes[seg.id] = lane_idx
+                    placed = True
+                    break
+            if not placed:
+                lanes[seg.id] = len(track_ends)
+                track_ends.append(seg.t1)
+    return lanes
+
+
+__all__ = ["Segment", "annotation_to_segments", "assign_lanes"]
