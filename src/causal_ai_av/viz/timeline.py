@@ -504,6 +504,76 @@ def _paint_timeline_onto(
             }
         )
 
+        # Arrowhead at the target end. Plotly's SVG `path` shape doesn't
+        # render arrowheads, so we add a rotated triangle marker via a
+        # `go.Scatter` trace. The angle is computed from the bezier's
+        # tangent at t=1, which for a quadratic curve through control
+        # point `(mid_x, ctrl_y)` is `(x1 - mid_x, y1 - ctrl_y)` in
+        # data coords. With the reversed y-axis, flip dy when feeding
+        # `atan2` so the triangle points along the on-screen direction.
+        import math
+
+        mid_x = (x0 + x1) / 2.0
+        ctrl_y = max(y0, y1) + 0.8
+        dx = x1 - mid_x
+        dy = y1 - ctrl_y
+        # Convert tangent vector to a Plotly `marker.angle` (degrees
+        # clockwise from "north", which is +y in screen space).
+        # Screen-y points "up" in Plotly's default but the timeline
+        # uses a reversed yaxis, so the on-screen y direction is `-dy`
+        # in data coords.
+        screen_dy = -dy
+        angle_rad = math.atan2(dx, screen_dy)
+        angle_deg = math.degrees(angle_rad)
+        hover_traces.append(
+            go.Scatter(
+                x=[x1],
+                y=[y1],
+                xaxis=xa,
+                yaxis=ya,
+                mode="markers",
+                marker={
+                    "symbol": "triangle-up",
+                    "size": 10,
+                    "angle": angle_deg,
+                    "color": _ARROW_COLORS[family],
+                    "line": {"width": 0},
+                },
+                hoverinfo="text",
+                hovertext=(
+                    f"{family}<br>"
+                    f"{src.label}<br>"
+                    f"  → {tgt.label}"
+                ),
+                showlegend=False,
+                name=f"arrowhead:{family}:{src.id}->{tgt.id}",
+            )
+        )
+
+        # Mid-arc hover hotspot — invisible marker at the bezier
+        # midpoint so the bezier line itself is hoverable end-to-end
+        # rather than only at the arrowhead.
+        bezier_mid_x = 0.25 * x0 + 0.5 * mid_x + 0.25 * x1
+        bezier_mid_y = 0.25 * y0 + 0.5 * ctrl_y + 0.25 * y1
+        hover_traces.append(
+            go.Scatter(
+                x=[bezier_mid_x],
+                y=[bezier_mid_y],
+                xaxis=xa,
+                yaxis=ya,
+                mode="markers",
+                marker={"size": 18, "opacity": 0, "color": _ARROW_COLORS[family]},
+                hoverinfo="text",
+                hovertext=(
+                    f"{family}<br>"
+                    f"{src.label}<br>"
+                    f"  → {tgt.label}"
+                ),
+                showlegend=False,
+                name=f"hover:arrow:{family}:{src.id}->{tgt.id}",
+            )
+        )
+
     # 3a. because_of — read straight off the Segment dataclass.
     if enabled_arrows["because_of"]:
         for seg in segments:
