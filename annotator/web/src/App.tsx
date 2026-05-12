@@ -80,6 +80,19 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  // Track OS preference while in 'system' mode so toggling the OS theme
+  // updates the app instantly. setTheme is idempotent — re-applying the same
+  // theme value just re-resolves the effective theme.
+  const theme = useStore(s => s.theme)
+  const setTheme = useStore(s => s.setTheme)
+  useEffect(() => {
+    if (theme !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = () => setTheme('system')
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [theme, setTheme])
+
   // beforeunload → browser native "unsaved changes" prompt when dirty.
   const dirty = useStore(s => s.dirty)
   useEffect(() => {

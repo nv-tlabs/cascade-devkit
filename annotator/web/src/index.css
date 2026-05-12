@@ -1,31 +1,127 @@
 @import "tailwindcss";
 
-:root {
-  --bg-dark: #0f0f1a;
-  --bg-panel: #1a1a2e;
-  --bg-surface: #222240;
-  --bg-hover: #2a2a4a;
-  --text-primary: #e0e0e0;
-  --text-muted: #8888aa;
-  --border: #333355;
-  --accent: #4a6cf7;
-  --track-env: #22c55e;
-  --track-ego: #3b82f6;
-  --track-obj: #f59e0b;
-  --track-agent: #a855f7;
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter.woff2") format("woff2-variations"),
+       url("/fonts/Inter.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  /* Surfaces */
+  --color-surface-base: #0b0b16;
+  --color-surface-raised: #13132a;
+  --color-surface-overlay: #1a1a35;
+  --color-surface-sunken: #0d0d1a;
+  --color-surface-hover: #22224a;
+  --color-surface-selected: #2a2a55;
+
+  /* Borders */
+  --color-border-subtle: #1e1e38;
+  --color-border-default: #2a2a4a;
+  --color-border-strong: #3a3a60;
+
+  /* Text */
+  --color-text-primary: #e7e7f0;
+  --color-text-secondary: #b4b4ca;
+  --color-text-muted: #7a7a98;
+  --color-text-disabled: #4a4a66;
+  --color-text-inverse: #0b0b16;
+
+  /* Accent */
+  --color-accent: #5b8cff;
+  --color-accent-hover: #7aa1ff;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft-bg: rgba(91, 140, 255, 0.16);
+  --color-accent-soft-fg: #a8c0ff;
+  --color-accent-soft-border: rgba(91, 140, 255, 0.34);
+
+  /* Semantic */
+  --color-success: #2dd4a0;
+  --color-success-bg: rgba(45, 212, 160, 0.12);
+  --color-warning: #f5b942;
+  --color-warning-bg: rgba(245, 185, 66, 0.12);
+  --color-danger: #ef5b6e;
+  --color-danger-bg: rgba(239, 91, 110, 0.14);
+  --color-info: #5b8cff;
+
+  /* Entity colors */
+  --color-entity-env: #22c55e;
+  --color-entity-ego: #3b82f6;
+  --color-entity-object: #f59e0b;
+  --color-entity-agent: #a855f7;
+  --color-entity-agent-2: #c084fc;
+  --color-entity-light: #ef4444;
+  --color-entity-signal: #f97316;
+  --color-entity-link: #60a5fa;
+  --color-entity-contained: #4ade80;
+  --color-entity-influence: #fb923c;
+  --color-entity-target: #10b981;
+
+  /* Fonts */
+  --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+[data-theme="light"] {
+  --color-surface-base: #f7f7fb;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #f1f2f7;
+  --color-surface-sunken: #eceef4;
+  --color-surface-hover: #e6e8f0;
+  --color-surface-selected: #dbe3ff;
+
+  --color-border-subtle: #e6e8ee;
+  --color-border-default: #d2d5dd;
+  --color-border-strong: #b8bcc8;
+
+  --color-text-primary: #13131e;
+  --color-text-secondary: #444a5e;
+  --color-text-muted: #6c7186;
+  --color-text-disabled: #a4a8b6;
+  --color-text-inverse: #ffffff;
+
+  --color-accent: #3357d8;
+  --color-accent-hover: #274bbf;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft-bg: rgba(51, 87, 216, 0.10);
+  --color-accent-soft-fg: #274bbf;
+  --color-accent-soft-border: rgba(51, 87, 216, 0.32);
+
+  --color-success: #0a8a5f;
+  --color-success-bg: rgba(10, 138, 95, 0.10);
+  --color-warning: #a86810;
+  --color-warning-bg: rgba(168, 104, 16, 0.10);
+  --color-danger: #c2253a;
+  --color-danger-bg: rgba(194, 37, 58, 0.10);
+  --color-info: #3357d8;
+
+  --color-entity-env: #168a3e;
+  --color-entity-ego: #2456c2;
+  --color-entity-object: #b46a04;
+  --color-entity-agent: #7a32c4;
+  --color-entity-agent-2: #9a52da;
+  --color-entity-light: #c2253a;
+  --color-entity-signal: #b85508;
+  --color-entity-link: #2456c2;
+  --color-entity-contained: #168a3e;
+  --color-entity-influence: #b46a04;
+  --color-entity-target: #0a8a5f;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 13px;
-  background: var(--bg-dark);
-  color: var(--text-primary);
+  background: var(--color-surface-base);
+  color: var(--color-text-primary);
   overflow: hidden;
   height: 100vh;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--color-border-default); border-radius: 3px; }

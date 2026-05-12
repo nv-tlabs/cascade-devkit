@@ -6,6 +6,37 @@ import type { ClipEntry } from './api'
 
 const MAX_UNDO = 10
 
+// Theme persistence -----------------------------------------------------------
+// `theme` is the user's stored preference. `effectiveTheme` is the resolved
+// concrete theme used for tokens — equal to `theme` unless `theme === 'system'`,
+// in which case it tracks the OS preference. Initial values are seeded from
+// `main.tsx`, which hydrates them synchronously before React mounts to avoid
+// FOUC. See `src/main.tsx`.
+export type Theme = 'system' | 'light' | 'dark'
+const THEME_STORAGE_KEY = 'causal-av-annotator.theme'
+
+function resolveEffective(theme: Theme): 'light' | 'dark' {
+  if (typeof window === 'undefined') return 'dark'
+  if (theme === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+  return theme
+}
+
+function readInitialTheme(): Theme {
+  if (typeof window !== 'undefined') {
+    const hint = (window as unknown as { __initialTheme?: Theme }).__initialTheme
+    if (hint === 'system' || hint === 'light' || hint === 'dark') return hint
+    try {
+      const v = window.localStorage.getItem(THEME_STORAGE_KEY)
+      if (v === 'light' || v === 'dark' || v === 'system') return v
+    } catch {
+      // ignore
+    }
+  }
+  return 'system'
+}
+
 
 interface AppState {
   // Clip catalog
@@ -83,6 +114,10 @@ interface AppState {
   toggleKeypointsVisible: () => void
   toggleArrowType: (type: keyof AppState['arrowTypes']) => void
   getUiConfig: () => UiConfig
+  // Theme
+  theme: Theme
+  effectiveTheme: 'light' | 'dark'
+  setTheme: (t: Theme) => void
 }
 
 function deriveTrackCounts(b: AnnotationBundle | null): { env: number; obj: number; light: number; agent: number } {
@@ -117,6 +152,13 @@ function applyBundle(b: AnnotationBundle | null, s: AppState, initialLoad = fals
     scrollOffset: ui?.scrollOffset ?? s.scrollOffset,
   }
 }
+
+const __initialTheme: Theme = readInitialTheme()
+const __initialEffective: 'light' | 'dark' = (
+  typeof window !== 'undefined'
+    ? (window as unknown as { __initialEffectiveTheme?: 'light' | 'dark' }).__initialEffectiveTheme
+    : undefined
+) ?? resolveEffective(__initialTheme)
 
 export const useStore = create<AppState>((set, get) => ({
   clips: [],
@@ -242,6 +284,17 @@ export const useStore = create<AppState>((set, get) => ({
   editsBlocked: () => get().locked,
   toggleKeypointsVisible: () => set((s) => ({ keypointsVisible: !s.keypointsVisible })),
   toggleArrowType: (type) => set((s) => ({ arrowTypes: { ...s.arrowTypes, [type]: !s.arrowTypes[type] } })),
+
+  theme: __initialTheme,
+  effectiveTheme: __initialEffective,
+  setTheme: (t) => {
+    const effective = resolveEffective(t)
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem(THEME_STORAGE_KEY, t) } catch { /* ignore */ }
+      document.documentElement.dataset.theme = effective
+    }
+    set({ theme: t, effectiveTheme: effective })
+  },
 
   getUiConfig: () => {
     const s = get()

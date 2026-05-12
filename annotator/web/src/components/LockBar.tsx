@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../lib/store'
-import { Lock, LockOpen, AlertCircle } from 'lucide-react'
+import { Lock, LockOpen, AlertCircle, Monitor, Sun, Moon } from 'lucide-react'
 
 /**
  * Top bar across the editor pane. Drives the lock policy:
@@ -64,6 +64,7 @@ export function LockBar() {
         {dirty && <DirtyIndicator />}
         <div className="flex-1" />
         {saveError && <SaveError message={saveError} onDismiss={() => setSaveError(null)} />}
+        <ThemeToggle />
       </div>
     )
   }
@@ -87,6 +88,7 @@ export function LockBar() {
         >
           Unlock to edit
         </button>
+        <ThemeToggle />
       </div>
     )
   }
@@ -108,7 +110,26 @@ export function LockBar() {
       >
         Lock
       </button>
+      <ThemeToggle />
     </div>
+  )
+}
+
+function ThemeToggle() {
+  const theme = useStore(s => s.theme)
+  const setTheme = useStore(s => s.setTheme)
+  const next = theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system'
+  const Icon = theme === 'system' ? Monitor : theme === 'light' ? Sun : Moon
+  const label = `Theme: ${theme} (click to switch to ${next})`
+  return (
+    <button
+      onClick={() => setTheme(next)}
+      title={label}
+      aria-label={label}
+      className="h-8 w-8 inline-flex items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary transition-colors"
+    >
+      <Icon className="w-4 h-4" />
+    </button>
   )
 }
 
