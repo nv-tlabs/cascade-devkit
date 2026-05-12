@@ -483,3 +483,142 @@ def test_play_tick_decodes_once() -> None:
     assert reader.calls[0].tolist() == [1_500_000]
     # And the slider mirror landed.
     assert player._slider.value == 1.5
+
+
+# ---------------------------------------------------------------------------
+# 13. Frame transport — JPEG data-URI via `source=` (PR #32 / fix/viz-frame-transport-jpeg)
+# ---------------------------------------------------------------------------
+
+
+def _decode_jpeg_data_uri_to_array(data_uri: str):
+    """Round-trip a `data:image/jpeg;base64,...` URI back to a numpy array."""
+    import base64
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    assert data_uri.startswith("data:image/jpeg;base64,"), data_uri[:40]
+    raw = base64.b64decode(data_uri.split(",", 1)[1])
+    img = Image.open(io.BytesIO(raw))
+    return np.asarray(img)
+
+
+def test_frame_transport_is_base64_jpeg() -> None:
+    """`go.Image` ships a base64 data URI (`source=`) rather than the
+    raw pixel array (`z=`). Pins the Play-perf fix: the prior `z=`
+    path serialized a 32MB JSON list-of-lists per tick over Comm,
+    which dominated Play latency.
+    """
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq)
+    src = player._fig.data[0].source
+    assert isinstance(src, str)
+    assert src.startswith("data:image/jpeg;base64,"), src[:40]
+    # The legacy `z=` channel must be unused — otherwise both paths
+    # ship and the Comm savings evaporate.
+    assert player._fig.data[0].z is None
+
+
+class _NoisyFakeVideoReader:
+    """FakeVideoReader variant whose frames are random noise.
+
+    The vanilla `FakeVideoReader` returns all-zero frames with a single
+    non-zero pixel — that pattern compresses to identical JPEG bytes at
+    quality 20 and quality 90, so we cannot tell the kwarg apart. A
+    noise-filled frame has enough high-frequency content that the
+    rate / distortion knob actually moves the encoded size.
+    """
+
+    def __init__(self, height: int = 240, width: int = 320, seed: int = 0) -> None:
+        import numpy as np
+
+        self.height = height
+        self.width = width
+        self.calls: list = []
+        rng = np.random.default_rng(seed)
+        self._frame = rng.integers(0, 256, size=(height, width, 3), dtype=np.uint8)
+
+    def decode_images_from_timestamps(self, t_us):  # type: ignore[no-untyped-def]
+        import numpy as np
+
+        self.calls.append(np.asarray(t_us).copy())
+        n = len(t_us)
+        # Stack the same noise frame N times — quality is what we're
+        # measuring, not per-call uniqueness.
+        frames = np.broadcast_to(self._frame, (n, self.height, self.width, 3)).copy()
+        return frames, np.asarray(t_us, dtype=np.int64)
+
+
+def test_frame_quality_kwarg_changes_payload_size() -> None:
+    """Higher `frame_quality` produces a strictly longer data URI than
+    a much lower one. Loose bound (>=2x) so encoder-version drift
+    doesn't flake — but tight enough to catch a regression that wires
+    the kwarg to a no-op.
+    """
+    seq = _seq_with_fake_video()
+    # JPEG-quality is a rate/distortion knob: the all-zero frames from
+    # the default FakeVideoReader compress to the same bytes at every
+    # quality, so swap in a noisy reader before constructing the players.
+    seq._cameras[seq.annotation_camera] = _NoisyFakeVideoReader()  # type: ignore[index]
+    low = ClipPlayer(seq, frame_quality=20)
+    high = ClipPlayer(seq, frame_quality=90)
+    low_len = len(low._fig.data[0].source)
+    high_len = len(high._fig.data[0].source)
+    assert high_len >= 2 * low_len, (
+        f"frame_quality=90 should produce a much larger payload than "
+        f"frame_quality=20: got high={high_len} low={low_len}"
+    )
+
+
+def test_frame_max_dim_kwarg_downscales() -> None:
+    """`frame_max_dim=N` caps the longer side of the frame at `N` pixels
+    before JPEG encoding. Decode the resulting data URI back to a numpy
+    array and assert the cap held.
+    """
+    seq = _seq_with_fake_video()
+    # Replace the fake reader with one whose frame is comfortably above
+    # 320px so the downscale path actually runs (default fake reader is
+    # 8x12).
+    seq._cameras[seq.annotation_camera] = _FakeVideoReader(  # type: ignore[index]
+        height=720, width=1280
+    )
+    player = ClipPlayer(seq, frame_max_dim=320)
+    arr = _decode_jpeg_data_uri_to_array(player._fig.data[0].source)
+    h, w = arr.shape[:2]
+    assert max(h, w) == 320, (
+        f"expected max(H, W) == 320 after frame_max_dim cap, got {(h, w)}"
+    )
+
+
+def test_play_tick_updates_source_not_z() -> None:
+    """A Play tick swaps the trace's `source` data URI, not the legacy
+    `z=` array. Pins both halves of the transport fix: `source` must
+    change to a new JPEG, and `z` must stay `None`. Also re-asserts
+    the surgical playhead invariant from PR #30.
+    """
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq)
+
+    # Capture the construction-time data URI + playhead handle so we
+    # can detect mutation.
+    before_source = player._fig.data[0].source
+    before_playhead_x = float(player._fig.layout.shapes[player._playhead_index].x0)
+
+    # Synthesize a Play tick that drives the slider to t=1.5s; the
+    # slider observer calls `_apply_t`.
+    player._on_play_change({"new": 1_500})
+
+    after_source = player._fig.data[0].source
+    after_playhead_x = float(player._fig.layout.shapes[player._playhead_index].x0)
+
+    assert isinstance(after_source, str)
+    assert after_source.startswith("data:image/jpeg;base64,")
+    assert after_source != before_source, (
+        "`_apply_t` did not update `data[0].source` on tick"
+    )
+    assert player._fig.data[0].z is None
+    # Surgical-playhead invariant: the shape's x coordinates moved with
+    # the tick, no full layout rebuild.
+    assert after_playhead_x != before_playhead_x
+    assert abs(after_playhead_x - 1.5) < 1e-9
