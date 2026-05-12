@@ -622,7 +622,13 @@ def _paint_timeline_onto(
                     "size": 10,
                     "angle": angle_deg,
                     "color": _ARROW_COLORS[family],
-                    "line": {"width": 0},
+                    # Tailwind slate-50 outline — pops off any
+                    # same-hue target row (containment-green over
+                    # Env, influence-purple over Agents, etc.)
+                    # without strobing the way pure white would on
+                    # `plotly_dark`. Family color stays as the fill
+                    # so the head is still identifiable by hue.
+                    "line": {"color": "#f8fafc", "width": 1.5},
                 },
                 hoverinfo="text",
                 hovertext=(
