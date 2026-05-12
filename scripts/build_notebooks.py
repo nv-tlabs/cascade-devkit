@@ -969,12 +969,166 @@ def build_video_inspection() -> None:
     save(cells, NOTEBOOKS_DIR / "05_video_inspection.ipynb")
 
 
+def build_visualize() -> None:
+    cells = [
+        md("""
+        # Visualizing matches — frames, timelines, and the clip player
+
+        The DSL tells you *where* in the corpus a scenario happens.
+        `05_video_inspection.ipynb` closes the loop with bare
+        matplotlib frames. This notebook layers on the interactive
+        `causal_ai_av.viz` surface — the clip player widget that
+        scrubs a video alongside its annotation timeline, plus
+        headless helpers for reports and figures.
+
+        Pipeline:
+
+        1. Set up — load the corpus, pick a clip.
+        2. `seq.visualize()` — full-clip scrubbable widget.
+        3. `seq.visualize(t=..., static=True)` — single decoded frame
+           as a `PIL.Image` (great for static reports).
+        4. `viz.render_timeline(seq)` — static Plotly timeline figure.
+        5. `matches.visualize()` — fan out a query result into a
+           carousel of mini-players, one per match.
+        6. Where v0 stops, and what's coming in v1.
+
+        > Requires the optional `viz` extra (`uv sync --extra viz`)
+        > and the `hf` extra (`uv sync --extra hf`) for the video
+        > download. The first download per clip pulls a few hundred MB
+        > and can take 5-15 s.
+        """),
+        md("## Setup"),
+        code("""
+        import os
+        from pathlib import Path
+
+        from causal_ai_av import viz
+        from causal_ai_av.dataset import CausalAVDataset
+        """ + STYLING),
+        code("""
+        ds = CausalAVDataset(
+            Path(os.environ["CAUSAL_AV_DATASET_ROOT"]),
+            confirm_download_threshold_gb=1000.0,  # auto-confirm; notebook context
+        )
+        print(f"corpus loaded — {len(ds)} clips")
+        """),
+        md("""
+        ## 1. Pick a clip with something interesting in it
+
+        `while` tightens each match's interval to the intersection,
+        so the highlight band is the actual moment both conditions
+        held — exactly what we want to focus the player on.
+        """),
+        code("""
+        query = "agent.type = ped while ego.action = decel"
+        matches = ds.find(query)
+        m = matches.matches[0]
+        print(f"{len(matches)} matches for: {query}")
+        print(f"chosen: clip {m.clip_id}  window {m.interval.start:.2f}-{m.interval.end:.2f}s")
+
+        # Pull the clip's video + egomotion (cached on subsequent runs).
+        ds.download_clips([m.clip_id])
+        seq = ds.get_sequence(m.clip_id)
+        print(f"clip duration: {seq.duration_s:.2f}s   fps: {seq.fps}")
+        """),
+        md("""
+        ## 2. `seq.visualize()` — the full-clip scrubbable widget
+
+        `seq.visualize()` builds a `ClipPlayer`: a Plotly `FigureWidget`
+        with the decoded video frame on top, the annotation timeline
+        below, and an `ipywidgets.FloatSlider` + `Play` button to drive
+        the playhead. No arguments → the whole clip.
+        """),
+        code("""
+        seq.visualize()
+        """),
+        md("""
+        ## 3. Single frame as a `PIL.Image`
+
+        Passing `static=True` to `seq.visualize(t=...)` skips the
+        widget machinery and returns a plain `PIL.Image` — handy
+        when you want a single decoded frame to save, embed, or
+        post-process. Equivalent to `viz.render_frame(seq, t)`.
+        """),
+        code("""
+        frame = seq.visualize(t=(m.interval.start + m.interval.end) / 2, static=True)
+        print(f"decoded frame: {frame.size[0]}x{frame.size[1]}  mode={frame.mode}")
+        frame
+        """),
+        md("""
+        ## 4. Headless timeline figure
+
+        `viz.render_timeline(seq, highlight=...)` returns a static
+        `plotly.graph_objects.Figure` with one row per track group
+        (Environments / Lights / Objects / Agents / Ego) and the
+        five causal-arrow families overlaid. The `highlight` band
+        marks a window — pass `m.interval` to focus attention on
+        the match.
+        """),
+        code("""
+        fig = viz.render_timeline(seq, highlight=(m.interval.start, m.interval.end))
+        fig
+        """),
+        md("""
+        ## 5. `matches.visualize()` — carousel of mini-players
+
+        A whole `MatchSet` can be turned into a carousel of
+        `ClipPlayer`s, one per match. By default the carousel:
+
+        - Pads each match's interval by 1 s on either side (`pad=1.0`).
+        - Caps the carousel at 8 matches (`limit=8`) with a "showing N
+          of M" notice if the result set is bigger.
+        - Stacks the players vertically (`layout="stack"`); pass
+          `layout="grid"` to switch to a multi-column grid.
+
+        Each player opens to its match window with the raw match
+        interval painted as the highlight band.
+        """),
+        code("""
+        # Prefetch the clips that will actually be rendered so the
+        # widget construction doesn't block on HF downloads. The
+        # `limit=3` keyword caps the carousel itself; we pre-download
+        # the same three clips here for parity.
+        first_three_clips = sorted({m.clip_id for m in matches.matches[:3]})
+        ds.download_clips(first_three_clips)
+
+        matches.visualize(limit=3)
+        """),
+        md("""
+        ## 6. What v0 ships — and what's coming in v1
+
+        The v0 viz surface paints: the decoded video frame, the
+        annotation timeline strip, five causal-arrow families
+        (`because_of`, `link_to`, `containedIn`, `influencedBy`,
+        `action_target`), the playhead, and a yellow highlight band
+        over any match / context interval.
+
+        **Deferred to v1:** on-frame bounding-box and keypoint
+        overlays. The annotator's `<canvas>` rasterizer is the
+        intended visual target; the v1 PR will port its
+        `annotationToSegments` keypoint-interpolation code to
+        Python and wire it into the frame composite.
+
+        ## Where to next
+
+        - `05_video_inspection.ipynb` — query + match + decode in
+          plain matplotlib (the pre-viz path).
+        - `examples/07_visualize.py` — headless equivalent of this
+          notebook (script, no widget).
+        - The Visualization section of the project README for the
+          one-screen reference.
+        """),
+    ]
+    save(cells, NOTEBOOKS_DIR / "06_visualize.ipynb")
+
+
 def main() -> None:
     build_quickstart()
     build_dsl_tour()
     build_statistics()
     build_scenarios()
     build_video_inspection()
+    build_visualize()
 
 
 if __name__ == "__main__":
