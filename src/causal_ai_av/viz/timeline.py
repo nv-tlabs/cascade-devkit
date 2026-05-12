@@ -195,42 +195,44 @@ def _segments_by_entity_id(
     return by_id
 
 
-def render_timeline(
+def _paint_timeline_onto(
+    fig: "go.Figure",
     seq: "Sequence",
     *,
+    xref: str = "x",
+    yref: str = "y",
+    xaxis_key: str = "xaxis",
+    yaxis_key: str = "yaxis",
     highlight: tuple[float, float] | None = None,
     arrows: dict[str, bool] | None = None,
-) -> "go.Figure":
-    """Return a Plotly Figure showing the clip's annotation timeline.
+) -> None:
+    """Append timeline shapes for `seq` onto `fig`, on the given axes.
 
-    Rows = track groups (Environments, Lights, Objects, Agents, Ego);
-    each segment is a colored rectangle via `go.layout.Shape`.
-    Causal arrows are drawn as bezier `path` shapes between segment
-    centers. `highlight=(t0, t1)` paints a translucent vertical band.
-    `arrows={"because_of": True, ...}` toggles arrow families;
-    default all-on. The Figure is fully static (no traitlets); the
-    widget-driving variant lands in PR-4.
+    Factored out of `render_timeline` so the PR-4 widget can paint the
+    same timeline onto the bottom subplot of a `FigureWidget` without
+    rebuilding the rasterization logic from scratch. Mutates `fig` in
+    place — appends shapes to `fig.layout.shapes` and updates the
+    `xaxis_key` / `yaxis_key` axis settings.
 
     Args:
-        seq: a `Sequence` (typically from `CausalAVDataset.get_sequence`
-            or `Sequence.from_annotation`). Only `seq.annotation` and
-            `seq.duration_s` are read — no video / parent dataset
-            access, so this is safe in any environment.
-        highlight: optional `(t0, t1)` in seconds. When set, a single
-            translucent yellow vrect is drawn behind the rows.
+        fig: the Plotly Figure (or FigureWidget) to paint onto.
+        seq: source `Sequence`.
+        xref, yref: axis references for the painted shapes
+            (`"x"`/`"y"` for the primary subplot, `"x2"`/`"y2"` for the
+            second subplot in a `make_subplots(rows=2, ...)` figure,
+            and so on).
+        xaxis_key, yaxis_key: layout keys for the axis configuration
+            (`"xaxis"`/`"yaxis"` or `"xaxis2"`/`"yaxis2"`, etc.).
+        highlight: optional `(t0, t1)` in seconds — translucent yellow
+            band drawn behind the rows.
         arrows: optional family-on/off toggle. Recognized keys are
             `"because_of"`, `"link_to"`, `"containment"`, `"influence"`,
             `"action_target"`. Missing keys default to `True`. Unknown
             keys are ignored.
 
     Returns:
-        A `plotly.graph_objects.Figure`. The Figure has zero traces; the
-        timeline is built entirely from `layout.shapes` so that PR-4's
-        widget can replace just the playhead line without touching the
-        rest of the figure.
+        None. `fig` is mutated.
     """
-    import plotly.graph_objects as go
-
     bundle = seq.annotation
     duration = float(seq.duration_s) if seq.duration_s else 0.0
 
@@ -241,12 +243,11 @@ def render_timeline(
             if k in enabled_arrows:
                 enabled_arrows[k] = bool(v)
 
-    fig = go.Figure()
     shapes: list[dict[str, Any]] = []
 
     # Flatten the bundle into segments via PR-1's port. Empty bundles
-    # produce an empty list — we'll still emit a Figure with axis
-    # layout, which is what the spec asks for.
+    # produce an empty list — we'll still emit shapes-free axis layout,
+    # which is what the spec asks for.
     segments = annotation_to_segments(bundle)
 
     # ---------------------------------------------------------------
@@ -266,8 +267,8 @@ def render_timeline(
                 "x1": h1,
                 "y0": -0.5,
                 "y1": len(_TRACK_GROUPS) - 0.5,
-                "xref": "x",
-                "yref": "y",
+                "xref": xref,
+                "yref": yref,
                 "fillcolor": "yellow",
                 "opacity": 0.15,
                 "line": {"width": 0},
@@ -300,8 +301,8 @@ def render_timeline(
                 "x1": seg.t1,
                 "y0": row - 0.4,
                 "y1": row + 0.4,
-                "xref": "x",
-                "yref": "y",
+                "xref": xref,
+                "yref": yref,
                 "fillcolor": entity_color(kind),
                 "opacity": 0.85,
                 "line": {
@@ -343,8 +344,8 @@ def render_timeline(
             {
                 "type": "path",
                 "path": _bezier_path(x0, y0, x1, y1),
-                "xref": "x",
-                "yref": "y",
+                "xref": xref,
+                "yref": yref,
                 "line": {"color": _ARROW_COLORS[family], "width": 2},
                 "fillcolor": "rgba(0,0,0,0)",
                 "layer": "above",
@@ -463,27 +464,89 @@ def render_timeline(
                     _add_arrow(src, by_id.get(target_id), "action_target")
 
     # ---------------------------------------------------------------
-    # 4. Layout — match the annotator's dark theme and lock the axes.
+    # 4. Axis layout — locked range, group-name ticks. Figure-wide
+    #    settings (template / height / margins) are the caller's
+    #    responsibility so this helper composes inside a multi-subplot
+    #    figure without overwriting the host's chrome.
+    #
+    #    Append the new shapes after any shapes already on `fig` so
+    #    callers can pre-paint playheads or other overlays without
+    #    losing them.
     # ---------------------------------------------------------------
+    existing_shapes = list(fig.layout.shapes or ())
     fig.update_layout(
-        shapes=shapes,
+        shapes=existing_shapes + shapes,
+        **{
+            xaxis_key: {
+                "title": "Time (s)",
+                "range": [0, duration if duration > 0 else 1.0],
+                "showgrid": False,
+                "zeroline": False,
+            },
+            yaxis_key: {
+                "tickmode": "array",
+                "tickvals": list(range(len(_TRACK_GROUPS))),
+                "ticktext": list(_TRACK_GROUPS),
+                "range": [len(_TRACK_GROUPS) - 0.5, -0.5],  # top → bottom
+                "showgrid": False,
+                "zeroline": False,
+            },
+        },
+    )
+
+
+def render_timeline(
+    seq: "Sequence",
+    *,
+    highlight: tuple[float, float] | None = None,
+    arrows: dict[str, bool] | None = None,
+) -> "go.Figure":
+    """Return a Plotly Figure showing the clip's annotation timeline.
+
+    Rows = track groups (Environments, Lights, Objects, Agents, Ego);
+    each segment is a colored rectangle via `go.layout.Shape`.
+    Causal arrows are drawn as bezier `path` shapes between segment
+    centers. `highlight=(t0, t1)` paints a translucent vertical band.
+    `arrows={"because_of": True, ...}` toggles arrow families;
+    default all-on. The Figure is fully static (no traitlets); the
+    widget-driving variant lives in `viz.widget.ClipPlayer` and reuses
+    the same `_paint_timeline_onto` helper.
+
+    Args:
+        seq: a `Sequence` (typically from `CausalAVDataset.get_sequence`
+            or `Sequence.from_annotation`). Only `seq.annotation` and
+            `seq.duration_s` are read — no video / parent dataset
+            access, so this is safe in any environment.
+        highlight: optional `(t0, t1)` in seconds. When set, a single
+            translucent yellow vrect is drawn behind the rows.
+        arrows: optional family-on/off toggle. Recognized keys are
+            `"because_of"`, `"link_to"`, `"containment"`, `"influence"`,
+            `"action_target"`. Missing keys default to `True`. Unknown
+            keys are ignored.
+
+    Returns:
+        A `plotly.graph_objects.Figure`. The Figure has zero traces; the
+        timeline is built entirely from `layout.shapes` so that the
+        widget can replace just the playhead line without touching the
+        rest of the figure.
+    """
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    _paint_timeline_onto(
+        fig,
+        seq,
+        xref="x",
+        yref="y",
+        xaxis_key="xaxis",
+        yaxis_key="yaxis",
+        highlight=highlight,
+        arrows=arrows,
+    )
+    fig.update_layout(
         template="plotly_dark",
         height=300,
         margin={"l": 80, "r": 20, "t": 20, "b": 40},
-        xaxis={
-            "title": "Time (s)",
-            "range": [0, duration if duration > 0 else 1.0],
-            "showgrid": False,
-            "zeroline": False,
-        },
-        yaxis={
-            "tickmode": "array",
-            "tickvals": list(range(len(_TRACK_GROUPS))),
-            "ticktext": list(_TRACK_GROUPS),
-            "range": [len(_TRACK_GROUPS) - 0.5, -0.5],  # top → bottom
-            "showgrid": False,
-            "zeroline": False,
-        },
     )
     return fig
 

@@ -22,6 +22,7 @@ viz = [
     "pillow>=10.0",
     "plotly>=5.20",
     "ipywidgets>=8.0",
+    "anywidget>=0.9",
 ]
 
 [build-system]
