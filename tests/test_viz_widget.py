@@ -357,3 +357,129 @@ def test_filter_kwargs_forwarded_to_timeline_subplot() -> None:
         # Agents row is index 3; band spans roughly [2.6, 3.4] across
         # all lane configurations.
         assert 2.5 <= mid <= 3.5, f"non-Agent shape leaked through filter: {s}"
+
+
+# ---------------------------------------------------------------------------
+# 11. Adaptive height — grows with deepest sub-lane stack
+# ---------------------------------------------------------------------------
+
+
+def _bundle_with_n_overlapping_agent_actions(n: int) -> AnnotationBundle:
+    """Construct a bundle whose Agents row stacks `n` overlapping actions
+    on a single agent track. Adds the parent agent on top of the actions
+    so the resulting lane count is `n + 1`."""
+    actions = [
+        AgentAction(
+            id=f"agent_0_act_{i}",
+            action_type="Yield",
+            # All overlap on [1.0, 5.0].
+            start_timestamp="0:1.0",
+            end_timestamp="0:5.0",
+        )
+        for i in range(n)
+    ]
+    agent = Agent(
+        id="agent_0",
+        type="oxd:Car",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:10.0",
+        actions=actions,
+    )
+    return AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="adaptive_lanes", duration_s=10.0),
+        annotation=SilAvAnnotation(agents=[agent]),
+    )
+
+
+def test_adaptive_height_grows_with_lanes() -> None:
+    """A bundle with N stacked agent-action lanes produces a figure
+    whose total height grows by roughly N * 24px relative to the
+    no-overlap baseline. Pins the 24-px-per-lane scaling so any
+    regression to a fixed-height layout is caught.
+
+    Uses `render_timeline` (headless) so the comparison isn't
+    masked by the widget's fixed-pixel video pane / chrome. The
+    widget's height tracks the same lane budget through the
+    shared `_timeline_px_for` helper.
+    """
+    from causal_ai_av.viz.timeline import _PX_PER_LANE
+
+    # Baseline at the 240px floor: 5 groups × 1 lane = 5 lanes < 10
+    # (the floor's lane-equivalent), so height clamps to 240.
+    baseline_fig = render_timeline(
+        _seq_with_fake_video(_bundle_with_n_overlapping_agent_actions(0))
+    )
+    baseline_height = int(baseline_fig.layout.height)
+
+    # 12 overlapping actions plus the parent puts the Agents group at
+    # 13 lanes; combined with the 4 other groups (1 lane each) the
+    # total is 17 lanes, well above the 240px (= 10-lane) floor — so
+    # the adaptive path actually grows the figure proportionally.
+    busy_fig = render_timeline(
+        _seq_with_fake_video(_bundle_with_n_overlapping_agent_actions(12))
+    )
+    busy_height = int(busy_fig.layout.height)
+
+    # At least 4 lanes' worth of growth (24 * 4 = 96 px). Robust to
+    # small floor / rounding interactions, but tight enough to catch
+    # a regression to fixed-height layout.
+    assert busy_height >= baseline_height + 4 * _PX_PER_LANE, (
+        f"adaptive height regression: baseline={baseline_height} "
+        f"busy={busy_height} (expected delta >= {4 * _PX_PER_LANE})"
+    )
+
+
+def test_explicit_height_kwarg_overrides_adaptive() -> None:
+    """Passing `height=N` to `ClipPlayer` pins `fig.layout.height` to
+    exactly N, regardless of the adaptive computation."""
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq, height=900)
+    assert int(player._fig.layout.height) == 900
+
+
+def test_render_timeline_explicit_height_kwarg_overrides_adaptive() -> None:
+    """`render_timeline(seq, height=N)` pins `fig.layout.height` to N."""
+    seq = _seq_with_fake_video()
+    fig = render_timeline(seq, height=600)
+    assert int(fig.layout.height) == 600
+
+
+# ---------------------------------------------------------------------------
+# 12. Play tick decodes the frame exactly once
+# ---------------------------------------------------------------------------
+
+
+def test_play_tick_decodes_once() -> None:
+    """A slider value change fires exactly ONE
+    `decode_images_from_timestamps` call. The prior `_on_play_change`
+    duplicated the apply path (Play → slider → _apply_t, then Play
+    → _apply_t directly), causing every Play tick to decode the
+    same frame twice. The fix drops the second call.
+
+    Mirror the Play observer's event flow rather than poking the
+    slider directly, so this guards the actual path the bug lived
+    on.
+    """
+    seq = _seq_with_fake_video()
+    reader: _FakeVideoReader = seq._cameras[seq.annotation_camera]  # type: ignore[assignment]
+    player = ClipPlayer(seq)
+
+    # Drain the construction decode so we count only Play-tick
+    # decodes.
+    reader.calls.clear()
+
+    # Synthesize the event ipywidgets would dispatch when Play
+    # advances to t=1.5s (Play tracks integer ms internally).
+    new_value_ms = 1_500
+    player._on_play_change({"new": new_value_ms})
+
+    # The slider observer chain should have decoded the frame at
+    # t=1.5s exactly once. Two decodes would mean the duplicate
+    # `_apply_t` call has been re-introduced.
+    assert len(reader.calls) == 1, (
+        f"expected 1 decode per Play tick, got {len(reader.calls)}"
+    )
+    assert reader.calls[0].tolist() == [1_500_000]
+    # And the slider mirror landed.
+    assert player._slider.value == 1.5
