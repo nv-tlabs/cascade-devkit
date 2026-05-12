@@ -1,6 +1,6 @@
 """DSL lexer + recursive-descent parser.
 
-Implements the EBNF in `docs/query_language.md` §2. Hand-rolled, no
+Implements the EBNF in `docs/user/query_language.md` §2. Hand-rolled, no
 external parser dependency. Produces an AST of frozen dataclasses
 exported below. Errors are surfaced as `QueryParseError(line, col,
 message)`.

@@ -312,7 +312,7 @@ def build_dsl_tour() -> None:
         | `A because_of B` | A's `because_of` edge points at a B |
         | `within W: E` | restrict E's time window to W's intervals |
 
-        The full specification lives in `docs/query_language.md`.
+        The full specification lives in `docs/user/query_language.md`.
         """),
         md("## Setup"),
         code("""
