@@ -113,3 +113,163 @@ def test_visualize_smoke_returns_clipplayer() -> None:
     # The "no args" path opens over the whole clip.
     assert player._t_start == 0.0
     assert player._t_end == seq.duration_s
+
+
+# -----------------------------------------------------------------------------
+# Egomotion: graceful missing-cache behavior (fix/sequence-egomotion-graceful)
+#
+# The egomotion chunk lives in the parent HF dataset and isn't always cached
+# locally; `download_clips` only pulls per-clip video. Before the fix, the
+# eager `parent.get_clip_feature(clip_id, "egomotion")` in `Sequence.__init__`
+# raised `FileNotFoundError` and sank construction — taking the viz carousel
+# down with it. After the fix:
+#   * construction swallows `FileNotFoundError`, leaves the slot `None`,
+#   * the `egomotion_interpolator` property raises a clear `RuntimeError`
+#     when actually accessed,
+#   * the viz path (`Sequence.video`, `state_at`, …) keeps working.
+# -----------------------------------------------------------------------------
+
+
+def test_sequence_init_swallows_egomotion_filenotfound(
+    patched_parent: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cache-miss on the egomotion chunk leaves `_egomotion_interpolator = None`
+    rather than aborting `Sequence` construction."""
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    def _raise_missing(self, clip_id: str, feature: str):  # type: ignore[no-untyped-def]
+        raise FileNotFoundError(
+            "filename='labels/egomotion/egomotion.chunk_X.zip' "
+            "not found in cache; set `maybe_stream=True` ..."
+        )
+
+    monkeypatch.setattr(
+        PhysicalAIAVDatasetInterface, "get_clip_feature", _raise_missing
+    )
+
+    ds = CausalAVDataset(CORPUS)
+    clip_id = ds.list_sequences()[0]
+    # Must not raise — the fix.
+    seq = ds.get_sequence(clip_id)
+    assert seq._egomotion_interpolator is None
+    assert seq.clip_id == clip_id
+
+
+def test_egomotion_interpolator_raises_runtime_when_uncached(
+    patched_parent: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the chunk stayed un-cached, accessing the property raises a
+    clear `RuntimeError` naming the clip id and pointing at `download_clips`."""
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    def _raise_missing(self, clip_id: str, feature: str):  # type: ignore[no-untyped-def]
+        raise FileNotFoundError("not in cache")
+
+    monkeypatch.setattr(
+        PhysicalAIAVDatasetInterface, "get_clip_feature", _raise_missing
+    )
+
+    ds = CausalAVDataset(CORPUS)
+    clip_id = ds.list_sequences()[0]
+    seq = ds.get_sequence(clip_id)
+    with pytest.raises(RuntimeError, match=r"egomotion data not loaded"):
+        _ = seq.egomotion_interpolator
+    # The same guard reaches `seq.egomotion`, which delegates to the
+    # interpolator via `.values`.
+    with pytest.raises(RuntimeError, match=r"download_clips"):
+        _ = seq.egomotion
+    # And the clip id is named in the error so the user knows which
+    # clip to re-fetch.
+    with pytest.raises(RuntimeError, match=clip_id):
+        _ = seq.egomotion_interpolator
+
+
+def test_egomotion_interpolator_retries_after_cache_populated(
+    patched_parent: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the chunk lands in cache between construction and access, the
+    property's re-attempt path picks it up — no need to rebuild the Sequence."""
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    calls = {"n": 0}
+    sentinel = object()
+
+    def _stub(self, clip_id: str, feature: str):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise FileNotFoundError("not in cache yet")
+        return sentinel
+
+    monkeypatch.setattr(PhysicalAIAVDatasetInterface, "get_clip_feature", _stub)
+
+    ds = CausalAVDataset(CORPUS)
+    clip_id = ds.list_sequences()[0]
+    seq = ds.get_sequence(clip_id)
+    assert seq._egomotion_interpolator is None  # eager load swallowed
+    assert seq.egomotion_interpolator is sentinel  # re-attempt succeeded
+    # Subsequent access doesn't re-call the parent.
+    assert seq.egomotion_interpolator is sentinel
+    assert calls["n"] == 2
+
+
+def test_viz_path_works_when_egomotion_missing(
+    patched_parent: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The load-bearing one: a Sequence with `_egomotion_interpolator is None`
+    can still drive the viz API. `Sequence.video` and `Sequence.visualize`
+    never touch egomotion."""
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    from causal_ai_av.viz import ClipPlayer
+
+    def _raise_missing(self, clip_id: str, feature: str):  # type: ignore[no-untyped-def]
+        raise FileNotFoundError("not in cache")
+
+    monkeypatch.setattr(
+        PhysicalAIAVDatasetInterface, "get_clip_feature", _raise_missing
+    )
+
+    ds = CausalAVDataset(CORPUS)
+    clip_id = ds.list_sequences()[0]
+    seq = ds.get_sequence(clip_id)
+    assert seq._egomotion_interpolator is None
+    # Stub `seq._cameras` so `seq.video` doesn't ask the parent for a
+    # `SeekVideoReader` (the carousel tests use the same trick).
+    seq._cameras = {seq.annotation_camera: FakeVideoReader()}  # type: ignore[assignment]
+    player = seq.visualize()
+    assert isinstance(player, ClipPlayer)
+    # And `state_at` — which calls `_interpolate_ego_pose` internally —
+    # silently degrades to no ego pose rather than re-raising.
+    s = seq.state_at(0.0)
+    assert isinstance(s, SequenceState)
+    assert s.ego.pose is None
+
+
+def test_egomotion_happy_path_caches_eager_load(
+    patched_parent: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When `parent.get_clip_feature` succeeds, the slot is populated at
+    construction time and the property returns it without re-calling the
+    parent — pinning the unchanged happy-path behavior."""
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    calls = {"n": 0}
+    sentinel = object()
+
+    def _stub(self, clip_id: str, feature: str):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        return sentinel
+
+    monkeypatch.setattr(PhysicalAIAVDatasetInterface, "get_clip_feature", _stub)
+
+    ds = CausalAVDataset(CORPUS)
+    clip_id = ds.list_sequences()[0]
+    seq = ds.get_sequence(clip_id)
+    assert seq._egomotion_interpolator is sentinel
+    assert seq.egomotion_interpolator is sentinel
+    assert calls["n"] == 1  # cached — no re-fetch on property access
