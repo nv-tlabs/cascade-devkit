@@ -329,3 +329,291 @@ def test_render_timeline_zero_duration_does_not_crash() -> None:
     xrange = list(fig.layout.xaxis.range or ())
     assert xrange[0] == 0
     assert xrange[1] >= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Sub-lane assignment (feat: rich timeline)
+# ---------------------------------------------------------------------------
+
+
+def _segment_shapes(fig: go.Figure) -> list[dict]:
+    return [s for s in _shapes(fig) if s.get("name", "").startswith("segment:")]
+
+
+def _agents_row_segment_shapes(fig: go.Figure) -> list[dict]:
+    """All segment shapes whose vertical mid lies inside the Agents row."""
+    out = []
+    for s in _segment_shapes(fig):
+        mid = (float(s["y0"]) + float(s["y1"])) / 2.0
+        if 2.5 <= mid <= 3.5:  # Agents row is index 3.
+            out.append(s)
+    return out
+
+
+def _make_two_overlapping_agent_actions_bundle() -> AnnotationBundle:
+    """Two agent actions on the SAME agent that overlap in time."""
+    a1 = AgentAction(
+        id="agent_0_act_0",
+        action_type="Yield",
+        start_timestamp="0:1.0",
+        end_timestamp="0:5.0",
+    )
+    a2 = AgentAction(
+        id="agent_0_act_1",
+        action_type="oxd:Decelerate",
+        start_timestamp="0:2.0",  # overlaps with a1
+        end_timestamp="0:6.0",
+    )
+    agent = Agent(
+        id="agent_0",
+        type="oxd:Car",
+        visibility_start_timestamp="0:0.5",
+        visibility_end_timestamp="0:8.0",
+        actions=[a1, a2],
+    )
+    ann = SilAvAnnotation(agents=[agent])
+    return AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="overlap", duration_s=10.0),
+        annotation=ann,
+    )
+
+
+def test_overlapping_subtracks_land_on_distinct_lanes() -> None:
+    """Two overlapping agent actions paint on different lanes within
+    the Agents row — count the distinct (y0, y1) bands."""
+    fig = render_timeline(_seq(_make_two_overlapping_agent_actions_bundle()))
+    agent_shapes = _agents_row_segment_shapes(fig)
+    bands = {(round(float(s["y0"]), 3), round(float(s["y1"]), 3)) for s in agent_shapes}
+    # Parent agent + two overlapping actions → at least 2 distinct bands.
+    assert len(bands) >= 2, f"expected multi-lane stack, got {bands}"
+
+
+def test_non_overlapping_subtracks_share_lane_zero() -> None:
+    """Two non-overlapping actions on the same agent share a single lane."""
+    a1 = AgentAction(
+        id="agent_0_act_0",
+        action_type="Yield",
+        start_timestamp="0:1.0",
+        end_timestamp="0:3.0",
+    )
+    a2 = AgentAction(
+        id="agent_0_act_1",
+        action_type="oxd:Decelerate",
+        start_timestamp="0:4.0",  # no overlap with a1
+        end_timestamp="0:6.0",
+    )
+    agent = Agent(
+        id="agent_0",
+        type="oxd:Car",
+        visibility_start_timestamp="0:0.5",
+        visibility_end_timestamp="0:8.0",
+        actions=[a1, a2],
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="no_overlap", duration_s=10.0),
+        annotation=SilAvAnnotation(agents=[agent]),
+    )
+    fig = render_timeline(_seq(bundle))
+    # Parent agent visibility spans [0.5, 8.0] which overlaps both
+    # actions, so the parent + at least one action must share a lane
+    # neighbour. But the two ACTIONS themselves should not need to
+    # occupy distinct lanes — they don't overlap each other.
+    agent_shapes = _agents_row_segment_shapes(fig)
+    action_bands = {
+        (round(float(s["y0"]), 3), round(float(s["y1"]), 3))
+        for s in agent_shapes
+        if "agent_action_" in s.get("name", "")
+    }
+    # The two actions share one lane (since their intervals are disjoint).
+    assert len(action_bands) == 1, f"expected single-lane actions, got {action_bands}"
+
+
+# ---------------------------------------------------------------------------
+# Inline labels
+# ---------------------------------------------------------------------------
+
+
+def _annotations(fig: go.Figure) -> list[dict]:
+    return [dict(a.to_plotly_json()) for a in (fig.layout.annotations or ())]
+
+
+def test_inline_label_present_on_long_segments_suppressed_on_short_ones() -> None:
+    """Wide segment → inline annotation; sub-threshold segment → no
+    inline annotation (hover-only)."""
+    long_action = AgentAction(
+        id="agent_0_act_0",
+        action_type="Yield",
+        start_timestamp="0:0.0",
+        end_timestamp="0:5.0",  # 5 s wide → inline label
+    )
+    short_action = AgentAction(
+        id="agent_0_act_1",
+        action_type="oxd:Decelerate",
+        start_timestamp="0:6.0",
+        end_timestamp="0:6.05",  # 50 ms wide → suppress inline label
+    )
+    agent = Agent(
+        id="agent_0",
+        type="oxd:Car",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:10.0",
+        actions=[long_action, short_action],
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="labels", duration_s=10.0),
+        annotation=SilAvAnnotation(agents=[agent]),
+    )
+    fig = render_timeline(_seq(bundle))
+    label_names = {a.get("name", "") for a in _annotations(fig)}
+    # The 5 s action gets an inline label, the 50 ms one does not.
+    assert any(n.startswith("label:agent_action_0_0_") for n in label_names)
+    assert not any(n.startswith("label:agent_action_0_1_") for n in label_names)
+
+
+# ---------------------------------------------------------------------------
+# Hover trace invariant
+# ---------------------------------------------------------------------------
+
+
+def test_hover_trace_count_matches_segments_plus_arrow_overlays() -> None:
+    """Pin the trace-count invariant: every painted segment gets one
+    hover trace; every arrow contributes two (arrowhead + midpoint)."""
+    fig = render_timeline(_seq(_make_full_bundle()))
+    seg_hover = [
+        t for t in fig.data
+        if (t.name or "").startswith("hover:segment:")
+    ]
+    arrow_mid_hover = [
+        t for t in fig.data
+        if (t.name or "").startswith("hover:arrow:")
+    ]
+    arrowheads = [
+        t for t in fig.data
+        if (t.name or "").startswith("arrowhead:")
+    ]
+    n_segments = len(_segment_shapes(fig))
+    # Every arrow family contributes one path shape per arrow.
+    n_arrows = sum(
+        len(_arrow_shapes(fig, family))
+        for family in (
+            "because_of", "link_to", "containment", "influence", "action_target",
+        )
+    )
+    assert len(seg_hover) == n_segments
+    assert len(arrow_mid_hover) == n_arrows
+    assert len(arrowheads) == n_arrows
+
+
+# ---------------------------------------------------------------------------
+# Arrowhead presence per enabled family
+# ---------------------------------------------------------------------------
+
+
+def test_each_enabled_arrow_family_contributes_an_arrowhead_marker() -> None:
+    """For every family with at least one arrow, there's at least one
+    matching arrowhead marker trace."""
+    fig = render_timeline(_seq(_make_full_bundle()))
+    for family in ("because_of", "link_to", "containment", "influence", "action_target"):
+        arrows = _arrow_shapes(fig, family)
+        if not arrows:
+            continue
+        heads = [
+            t for t in fig.data
+            if (t.name or "").startswith(f"arrowhead:{family}:")
+        ]
+        assert len(heads) == len(arrows), (
+            f"family={family}: {len(heads)} arrowheads but {len(arrows)} arrows"
+        )
+
+
+def test_disabling_arrow_family_drops_its_arrowheads() -> None:
+    """Toggling `because_of` off drops its arrowhead markers, not just
+    the bezier shape."""
+    fig = render_timeline(_seq(_make_full_bundle()), arrows={"because_of": False})
+    heads = [
+        t for t in fig.data
+        if (t.name or "").startswith("arrowhead:because_of:")
+    ]
+    assert heads == []
+
+
+# ---------------------------------------------------------------------------
+# Filter kwargs
+# ---------------------------------------------------------------------------
+
+
+def test_entity_kinds_filter_keeps_only_requested_rows() -> None:
+    """`entity_kinds=["ego"]` drops every non-Ego segment shape."""
+    fig = render_timeline(_seq(_make_full_bundle()), entity_kinds=["ego"])
+    for s in _segment_shapes(fig):
+        mid = (float(s["y0"]) + float(s["y1"])) / 2.0
+        # Ego row is index 4.
+        assert 3.5 <= mid <= 4.5, f"non-Ego shape leaked through filter: {s}"
+
+
+def test_agent_ids_filter_keeps_only_listed_agents() -> None:
+    """With two agents in the bundle, `agent_ids=[first.id]` excludes
+    the second."""
+    second_agent = Agent(
+        id="agent_1",
+        type="oxd:Car",
+        visibility_start_timestamp="0:6.0",
+        visibility_end_timestamp="0:9.0",
+        actions=[
+            AgentAction(
+                id="agent_1_act_0",
+                action_type="Yield",
+                start_timestamp="0:7.0",
+                end_timestamp="0:8.0",
+            )
+        ],
+    )
+    bundle = _make_full_bundle()
+    bundle = AnnotationBundle(
+        schema_version=bundle.schema_version,
+        video=bundle.video,
+        annotation=SilAvAnnotation(
+            environments=list(bundle.annotation.environments),
+            conditions=list(bundle.annotation.conditions),
+            ego_vehicle=bundle.annotation.ego_vehicle,
+            agents=list(bundle.annotation.agents) + [second_agent],
+        ),
+    )
+    fig_all = render_timeline(_seq(bundle))
+    fig_one = render_timeline(_seq(bundle), agent_ids=["agent_0"])
+    # The unfiltered figure has more agent-row segment shapes than the
+    # filtered figure (the second agent's parent + action are dropped).
+    def _agent_count(fig: go.Figure) -> int:
+        return len(_agents_row_segment_shapes(fig))
+
+    assert _agent_count(fig_one) < _agent_count(fig_all)
+
+
+def test_track_groups_filter_collapses_axis_to_visible_rows() -> None:
+    """`track_groups=["Agents"]` produces a y-axis with one tick label."""
+    fig = render_timeline(_seq(_make_full_bundle()), track_groups=["Agents"])
+    yticks = list(fig.layout.yaxis.ticktext or ())
+    assert yticks == ["Agents"]
+    # And every painted segment sits inside the Agents band.
+    for s in _segment_shapes(fig):
+        mid = (float(s["y0"]) + float(s["y1"])) / 2.0
+        assert 2.5 <= mid <= 3.5
+
+
+def test_filter_propagation_drops_arrows_with_filtered_endpoints() -> None:
+    """When a `because_of`'s source agent is filtered out, the arrow
+    is dropped from the figure."""
+    # The fixture's `because_of` arrows include: ego action → agent_0
+    # (source = ego, target = agent_0). Filter agents out of the figure
+    # and the arrow should disappear because its target endpoint is
+    # gone.
+    fig = render_timeline(
+        _seq(_make_full_bundle()),
+        entity_kinds=["env", "light", "object", "ego"],  # no agents
+    )
+    assert _arrow_shapes(fig, "because_of") == []
+    # And the agent-targeted action_target arrows also vanish.
+    assert _arrow_shapes(fig, "action_target") == []
