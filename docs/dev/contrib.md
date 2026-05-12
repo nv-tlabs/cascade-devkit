@@ -114,6 +114,13 @@ Each commit must:
   - How to test or verify it
   - Any open questions or follow-up issues
 - Link related GitHub issues when applicable.
+- **Update `docs/dev/changelog.md` in the same PR** with a one-line entry
+  describing the change. The PR number is not known until `gh pr create`
+  returns it — either predict the next number with
+  `gh pr list --state all --limit 1 --json number`, or commit with a
+  placeholder, open the PR, amend the commit with the real `(#<N>)`, and
+  force-push the feature branch (force-push is forbidden on `main` but
+  permitted on your own feature branch).
 - At least one approval is required before merging.
 
 ---
@@ -132,7 +139,7 @@ The `docs/dev` directory is the project's living memory. All contributors must k
 - **Read `docs/dev/architecture.md` first** before proposing or implementing any structural change.
 - Record newly discovered issues as GitHub issues using `gh` rather than silently working around them (see [GitHub Issues](#github-issues) below).
 - Look for open GitHub issues since they could reveal existing problems.
-- After a PR is merged, add a one-line entry to `docs/dev/changelog.md`.
+- Add a one-line entry to `docs/dev/changelog.md` **as part of the same PR** that makes the change (not a follow-up). See [Pull Requests](#pull-requests) for how to handle the PR-number reference.
 
 ---
 
