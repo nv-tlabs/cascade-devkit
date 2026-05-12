@@ -22,6 +22,7 @@ from causal_ai_av.dataset import CausalAVDataset, Sequence
 from causal_ai_av.io import load_file
 from causal_ai_av.spec import AnnotationBundle
 from causal_ai_av.state import SequenceState, SequenceStateRange
+from tests.conftest import FakeVideoReader  # noqa: E402 — used by the visualize smoke test
 
 CORPUS = Path("/home/horde/01_json_annotations")
 
@@ -90,12 +91,25 @@ def test_state_at_instant_and_range() -> None:
     assert window.clip_id == seq.clip_id
 
 
-def test_visualize_returns_documented_keys() -> None:
+def test_visualize_smoke_returns_clipplayer() -> None:
+    """The placeholder dict-shape return was replaced in PR-6 by a
+    polymorphic dispatcher into ``causal_ai_av.viz``. The detailed
+    dispatch matrix (scalar / tuple / match / context / static + the
+    error paths) lives in ``tests/test_sequence_visualize.py``; this
+    smoke test only pins that the call now produces a ``ClipPlayer``
+    via the lazy ``viz`` import.
+    """
+    from causal_ai_av.viz import ClipPlayer
+
     path = max(CORPUS.glob("*.json"), key=lambda p: p.stat().st_size)
     seq = Sequence.from_annotation(load_file(path))
-    result = seq.visualize()
-    assert set(result.keys()) >= {"frame", "state", "bboxes", "note"}
-    # Frame is None when no parent video is wired (test path); state must be
-    # populated either way.
-    assert isinstance(result["state"], (SequenceState, SequenceStateRange))
-    assert isinstance(result["bboxes"], list)
+    # ``Sequence.video`` would normally require a parent dataset; the
+    # widget tests stub the lazy ``_cameras`` slot to inject a fake
+    # reader. Same trick here so ClipPlayer's initial decode succeeds.
+    seq._cameras = {seq.annotation_camera: FakeVideoReader()}  # type: ignore[assignment]
+
+    player = seq.visualize()
+    assert isinstance(player, ClipPlayer)
+    # The "no args" path opens over the whole clip.
+    assert player._t_start == 0.0
+    assert player._t_end == seq.duration_s
