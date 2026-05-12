@@ -546,6 +546,28 @@ def test_disabling_arrow_family_drops_its_arrowheads() -> None:
     assert heads == []
 
 
+def test_arrowhead_has_visible_outline() -> None:
+    """Each arrowhead marker carries a 1.5px Tailwind slate-50
+    (`#f8fafc`) outline so the head pops off any same-hue target
+    row (e.g. containment-green over the Env row). Family fill is
+    preserved; only `marker.line` changes from the prior
+    invisible `{"width": 0}`.
+    """
+    fig = render_timeline(_seq(_make_full_bundle()))
+    heads = [
+        t for t in fig.data if (t.name or "").startswith("arrowhead:")
+    ]
+    assert heads, "expected at least one arrowhead marker on the rich bundle"
+    for head in heads:
+        line = head.marker.line
+        assert float(line.width) == 1.5, (
+            f"arrowhead {head.name} has width={line.width!r}, expected 1.5"
+        )
+        assert line.color == "#f8fafc", (
+            f"arrowhead {head.name} has color={line.color!r}, expected '#f8fafc'"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Filter kwargs
 # ---------------------------------------------------------------------------
