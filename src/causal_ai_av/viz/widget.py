@@ -30,7 +30,11 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from causal_ai_av.viz.timeline import _paint_timeline_onto
+from causal_ai_av.viz.timeline import (
+    _PX_PER_LANE,
+    _paint_timeline_onto,
+    _timeline_px_for,
+)
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     import plotly.graph_objects as go
@@ -38,16 +42,30 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
     from causal_ai_av.dataset import Sequence
 
 
-# Layout constants. Top subplot is the video frame (taller); bottom is
-# the timeline (shorter). The split mirrors the annotator's two-pane
-# layout but flipped — the annotator stacks video on top of timeline
-# inside the same browser tab, and we follow that reading order here.
-_ROW_HEIGHTS: tuple[float, float] = (0.7, 0.3)
+# Subplot vertical-gap fraction. Top subplot is the video frame
+# (taller); bottom is the timeline. The split is computed adaptively
+# from the timeline's lane count in `__init__` — a busy clip with
+# stacked sub-lanes gets a taller timeline so each lane stays
+# readable, while a sparse clip stays compact. The annotator stacks
+# video on top of timeline inside the same browser tab; we follow
+# that reading order here.
 _VERTICAL_SPACING = 0.05
 
 # Default scrub rate. The spec calls 8 fps "scrub-not-playback" and
 # uses it as the smoke-test bar in `meta/10_visualization_api_plan.md`.
 _DEFAULT_FPS = 8.0
+
+# Pixel budget for the video subplot in the adaptive-height path.
+# 480px keeps a 1080p frame legible at the default Jupyter cell width;
+# users who want a giant video pane can override via the `height`
+# kwarg (which pins the *total* height; the timeline's share scales
+# down to compensate).
+_VIDEO_PX = 480
+
+# Chrome (margins + ipywidgets row) that the figure layout needs to
+# leave room for. Adding it to the video + timeline pixels gives the
+# default `height` value when callers don't override.
+_CHROME_PX = 60
 
 
 class ClipPlayer:
@@ -76,6 +94,13 @@ class ClipPlayer:
             whitelist.
         track_groups: forwarded to `_paint_timeline_onto`; group-row
             whitelist.
+        height: optional explicit pixel height for the whole player.
+            `None` (default) means adaptive — the timeline subplot
+            scales to the deepest sub-lane stack on the bottom row
+            and the video subplot keeps a fixed 480px budget. Pass
+            an int to pin a specific total height; the video / timeline
+            split adjusts so the timeline still gets at least the
+            adaptive lane budget when possible.
 
     Display protocol:
         - In Jupyter / JupyterLab the widget renders inline through
@@ -106,6 +131,7 @@ class ClipPlayer:
         entity_kinds: list[str] | None = None,
         agent_ids: list[str] | None = None,
         track_groups: list[str] | None = None,
+        height: int | None = None,
     ) -> None:
         # Defer the optional-extra imports so importing this module
         # without `[viz]` doesn't blow up at module load — only at
@@ -137,11 +163,18 @@ class ClipPlayer:
         # ------------------------------------------------------------
         # 1. Build the underlying FigureWidget — two stacked subplots:
         #    row 1 video frame, row 2 timeline.
+        #
+        #    The `row_heights` split is computed adaptively after the
+        #    timeline is painted, since the timeline's pixel budget
+        #    scales with the deepest sub-lane stack. We start with a
+        #    placeholder 50/50 split, then override the subplot
+        #    domains and total height once `_paint_timeline_onto`
+        #    has reported the lane count.
         # ------------------------------------------------------------
         base = make_subplots(
             rows=2,
             cols=1,
-            row_heights=list(_ROW_HEIGHTS),
+            row_heights=[0.5, 0.5],
             vertical_spacing=_VERTICAL_SPACING,
             shared_xaxes=False,
         )
@@ -158,18 +191,21 @@ class ClipPlayer:
         fig = go.FigureWidget(base)
 
         # Hide the image axes ticks — the video frame doesn't have
-        # meaningful axis units; we only want the picture.
+        # meaningful axis units; we only want the picture. Total
+        # `height` is overridden below once the adaptive sizing has
+        # been computed from the timeline's lane counts.
         fig.update_layout(
             template="plotly_dark",
-            height=600,
             margin={"l": 80, "r": 20, "t": 20, "b": 40},
             showlegend=False,
             xaxis={"showticklabels": False, "showgrid": False, "zeroline": False},
             yaxis={"showticklabels": False, "showgrid": False, "zeroline": False},
         )
 
-        # Paint the timeline onto the second subplot (x2 / y2).
-        _paint_timeline_onto(
+        # Paint the timeline onto the second subplot (x2 / y2). The
+        # painter returns per-group lane counts so we can size the
+        # bottom subplot proportionally to the deepest stack.
+        group_lane_count = _paint_timeline_onto(
             fig,
             sequence,
             xref="x2",
@@ -181,6 +217,45 @@ class ClipPlayer:
             entity_kinds=entity_kinds,
             agent_ids=agent_ids,
             track_groups=track_groups,
+        )
+
+        # Adaptive height: frame_px on top, lane-count × _PX_PER_LANE
+        # on the bottom (with a floor so a sparse clip still gets
+        # breathing room), plus chrome for margins / slider. Callers
+        # can pass `height=N` to pin a total value — we then keep the
+        # timeline at its computed pixel share and let the video pane
+        # absorb the rest, preserving the lane-band readability the
+        # whole adaptive path is about.
+        timeline_px = _timeline_px_for(group_lane_count)
+        if height is not None:
+            total_height = int(height)
+            video_px = max(
+                _PX_PER_LANE,  # avoid collapsing the video pane to zero
+                total_height - timeline_px - _CHROME_PX,
+            )
+        else:
+            video_px = _VIDEO_PX
+            total_height = video_px + timeline_px + _CHROME_PX
+
+        # `make_subplots` writes y-domain fractions onto the two
+        # yaxes; override them so the split tracks pixel counts
+        # rather than the placeholder 50/50 we passed in above.
+        # `_VERTICAL_SPACING` is a domain fraction (matching the
+        # `make_subplots` argument we passed earlier); reserving it
+        # at the bottom of the top subplot keeps the gap consistent
+        # with the placeholder layout.
+        subplot_total = video_px + timeline_px
+        usable = 1.0 - _VERTICAL_SPACING
+        timeline_domain_top = (timeline_px / subplot_total) * usable
+        fig.update_layout(
+            height=total_height,
+            yaxis={
+                "showticklabels": False,
+                "showgrid": False,
+                "zeroline": False,
+                "domain": [timeline_domain_top + _VERTICAL_SPACING, 1.0],
+            },
+            yaxis2={"domain": [0.0, timeline_domain_top]},
         )
 
         # ------------------------------------------------------------

@@ -276,7 +276,7 @@ def _paint_timeline_onto(
     entity_kinds: list[str] | None = None,
     agent_ids: list[str] | None = None,
     track_groups: list[str] | None = None,
-) -> None:
+) -> dict[str, int]:
     """Append timeline shapes for `seq` onto `fig`, on the given axes.
 
     Factored out of `render_timeline` so the PR-4 widget can paint the
@@ -315,7 +315,12 @@ def _paint_timeline_onto(
             rows. `None` = all five groups.
 
     Returns:
-        None. `fig` is mutated.
+        Per-group lane counts — `{"Env": 1, "Lights": 1, "Objects": 1,
+        "Agents": 3, "Ego": 1}`. Callers use this to size the figure
+        proportionally to the deepest stack (see `render_timeline` and
+        `widget.ClipPlayer`'s adaptive-height path). The figure itself
+        is also mutated in place — shapes / annotations / hover traces
+        are appended onto `fig`.
 
     Filter semantics:
         - The three filters AND together: a segment is drawn only if
@@ -814,6 +819,26 @@ def _paint_timeline_onto(
     for trace in hover_traces:
         fig.add_trace(trace)
 
+    return group_lane_count
+
+
+# Vertical pixels per lane band for the adaptive-height path. Drives
+# both `render_timeline`'s `height` and `ClipPlayer`'s `row_heights`
+# split. Tuned so a label rendered at `_INLINE_LABEL_FONT_SIZE` reads
+# cleanly without clipping the row above/below.
+_PX_PER_LANE: int = 24
+
+# Minimum total timeline height in pixels. With no overlap the five
+# group rows × 1 lane each would still want some breathing room; this
+# is the floor before lane stacking adds more.
+_MIN_TIMELINE_PX: int = 240
+
+
+def _timeline_px_for(group_lane_count: dict[str, int]) -> int:
+    """Compute the adaptive timeline height in pixels."""
+    total_lanes = sum(group_lane_count.values()) or len(_TRACK_GROUPS)
+    return max(_MIN_TIMELINE_PX, total_lanes * _PX_PER_LANE)
+
 
 def render_timeline(
     seq: "Sequence",
@@ -823,6 +848,7 @@ def render_timeline(
     entity_kinds: list[str] | None = None,
     agent_ids: list[str] | None = None,
     track_groups: list[str] | None = None,
+    height: int | None = None,
 ) -> "go.Figure":
     """Return a Plotly Figure showing the clip's annotation timeline.
 
@@ -853,6 +879,11 @@ def render_timeline(
         track_groups: optional group-row whitelist (`"Env"`, `"Lights"`,
             `"Objects"`, `"Agents"`, `"Ego"`). Rows not in the
             whitelist drop from the y-axis layout. `None` = all groups.
+        height: optional explicit pixel height. `None` (default) means
+            adaptive — the height tracks the deepest sub-lane stack so
+            a busy clip gets a taller timeline while a sparse one
+            stays compact. Pass an int to pin a specific value; useful
+            when embedding the figure in a fixed-size dashboard cell.
 
     Returns:
         A `plotly.graph_objects.Figure`. The visible rectangles, arrows,
@@ -866,7 +897,7 @@ def render_timeline(
     import plotly.graph_objects as go
 
     fig = go.Figure()
-    _paint_timeline_onto(
+    group_lane_count = _paint_timeline_onto(
         fig,
         seq,
         xref="x",
@@ -879,9 +910,12 @@ def render_timeline(
         agent_ids=agent_ids,
         track_groups=track_groups,
     )
+    resolved_height = (
+        int(height) if height is not None else _timeline_px_for(group_lane_count)
+    )
     fig.update_layout(
         template="plotly_dark",
-        height=300,
+        height=resolved_height,
         margin={"l": 80, "r": 20, "t": 20, "b": 40},
     )
     return fig

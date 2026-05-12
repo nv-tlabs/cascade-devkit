@@ -204,7 +204,13 @@ def test_render_timeline_has_segment_shapes_per_group() -> None:
 def test_render_timeline_layout_is_dark_with_locked_axes() -> None:
     fig = render_timeline(_seq(_make_full_bundle()))
     assert fig.layout.template.layout.paper_bgcolor is not None  # plotly_dark
-    assert fig.layout.height == 300
+    # Adaptive height: the figure should never collapse below the
+    # 240px floor, even for a sparse clip. The exact value scales
+    # with the deepest sub-lane stack so we only assert the floor
+    # here. `test_explicit_height_kwarg_overrides_adaptive` covers
+    # the override knob, and `test_adaptive_height_grows_with_lanes`
+    # pins the lane-count scaling.
+    assert fig.layout.height >= 240
     # y-axis ticks are the five group labels, top → bottom.
     yticks = list(fig.layout.yaxis.ticktext or ())
     assert yticks == ["Env", "Lights", "Objects", "Agents", "Ego"]
