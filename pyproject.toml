@@ -30,6 +30,7 @@ causal-av-annotator = { workspace = true }
 [dependency-groups]
 dev = [
     "pytest>=9.0.1",
+    "ruff>=0.7",
 ]
 notebooks = [
     "jupyterlab>=4.0",
