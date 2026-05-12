@@ -40,7 +40,7 @@ uv sync --extra annotator --extra hf
 **3. Frontend build.** One-time; rebuild after pulling UI changes:
 
 ```bash
-cd annotator/web && npm install && npm run build
+cd tools/annotator/web && npm install && npm run build
 ```
 
 ## Launch
@@ -133,7 +133,7 @@ uv run causal-av-annotate /path/to/videos
 ## Architecture
 
 ```
-annotator/
+tools/annotator/
   src/annotator/server/
     cli.py        # argparse + uvicorn entry point
     app.py        # FastAPI app, /api/* routes
@@ -149,7 +149,7 @@ annotator/
 
 ```bash
 # From the repo root:
-uv run pytest annotator/
+uv run pytest tools/annotator/
 ```
 
 The video tests mock `subprocess.run` / `shutil.which` so real
