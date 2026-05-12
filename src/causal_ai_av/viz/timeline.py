@@ -287,23 +287,26 @@ def _populated_bands(segments: list[Segment]) -> list[BandKey]:
 
 # Inline-label font size, in points. Tuned for the 24px-per-lane
 # layout from `render_timeline`'s adaptive height — at that lane
-# height a `size=9` label reads cleanly without clipping vertically
+# height a `size=8` label reads cleanly without clipping vertically
 # against the rectangle's top/bottom edge. Bumping this back up is
 # the right knob if a caller forces a taller layout via the `height`
 # kwarg.
-_INLINE_LABEL_FONT_SIZE: int = 9
+_INLINE_LABEL_FONT_SIZE: int = 8
 
 # Maximum characters for an inline segment label. Anything longer gets
 # truncated with an ellipsis; the full label always lives in the hover
-# tooltip.
-_INLINE_LABEL_MAX_CHARS: int = 11
+# tooltip. Tightened from 11 → 8 chars to keep labels from spilling out
+# of narrow boxes once the family-band layout multiplies the band count.
+_INLINE_LABEL_MAX_CHARS: int = 8
 
-# A segment must be at least this wide (in seconds) to qualify for an
-# inline label. Narrower segments suppress the inline annotation and
-# rely on hover-only — otherwise the text would clip outside the
-# rectangle and read as noise. Pinned by a regression test on the
-# `~5 s vs ~0.05 s` divide called out in the design doc.
-_INLINE_LABEL_MIN_WIDTH_S: float = 0.5
+# Minimum segment width *as a fraction of the clip duration* for an
+# inline label to render. The fraction-based threshold replaces the old
+# absolute `_INLINE_LABEL_MIN_WIDTH_S = 0.5` so the same segment scales
+# correctly across clip lengths: a 1.0s segment in a 20s clip is 5% of
+# duration (suppressed); the same segment in a 5s clip is 20% (shown).
+# 6% lands at the empirical "label legibly fits" knee for the
+# 24px-per-lane band height at the default Jupyter cell width.
+_INLINE_LABEL_MIN_WIDTH_FRAC: float = 0.06
 
 
 def _truncate_label(label: str, *, max_chars: int = _INLINE_LABEL_MAX_CHARS) -> str:
@@ -688,10 +691,19 @@ def _paint_timeline_onto(
 
         # Inline label — centered on the rectangle. Suppressed for
         # very narrow segments where the truncated text would clip.
+        # The threshold is proportional to the clip duration so the
+        # same segment scales sensibly across clip lengths (see
+        # `_INLINE_LABEL_MIN_WIDTH_FRAC`). When duration is unknown
+        # (sentinel 0.0), keep every label — the painter falls back
+        # to the absolute-zero floor so empty/zero-duration bundles
+        # still render their labels for inspection.
         seg_width = max(seg.t1 - seg.t0, 0.0)
+        min_inline_width = (
+            _INLINE_LABEL_MIN_WIDTH_FRAC * duration if duration > 0 else 0.0
+        )
         if (
             show_inline_labels
-            and seg_width >= _INLINE_LABEL_MIN_WIDTH_S
+            and seg_width >= min_inline_width
         ):
             annotations.append(
                 {
