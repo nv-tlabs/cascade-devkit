@@ -15,7 +15,7 @@ On-frame overlays (boxes, keypoints) are deferred to v1.
 """
 
 from causal_ai_av.viz.colors import entity_color
-from causal_ai_av.viz.render import render_frame
+from causal_ai_av.viz.render import render_frame, render_timeline
 from causal_ai_av.viz.segments import Segment, annotation_to_segments
 
 __all__ = [
@@ -23,4 +23,5 @@ __all__ = [
     "annotation_to_segments",
     "entity_color",
     "render_frame",
+    "render_timeline",
 ]

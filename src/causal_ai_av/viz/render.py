@@ -16,6 +16,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PIL import Image
 
+# Re-export `render_timeline` so `from causal_ai_av.viz import render_timeline`
+# (and the equivalent `from causal_ai_av.viz.render import render_timeline`)
+# both work. The actual figure-building logic lives in `viz.timeline`; this
+# module stays focused on raster-frame rendering.
+from causal_ai_av.viz.timeline import render_timeline
+
 if TYPE_CHECKING:  # pragma: no cover — typing only
     from causal_ai_av.dataset import Sequence
 
@@ -63,12 +69,10 @@ def render_frame(
     t_us = np.array([int(round(t * 1_000_000))], dtype=np.int64)
     images, _ = video.decode_images_from_timestamps(t_us)
     if images is None or len(images) == 0:
-        raise RuntimeError(
-            f"video.decode_images_from_timestamps returned no frames for t={t}"
-        )
+        raise RuntimeError(f"video.decode_images_from_timestamps returned no frames for t={t}")
 
     frame = np.asarray(images[0])
     return Image.fromarray(frame).convert("RGB")
 
 
-__all__ = ["render_frame"]
+__all__ = ["render_frame", "render_timeline"]
