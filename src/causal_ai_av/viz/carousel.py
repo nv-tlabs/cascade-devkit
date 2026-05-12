@@ -105,11 +105,28 @@ def build_matchset_carousel(
         t_start = max(0.0, t0_raw - pad)
         t_end = min(duration, t1_raw + pad)
         # `ClipPlayer` requires `t_end > t_start`; if pad clamping
-        # collapsed the window, expand to at least one fps-tick. This
-        # is rare (only when the match interval butts up against
-        # `duration_s` and `pad=0`).
+        # collapsed the window, expand to at least one fps-tick. The
+        # original PR-25 implementation always pushed `t_end` upward,
+        # which silently failed at the end-of-clip boundary
+        # (`t_start == duration` clamped the expansion right back).
+        # Now we push `t_start` downward at the end-of-clip boundary
+        # and `t_end` upward otherwise. If the clip is shorter than a
+        # single fps tick, neither direction has room — surface a
+        # clear `ValueError` instead of constructing a degenerate
+        # player.
         if t_end <= t_start:
-            t_end = min(duration, t_start + 1.0 / max(fps, 1.0))
+            tick = 1.0 / max(fps, 1.0)
+            if duration < tick:
+                raise ValueError(
+                    f"clip duration ({duration:.6f}s) is shorter than one "
+                    f"frame at fps={fps}; cannot build a non-degenerate "
+                    f"playback window for match {match.clip_id}"
+                )
+            if t_end >= duration:
+                # End-of-clip boundary: back `t_start` off by one tick.
+                t_start = max(0.0, t_start - tick)
+            else:
+                t_end = t_start + tick
 
         player = ClipPlayer(
             seq,
