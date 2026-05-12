@@ -48,7 +48,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from causal_ai_av.viz.colors import entity_color
-from causal_ai_av.viz.segments import Segment, annotation_to_segments
+from causal_ai_av.viz.segments import Segment, annotation_to_segments, assign_lanes
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     import plotly.graph_objects as go
@@ -118,9 +118,40 @@ def _segment_center_x(seg: Segment) -> float:
     return (seg.t0 + seg.t1) / 2.0
 
 
-def _segment_top_y(group: str) -> float:
-    """y-coordinate of a segment's top edge (used as arrow anchor)."""
-    return _GROUP_ROW[group] + 0.4
+# Sub-lane geometry.
+#
+# A group row covers `[row - _ROW_HALF_HEIGHT, row + _ROW_HALF_HEIGHT]`. With
+# `lane_count` lanes inside, each lane is a horizontal stripe of height
+# `2 * _ROW_HALF_HEIGHT / lane_count`. Lane 0 sits at the "top" of the
+# row (which renders at the bottom of the row in data coordinates because
+# `yaxis.range` is reversed in `_paint_timeline_onto`).
+_ROW_HALF_HEIGHT: float = 0.4
+
+
+def _lane_band(group: str, lane: int, lane_count: int) -> tuple[float, float]:
+    """Return `(y0, y1)` for a segment painted at `lane` in `group`.
+
+    `lane_count` is the deepest stack within the group — every segment in
+    the same group shares the same lane height so the band tiling looks
+    even.
+    """
+    row = _GROUP_ROW[group]
+    total = 2.0 * _ROW_HALF_HEIGHT
+    lane_h = total / max(lane_count, 1)
+    y0 = row - _ROW_HALF_HEIGHT + lane * lane_h
+    y1 = y0 + lane_h
+    return y0, y1
+
+
+def _segment_top_y(group: str, lane: int = 0, lane_count: int = 1) -> float:
+    """y-coordinate of a segment's top edge (used as arrow anchor).
+
+    With the yaxis range reversed (top → bottom), "top" in data
+    coordinates is the *larger* y value of the lane band — that's the
+    edge that visually faces away from the rows below.
+    """
+    _y0, y1 = _lane_band(group, lane, lane_count)
+    return y1
 
 
 def _bezier_path(x0: float, y0: float, x1: float, y1: float) -> str:
@@ -282,10 +313,17 @@ def _paint_timeline_onto(
         )
 
     # ---------------------------------------------------------------
-    # 2. One rectangle per segment. Drop segments whose track id
-    #    doesn't map into one of the five groups (defensive — the
-    #    schema currently only emits the five we know about).
+    # 2. One rectangle per segment, stacked into sub-lanes.
+    #
+    #    Greedy lane assignment via `assign_lanes` runs per `track_id`
+    #    (mirroring the annotator's `assignTracks`). To paint inside a
+    #    *group row*, we further roll up lane counts per group — the
+    #    deepest stack across all of the group's track ids wins, so
+    #    every segment in the same group ends up on a uniform lane
+    #    grid. This is the same idea as the annotator's grouping in
+    #    `Timeline.tsx`: subtracks share the parent's vertical budget.
     # ---------------------------------------------------------------
+    paintable: list[tuple[Segment, str, str]] = []
     for seg in segments:
         group = _track_id_to_group(seg.track_id)
         if group is None:
@@ -293,14 +331,33 @@ def _paint_timeline_onto(
         kind = _segment_kind(seg.track_id)
         if kind is None:
             continue
-        row = _GROUP_ROW[group]
+        paintable.append((seg, group, kind))
+
+    seg_lane = assign_lanes([s for s, _, _ in paintable])
+    # Roll lane indices up to per-group lane counts so the lane band
+    # tiling is uniform within a group (otherwise neighbouring track
+    # ids would paint at different y-heights and read as a ragged
+    # lattice).
+    group_lane_count: dict[str, int] = {g: 1 for g in _TRACK_GROUPS}
+    for seg, group, _ in paintable:
+        lane = seg_lane.get(seg.id, 0)
+        group_lane_count[group] = max(group_lane_count[group], lane + 1)
+
+    # Cache `(group, lane) -> (y0, y1)` for the segment loop and the
+    # arrow-anchor loop.
+    def _band_for(group: str, lane: int) -> tuple[float, float]:
+        return _lane_band(group, lane, group_lane_count[group])
+
+    for seg, group, kind in paintable:
+        lane = seg_lane.get(seg.id, 0)
+        y0, y1 = _band_for(group, lane)
         shapes.append(
             {
                 "type": "rect",
                 "x0": seg.t0,
                 "x1": seg.t1,
-                "y0": row - 0.4,
-                "y1": row + 0.4,
+                "y0": y0,
+                "y1": y1,
                 "xref": xref,
                 "yref": yref,
                 "fillcolor": entity_color(kind),
@@ -338,8 +395,12 @@ def _paint_timeline_onto(
             return
         x0 = _segment_center_x(src)
         x1 = _segment_center_x(tgt)
-        y0 = _segment_top_y(src_group)
-        y1 = _segment_top_y(tgt_group)
+        # Anchor each end of the bezier to its segment's lane band so
+        # multi-lane stacks don't collapse arrows onto the same edge.
+        src_lane = seg_lane.get(src.id, 0)
+        tgt_lane = seg_lane.get(tgt.id, 0)
+        y0 = _segment_top_y(src_group, src_lane, group_lane_count[src_group])
+        y1 = _segment_top_y(tgt_group, tgt_lane, group_lane_count[tgt_group])
         shapes.append(
             {
                 "type": "path",
