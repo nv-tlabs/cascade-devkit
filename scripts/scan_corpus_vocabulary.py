@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Scan the corpus and print every distinct value for query-relevant fields.
 
 Output is grouped by entity + attribute, sorted, with counts. Drives the

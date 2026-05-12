@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useStore } from '../lib/store'

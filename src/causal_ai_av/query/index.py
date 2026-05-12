@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """By-ID lookup of every addressable entity in an `AnnotationBundle`.
 
 Causal links (`because_of`, `influencers`, `link_to`, `action_target`) carry

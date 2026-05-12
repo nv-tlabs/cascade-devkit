@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 /** Generate a string ID like "Environment1", "Agent3", etc. */
 export function nextStringId(prefix: string, existingIds: string[]): string {
   const nums = existingIds

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { useStore } from '../lib/store'

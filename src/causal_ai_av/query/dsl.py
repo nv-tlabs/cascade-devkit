@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """DSL lexer + recursive-descent parser.
 
 Implements the EBNF in `docs/user/query_language.md` §2. Hand-rolled, no

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Local-filesystem I/O for AV Causal annotation JSON files.
 
 Filename convention in the reference corpus: `<annotation_uuid>__<clip_id>.json`.

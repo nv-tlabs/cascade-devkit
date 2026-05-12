@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # av-causal-dataset-tools — make targets used by humans and agents.
 #
 # AGENTS.md cites these verbs as the canonical workflow surface. If you

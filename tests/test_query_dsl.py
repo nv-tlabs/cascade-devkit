@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Minimal end-to-end tests for the DSL query engine.
 
 Per the user's constraint: ~5–8 tests total. We exercise parse, evaluate,

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Thin wrappers for `find` / `count` / `group_by` / `histogram`.
 
 `Sequence.find` and `CausalAVDataset.find` delegate here. The

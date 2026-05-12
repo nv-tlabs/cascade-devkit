@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 import { create } from 'zustand'
 import type { AnnotationBundle, UiConfig, SilAvAnnotation } from './types'
 import { autoAssignOverlappingTracks, migrateIdsToString } from './timeline-utils'

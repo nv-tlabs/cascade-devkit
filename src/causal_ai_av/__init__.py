@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """causal_ai_av — DevKit for AV Causal annotations on the Physical AI AV Dataset."""
 
 from causal_ai_av.spec import AnnotationBundle

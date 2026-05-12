@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """End-to-end smoke test: spawn the CLI in a subprocess, hit a few
 routes, do an edit round-trip via the HTTP API.
 
