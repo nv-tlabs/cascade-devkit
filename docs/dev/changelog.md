@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-12 feat(query): MatchSet retains a weakref back to its source dataset (closes #13) (#17)
 - 2026-05-12 docs(user): lead query_language.md with worked examples, demote spec sections (#16)
 - 2026-05-12 fix(annotator): remove guardedSave stub from RightPanel.tsx (closes #12) (#15)
 - 2026-05-12 fix(annotator): remove unused LabelPalette component (closes #11) (#14)

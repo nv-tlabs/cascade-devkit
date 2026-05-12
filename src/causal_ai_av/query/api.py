@@ -7,6 +7,7 @@ corpus-scope aggregations are clip-level: `count` returns the number of
 
 from __future__ import annotations
 
+import weakref
 from typing import Any, TYPE_CHECKING
 
 from causal_ai_av.query.dsl import parse
@@ -18,20 +19,39 @@ if TYPE_CHECKING:
     from causal_ai_av.dataset import CausalAVDataset
 
 
-def find_on_bundle(bundle: AnnotationBundle, dsl_text: str) -> MatchSet:
-    """Parse `dsl_text` and evaluate it against a single bundle."""
+def find_on_bundle(
+    bundle: AnnotationBundle,
+    dsl_text: str,
+    *,
+    dataset: Any | None = None,
+) -> MatchSet:
+    """Parse `dsl_text` and evaluate it against a single bundle.
+
+    If `dataset` is provided (typically the parent dataset of the bundle's
+    Sequence), the returned MatchSet carries a weakref back to it so
+    follow-up operations like `matches.visualize()` or `matches.context()`
+    can find the source. Without `dataset=`, `MatchSet.dataset` returns
+    None.
+    """
     expr = parse(dsl_text)
-    return evaluate(expr, bundle)
+    ms = evaluate(expr, bundle)
+    if dataset is None:
+        return ms
+    return MatchSet(ms.matches, _dataset=weakref.ref(dataset))
 
 
 def find_on_dataset(dataset: "CausalAVDataset", dsl_text: str) -> MatchSet:
-    """Run the query across every clip in a dataset; return a union MatchSet."""
+    """Run the query across every clip in a dataset; return a union MatchSet.
+
+    The returned MatchSet carries a weakref to `dataset` so follow-up
+    operations can find the source. Access via `MatchSet.dataset`.
+    """
     expr = parse(dsl_text)
     all_matches: list[Match] = []
     for clip_id, (_path, _batch, bundle) in dataset._by_clip.items():
         ms = evaluate(expr, bundle)
         all_matches.extend(ms.matches)
-    return MatchSet(tuple(all_matches))
+    return MatchSet(tuple(all_matches), _dataset=weakref.ref(dataset))
 
 
 def count_on_dataset(dataset: "CausalAVDataset", dsl_text: str) -> int:
