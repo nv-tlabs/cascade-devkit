@@ -421,9 +421,9 @@ function ZoomButton({
           type="button"
           onClick={onClick}
           aria-label={label}
-          className="h-7 px-3 inline-flex items-center gap-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover text-xs transition-colors"
+          className="h-7 px-3 inline-flex items-center gap-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover text-xs transition-colors whitespace-nowrap flex-shrink-0"
         >
-          <Icon className="w-3.5 h-3.5" />
+          <Icon className="w-3.5 h-3.5 flex-shrink-0" />
           <span>{label}</span>
         </button>
       </Tooltip.Trigger>
@@ -442,8 +442,8 @@ function ZoomButton({
 
 function Kb({ keys, desc }: { keys: string; desc: string }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-text-muted">
-      <kbd className="font-mono text-[10px] h-6 px-3 inline-flex items-center bg-surface-overlay border border-border-default rounded-md text-text-secondary">
+    <div className="flex items-center gap-2 text-[11px] text-text-muted whitespace-nowrap flex-shrink-0">
+      <kbd className="font-mono text-[10px] h-6 px-3 inline-flex items-center bg-surface-overlay border border-border-default rounded-md text-text-secondary flex-shrink-0">
         {keys}
       </kbd>
       <span>{desc}</span>
