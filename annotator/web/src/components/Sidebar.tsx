@@ -73,7 +73,7 @@ export function Sidebar() {
             placeholder="Search clips..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="w-full h-9 pl-9 pr-3 text-sm bg-surface-overlay border border-border-default rounded-md text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+            className="w-full h-9 pl-10 pr-3 text-sm bg-surface-overlay border border-border-default rounded-md text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
           />
         </div>
       </div>
@@ -98,10 +98,10 @@ export function Sidebar() {
               >
                 <Icon className="w-4 h-4 text-text-muted flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <code className="block text-xs font-mono text-text-primary truncate">
+                  <code className="block text-xs font-mono text-text-primary truncate pr-1">
                     {displayId}
                   </code>
-                  <span className={`mt-1 inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border ${badge}`}>
+                  <span className={`mt-1 inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-2.5 py-0.5 rounded-full border ${badge}`}>
                     {c.kind}
                   </span>
                 </div>
@@ -130,7 +130,7 @@ export function Sidebar() {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setPendingClipId(null)}
-                className="h-8 px-3 inline-flex items-center rounded-md text-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
+                className="h-9 px-3 inline-flex items-center rounded-md text-sm font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors"
               >
                 Cancel
               </button>

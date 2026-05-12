@@ -31,7 +31,7 @@ export function LockBar() {
   // --- Confirmation row (locked, user clicked Unlock to edit) ---
   if (confirming && locked && !serverReadOnly) {
     return (
-      <div className="flex-shrink-0 px-4 py-2 flex items-center gap-3 border-b border-warning/30 bg-warning-bg text-warning text-xs">
+      <div className="flex-shrink-0 px-4 py-2.5 flex items-center gap-3 border-b border-warning/30 bg-warning-bg text-warning text-xs">
         <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
         <span className="flex-1">
           Unlocking allows you to modify or delete annotation entries. Continue?
@@ -96,7 +96,7 @@ function LockBarRow({
       {filePath && (
         <>
           <span className="w-px h-3 bg-border-default" />
-          <code className="text-[11px] font-mono text-text-muted truncate max-w-[280px]" title={filePath}>{filePath}</code>
+          <code className="text-[11px] font-mono text-text-muted truncate max-w-[280px] pr-1" title={filePath}>{filePath}</code>
         </>
       )}
       <div className="flex-1" />
@@ -134,16 +134,16 @@ function ThemeToggle() {
       onClick={() => setTheme(next)}
       title={label}
       aria-label={label}
-      className="h-9 w-9 inline-flex items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary transition-colors"
+      className="h-8 w-8 inline-flex items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary transition-colors"
     >
-      <Icon className="w-4 h-4" />
+      <Icon className="w-3.5 h-3.5" />
     </button>
   )
 }
 
 function DirtyPill() {
   return (
-    <span className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full bg-warning-bg text-warning text-[11px] font-medium">
+    <span className="inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full bg-warning-bg text-warning text-[11px] font-medium">
       <span className="w-1.5 h-1.5 rounded-full bg-warning" />
       Unsaved changes
     </span>
@@ -155,12 +155,12 @@ function SaveErrorBanner({ message, onDismiss }: { message: string; onDismiss: (
     <div className="flex-shrink-0 h-9 px-4 flex items-center gap-2 bg-danger-bg text-danger border-b border-danger/40">
       <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
       <span className="text-xs font-medium">Save failed:</span>
-      <span className="text-xs truncate" title={message}>{message}</span>
+      <span className="text-xs truncate pr-1" title={message}>{message}</span>
       <div className="flex-1" />
       <button
         onClick={onDismiss}
         aria-label="Dismiss save error"
-        className="h-6 w-6 inline-flex items-center justify-center rounded-md hover:bg-danger/15 transition-colors"
+        className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-danger/15 transition-colors"
       >
         <X className="w-3.5 h-3.5" />
       </button>

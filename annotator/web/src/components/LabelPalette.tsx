@@ -120,7 +120,7 @@ export function LabelPalette() {
 
   if (!selectedClipId) {
     return (
-      <div className="flex-shrink-0 h-9 flex items-center px-3 bg-surface-raised border-b border-border-default">
+      <div className="flex-shrink-0 h-9 flex items-center px-4 bg-surface-raised border-b border-border-default">
         <span className="text-[10px] text-text-muted uppercase tracking-wider">Label palette — select a clip</span>
       </div>
     )
@@ -128,7 +128,7 @@ export function LabelPalette() {
 
   return (
     <div className="flex-shrink-0 min-h-[36px] bg-surface-raised border-b border-border-default overflow-hidden">
-      <div className="flex flex-wrap items-start gap-x-4 gap-y-2 px-3 py-2">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3 px-4 py-2.5">
         {LABEL_CATEGORIES.map((cat) => {
           const isExpanded = expanded[cat.name] ?? false
           const color = categoryColors[cat.name] ?? cat.colorFallback
@@ -153,7 +153,7 @@ export function LabelPalette() {
                       key={label}
                       draggable
                       onDragStart={(e) => handleDragStart(e, cat.trackId, label)}
-                      className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] cursor-grab active:cursor-grabbing border border-transparent hover:border-current/40 transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] cursor-grab active:cursor-grabbing border border-transparent hover:border-current/40 transition-colors"
                       style={{
                         backgroundColor: `${color}20`,
                         color,
