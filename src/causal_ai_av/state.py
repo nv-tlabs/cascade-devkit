@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Derived snapshot types — "what is active in the scene at time `t` (or in `[t1, t2]`)".
 
 These are plain frozen dataclasses, *not* Pydantic models, because they are

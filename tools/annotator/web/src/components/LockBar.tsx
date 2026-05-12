@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from 'react'
 import { useStore } from '../lib/store'
 import { Lock, LockOpen, AlertCircle, Monitor, Sun, Moon, X } from 'lucide-react'

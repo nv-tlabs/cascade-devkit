@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Validate every JSON in /home/horde/01_json_annotations/ against the schema.
 
 If a file fails, the schema is wrong — not the file. The on-disk corpus is the

@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
 import type { SilAvAnnotation, TimelineSegment, TrackId, AgentProperty, Condition } from './types'
 import { envDisplayName, EGO_ACTION_DISPLAY_NAMES, AGENT_ACTION_DISPLAY_NAMES, AGENT_TYPE_DISPLAY_NAMES, TRAFFIC_OBJECT_DISPLAY_NAMES, CONDITION_DISPLAY_NAMES, PROPERTY_DISPLAY_NAMES } from './attribute-cycling'
 import { nextStringId } from './string-id'

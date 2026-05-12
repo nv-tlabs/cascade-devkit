@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Command-line entry point for `causal-av-annotate`.
 
 Resolves source paths into a clip index, builds the FastAPI app, and runs
