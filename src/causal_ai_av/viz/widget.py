@@ -158,6 +158,16 @@ class ClipPlayer:
             an int to pin a specific total height; the video / timeline
             split adjusts so the timeline still gets at least the
             adaptive lane budget when possible.
+        frame_quality: JPEG quality (1-95) used to encode each frame
+            before shipping it over the Jupyter Comm channel. Default
+            80 is a good scrub-time choice; lower values cut the
+            payload further at the cost of visible compression
+            artifacts. See ``_encode_frame_jpeg``.
+        frame_max_dim: optional pixel cap on the frame's longer
+            dimension. When set, frames are downscaled (LANCZOS) so
+            their longer side equals ``frame_max_dim`` before JPEG
+            encoding — a power knob for very large frames or slow
+            transports. ``None`` (default) keeps the source resolution.
 
     Display protocol:
         - In Jupyter / JupyterLab the widget renders inline through
@@ -193,6 +203,8 @@ class ClipPlayer:
         agent_ids: list[str] | None = None,
         track_groups: list[str] | None = None,
         height: int | None = None,
+        frame_quality: int = _DEFAULT_FRAME_QUALITY,
+        frame_max_dim: int | None = None,
     ) -> None:
         # Defer the optional-extra imports so importing this module
         # without `[viz]` doesn't blow up at module load — only at
@@ -220,6 +232,13 @@ class ClipPlayer:
         self._t_end = resolved_end
         self._fps = float(fps)
         self._t = resolved_start
+        # Frame-transport knobs — stored so `_apply_t` re-uses the same
+        # quality / downscale on every tick that the construction-time
+        # trace used. See `_encode_frame_jpeg` for the rationale.
+        self._frame_quality = int(frame_quality)
+        self._frame_max_dim = (
+            int(frame_max_dim) if frame_max_dim is not None else None
+        )
 
         # ------------------------------------------------------------
         # 1. Build the underlying FigureWidget — two stacked subplots:
@@ -248,7 +267,14 @@ class ClipPlayer:
         # per tick over the Jupyter Comm channel).
         initial_frame = self._decode_frame(self._t)
         base.add_trace(
-            go.Image(source=_encode_frame_jpeg(initial_frame), name="frame"),
+            go.Image(
+                source=_encode_frame_jpeg(
+                    initial_frame,
+                    quality=self._frame_quality,
+                    max_dim=self._frame_max_dim,
+                ),
+                name="frame",
+            ),
             row=1,
             col=1,
         )
@@ -540,7 +566,11 @@ class ClipPlayer:
             # per-tick payload to ~1.8MB instead of ~32MB on a 1080p
             # frame, which is the dominant Play-latency cost over the
             # Jupyter Comm channel.
-            self._fig.data[0].source = _encode_frame_jpeg(frame)
+            self._fig.data[0].source = _encode_frame_jpeg(
+                frame,
+                quality=self._frame_quality,
+                max_dim=self._frame_max_dim,
+            )
             playhead = self._fig.layout.shapes[self._playhead_index]
             playhead.x0 = t
             playhead.x1 = t
