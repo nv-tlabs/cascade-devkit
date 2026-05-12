@@ -154,6 +154,43 @@ def _segment_top_y(group: str, lane: int = 0, lane_count: int = 1) -> float:
     return y1
 
 
+# Maximum characters for an inline segment label. Anything longer gets
+# truncated with an ellipsis; the full label always lives in the hover
+# tooltip.
+_INLINE_LABEL_MAX_CHARS: int = 14
+
+# A segment must be at least this wide (in seconds) to qualify for an
+# inline label. Narrower segments suppress the inline annotation and
+# rely on hover-only — otherwise the text would clip outside the
+# rectangle and read as noise. Pinned by a regression test on the
+# `~5 s vs ~0.05 s` divide called out in the design doc.
+_INLINE_LABEL_MIN_WIDTH_S: float = 0.3
+
+
+def _truncate_label(label: str, *, max_chars: int = _INLINE_LABEL_MAX_CHARS) -> str:
+    """Truncate `label` to `max_chars`, appending `…` when shortened."""
+    if len(label) <= max_chars:
+        return label
+    return label[: max(0, max_chars - 1)].rstrip() + "…"
+
+
+def _xref_to_axis(xref: str) -> str:
+    """Translate a shape's `xref` (`"x"`, `"x2"`, …) to a trace's `xaxis`.
+
+    Plotly uses the same string for both — `"x"` for the primary
+    subplot, `"x2"` for the second, etc. The function is a no-op alias
+    but keeps the caller's intent explicit: shape `xref` and trace
+    `xaxis` are semantically distinct fields even though they share a
+    representation.
+    """
+    return xref
+
+
+def _yref_to_axis(yref: str) -> str:
+    """Translate a shape's `yref` to a trace's `yaxis`."""
+    return yref
+
+
 def _bezier_path(x0: float, y0: float, x1: float, y1: float) -> str:
     """Build an SVG quadratic-bezier path mirroring `drawBecauseOfCurve`.
 
@@ -242,8 +279,10 @@ def _paint_timeline_onto(
     Factored out of `render_timeline` so the PR-4 widget can paint the
     same timeline onto the bottom subplot of a `FigureWidget` without
     rebuilding the rasterization logic from scratch. Mutates `fig` in
-    place — appends shapes to `fig.layout.shapes` and updates the
-    `xaxis_key` / `yaxis_key` axis settings.
+    place — appends shapes to `fig.layout.shapes`, label annotations to
+    `fig.layout.annotations`, and invisible hover-scatter traces to
+    `fig.data`, then updates the `xaxis_key` / `yaxis_key` axis
+    settings.
 
     Args:
         fig: the Plotly Figure (or FigureWidget) to paint onto.
@@ -264,6 +303,7 @@ def _paint_timeline_onto(
     Returns:
         None. `fig` is mutated.
     """
+    import plotly.graph_objects as go
     bundle = seq.annotation
     duration = float(seq.duration_s) if seq.duration_s else 0.0
 
@@ -348,6 +388,16 @@ def _paint_timeline_onto(
     def _band_for(group: str, lane: int) -> tuple[float, float]:
         return _lane_band(group, lane, group_lane_count[group])
 
+    # Collect inline annotation entries (text drawn on top of each
+    # rectangle) and hover-overlay traces (invisible scatter markers at
+    # segment centres carrying a tooltip with the full label, window,
+    # and track id). Plotly shapes don't support hover natively; an
+    # overlay trace is the standard idiom.
+    annotations: list[dict[str, Any]] = []
+    hover_traces: list[go.Scatter] = []
+    xa = _xref_to_axis(xref)
+    ya = _yref_to_axis(yref)
+
     for seg, group, kind in paintable:
         lane = seg_lane.get(seg.id, 0)
         y0, y1 = _band_for(group, lane)
@@ -369,6 +419,46 @@ def _paint_timeline_onto(
                 "layer": "above",
                 "name": f"segment:{seg.id}",
             }
+        )
+
+        # Inline label — centered on the rectangle. Suppressed for
+        # very narrow segments where the truncated text would clip.
+        seg_width = max(seg.t1 - seg.t0, 0.0)
+        if seg_width >= _INLINE_LABEL_MIN_WIDTH_S:
+            annotations.append(
+                {
+                    "x": (seg.t0 + seg.t1) / 2.0,
+                    "y": (y0 + y1) / 2.0,
+                    "xref": xref,
+                    "yref": yref,
+                    "text": _truncate_label(seg.label),
+                    "showarrow": False,
+                    "font": {"size": 10, "color": "#0f172a"},
+                    "name": f"label:{seg.id}",
+                }
+            )
+
+        # Hover overlay — invisible scatter marker at the segment
+        # midpoint. `opacity=0` keeps it from drawing, `size=20` makes
+        # the hover hitbox generous, and `hovertext` carries the full
+        # tooltip body (label / window / track id).
+        hover_traces.append(
+            go.Scatter(
+                x=[(seg.t0 + seg.t1) / 2.0],
+                y=[(y0 + y1) / 2.0],
+                xaxis=xa,
+                yaxis=ya,
+                mode="markers",
+                marker={"size": 20, "opacity": 0, "color": entity_color(kind)},
+                hoverinfo="text",
+                hovertext=(
+                    f"{seg.label}<br>"
+                    f"[{seg.t0:.2f}s – {seg.t1:.2f}s]<br>"
+                    f"track: {seg.track_id}"
+                ),
+                showlegend=False,
+                name=f"hover:segment:{seg.id}",
+            )
         )
 
     # ---------------------------------------------------------------
@@ -535,8 +625,10 @@ def _paint_timeline_onto(
     #    losing them.
     # ---------------------------------------------------------------
     existing_shapes = list(fig.layout.shapes or ())
+    existing_annotations = list(fig.layout.annotations or ())
     fig.update_layout(
         shapes=existing_shapes + shapes,
+        annotations=existing_annotations + annotations,
         **{
             xaxis_key: {
                 "title": "Time (s)",
@@ -554,6 +646,12 @@ def _paint_timeline_onto(
             },
         },
     )
+
+    # Append the hover-overlay traces last so any pre-existing traces
+    # (e.g. the widget's video-frame Image at index 0) keep their
+    # positions in `fig.data`.
+    for trace in hover_traces:
+        fig.add_trace(trace)
 
 
 def render_timeline(
@@ -586,10 +684,13 @@ def render_timeline(
             keys are ignored.
 
     Returns:
-        A `plotly.graph_objects.Figure`. The Figure has zero traces; the
-        timeline is built entirely from `layout.shapes` so that the
-        widget can replace just the playhead line without touching the
-        rest of the figure.
+        A `plotly.graph_objects.Figure`. The visible rectangles, arrows,
+        and inline labels live in `layout.shapes` + `layout.annotations`
+        (so the widget can replace just the playhead line without
+        touching the rest of the figure). The Figure also carries one
+        invisible `go.Scatter` trace per segment/arrow purely to
+        provide hover tooltips — Plotly shapes don't support hover
+        natively.
     """
     import plotly.graph_objects as go
 

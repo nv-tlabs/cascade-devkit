@@ -185,8 +185,11 @@ def test_clipplayer_constructs_without_raising() -> None:
     seq = _seq_with_fake_video()
     player = ClipPlayer(seq)
     assert isinstance(player._fig, go.FigureWidget)
-    # Image trace was added in row 1, col 1 — its axis is the primary x/y.
-    assert len(player._fig.data) == 1
+    # The video Image trace is added before `_paint_timeline_onto`, so
+    # it sits at `data[0]`; the hover-overlay scatter traces emitted by
+    # the painter follow. `_apply_t` writes to `data[0]` and relies on
+    # that invariant, so pin both.
+    assert len(player._fig.data) >= 1
     assert player._fig.data[0].type == "image"
 
 
