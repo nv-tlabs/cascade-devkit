@@ -329,3 +329,123 @@ def test_matchset_visualize_delegates_with_kwargs(
     passed_ms, passed_kwargs = seen[0]
     assert passed_ms is ms
     assert passed_kwargs == {"layout": "grid", "cols": 4, "limit": 2}
+
+
+# ---------------------------------------------------------------------------
+# 9. Pad-clamp guard at the end-of-clip boundary — Bug B from the
+# viz-e2e smoke session. A match whose interval ends at exactly
+# `seq.duration_s` with `pad=0` previously collapsed to
+# `t_end == t_start == duration` and tripped `ClipPlayer`'s
+# `t_end > t_start` invariant. The fix expands `t_start` downward at
+# the end-of-clip boundary.
+# ---------------------------------------------------------------------------
+
+
+def test_pad_clamp_at_end_of_clip_does_not_crash() -> None:
+    duration = 10.0
+    seq = _seq_with_fake_video("clip_a", duration_s=duration)
+    ds = _FakeDataset({"clip_a": seq})
+
+    # Match interval butts up against `duration_s` and `pad=0`. Before
+    # the fix this produced `t_start == t_end == duration`.
+    matches = [Match("clip_a", "agent_0", Interval(duration, duration))]
+    ms = _make_matchset(matches, dataset=ds)
+
+    out = build_matchset_carousel(ms, pad=0.0)
+    assert isinstance(out, ipywidgets.VBox)
+    assert len(out.children) == 1
+    # Inner VBox is `[label, player.widget]`.
+    inner = out.children[0]
+    # The player widget itself is the second child of the inner VBox;
+    # the ClipPlayer lives in `player.widget` which is the same VBox.
+    # We can verify `t_end > t_start` by reaching back into the
+    # constructed ClipPlayer through a capture below — but the simpler
+    # assertion is that the function returned without raising and the
+    # constructed widget tree is well-formed.
+    assert isinstance(inner, ipywidgets.VBox)
+    assert len(inner.children) == 2
+
+
+def test_pad_clamp_at_end_of_clip_keeps_window_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The constructed `ClipPlayer` has `t_end > t_start` (Bug B)."""
+    duration = 10.0
+    seq = _seq_with_fake_video("clip_a", duration_s=duration)
+    ds = _FakeDataset({"clip_a": seq})
+
+    matches = [Match("clip_a", "agent_0", Interval(duration, duration))]
+    ms = _make_matchset(matches, dataset=ds)
+
+    captured: list[dict] = []
+    real_init = ClipPlayer.__init__
+
+    def _capture_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        captured.append(dict(kwargs))
+        return real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ClipPlayer, "__init__", _capture_init)
+
+    build_matchset_carousel(ms, pad=0.0, fps=8.0)
+
+    assert len(captured) == 1
+    t_start = captured[0]["t_start"]
+    t_end = captured[0]["t_end"]
+    assert t_end > t_start
+    # `t_end` stayed pinned to duration; `t_start` backed off by one
+    # tick (1/fps == 0.125s at fps=8).
+    assert t_end == pytest.approx(duration)
+    assert t_start == pytest.approx(duration - 1.0 / 8.0)
+
+
+# ---------------------------------------------------------------------------
+# 10. None-interval match → full clip window. Previously the carousel
+# resolved to `(0.0, 0.0)` for matches whose interval was None,
+# collapsing the player. Per the docstring, the player should cover
+# the whole clip in that case.
+# ---------------------------------------------------------------------------
+
+
+def test_none_interval_match_uses_full_clip_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    duration = 7.5
+    seq = _seq_with_fake_video("clip_a", duration_s=duration)
+    ds = _FakeDataset({"clip_a": seq})
+
+    matches = [Match("clip_a", "agent_0", interval=None)]
+    ms = _make_matchset(matches, dataset=ds)
+
+    captured: list[dict] = []
+    real_init = ClipPlayer.__init__
+
+    def _capture_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        captured.append(dict(kwargs))
+        return real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(ClipPlayer, "__init__", _capture_init)
+
+    build_matchset_carousel(ms, pad=0.0)
+
+    assert len(captured) == 1
+    assert captured[0]["t_start"] == pytest.approx(0.0)
+    assert captured[0]["t_end"] == pytest.approx(duration)
+
+
+# ---------------------------------------------------------------------------
+# 11. Invalid `layout` string → ValueError (instead of silent fall-through
+# to VBox). The `Literal["stack", "grid"]` annotation is advisory at
+# runtime; a typo'd string would previously render a stack with no
+# warning.
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_layout_raises_value_error() -> None:
+    seq = _seq_with_fake_video("clip_a")
+    ds = _FakeDataset({"clip_a": seq})
+
+    matches = [Match("clip_a", "agent_0", Interval(1.0, 2.0))]
+    ms = _make_matchset(matches, dataset=ds)
+
+    with pytest.raises(ValueError, match="layout must be 'stack' or 'grid'"):
+        build_matchset_carousel(ms, layout="carousel")  # type: ignore[arg-type]
