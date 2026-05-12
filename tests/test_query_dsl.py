@@ -184,3 +184,80 @@ def test_match_set_dataset_raises_after_gc(patched_parent: None) -> None:
         pytest.skip("test environment retains a reference to the dataset")
     with pytest.raises(RuntimeError, match="no longer alive"):
         _ = ms.dataset
+
+
+def test_match_set_sequences_yields_pairs(
+    patched_parent: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`ms.sequences()` yields `(Match, Sequence)` pairs whose clip_ids match."""
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    from causal_ai_av.dataset import Sequence
+
+    # `Sequence.__init__` eagerly loads egomotion via the parent — stub it
+    # so the constructor doesn't try to hit the network.
+    monkeypatch.setattr(
+        PhysicalAIAVDatasetInterface,
+        "get_clip_feature",
+        lambda self, *a, **kw: None,
+    )
+    ds = CausalAVDataset(CORPUS)
+    ms = ds.find("agent.type = ped")
+    if not ms:
+        pytest.skip("corpus has no pedestrian matches")
+
+    pairs = list(ms.sequences())
+    assert len(pairs) == len(ms.matches)
+    for (yielded_match, seq), source_match in zip(pairs, ms.matches):
+        assert isinstance(yielded_match, Match)
+        assert isinstance(seq, Sequence)
+        assert yielded_match is source_match
+        assert seq.clip_id == yielded_match.clip_id
+
+
+def test_match_set_sequences_dedups_per_clip(
+    patched_parent: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two matches with the same clip_id share one `Sequence` instance."""
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    monkeypatch.setattr(
+        PhysicalAIAVDatasetInterface,
+        "get_clip_feature",
+        lambda self, *a, **kw: None,
+    )
+    ds = CausalAVDataset(CORPUS)
+    ms = ds.find("agent.type = ped")
+
+    # Find a clip_id that produced at least two matches in this MatchSet.
+    counts: dict[str, int] = {}
+    for m in ms.matches:
+        counts[m.clip_id] = counts.get(m.clip_id, 0) + 1
+    multi = [cid for cid, n in counts.items() if n >= 2]
+    if not multi:
+        pytest.skip("no clip in the corpus produced ≥2 matches for ped")
+    target = multi[0]
+
+    seen: dict[str, object] = {}
+    for match, seq in ms.sequences():
+        if match.clip_id == target:
+            if target in seen:
+                # Second (and subsequent) yields for this clip_id must be
+                # the *same* Sequence instance, not just an equal one.
+                assert seq is seen[target]
+            else:
+                seen[target] = seq
+    assert target in seen
+
+
+def test_match_set_sequences_raises_without_dataset(
+    rich_bundle: AnnotationBundle,
+) -> None:
+    """A bundle-level MatchSet has no dataset; `.sequences()` must raise."""
+    from causal_ai_av.query.api import find_on_bundle
+
+    ms = find_on_bundle(rich_bundle, "agent.type = ped")
+    with pytest.raises(RuntimeError, match="no dataset back-reference"):
+        next(ms.sequences())
