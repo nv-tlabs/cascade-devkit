@@ -273,6 +273,9 @@ def _paint_timeline_onto(
     yaxis_key: str = "yaxis",
     highlight: tuple[float, float] | None = None,
     arrows: dict[str, bool] | None = None,
+    entity_kinds: list[str] | None = None,
+    agent_ids: list[str] | None = None,
+    track_groups: list[str] | None = None,
 ) -> None:
     """Append timeline shapes for `seq` onto `fig`, on the given axes.
 
@@ -299,9 +302,28 @@ def _paint_timeline_onto(
             `"because_of"`, `"link_to"`, `"containment"`, `"influence"`,
             `"action_target"`. Missing keys default to `True`. Unknown
             keys are ignored.
+        entity_kinds: optional whitelist of segment kinds to draw.
+            Recognized values are `"env"`, `"light"`, `"object"`,
+            `"agent"`, `"ego"`. `None` = all kinds.
+        agent_ids: optional whitelist of `Agent.id` values. Only
+            restricts segments whose kind is `"agent"`; segments of
+            other kinds are untouched. `None` = all agents.
+        track_groups: optional whitelist of group rows to render.
+            Recognized values are `"Env"`, `"Lights"`, `"Objects"`,
+            `"Agents"`, `"Ego"`. Rows not in the whitelist drop their
+            tick labels too, so the y-axis collapses to the visible
+            rows. `None` = all five groups.
 
     Returns:
         None. `fig` is mutated.
+
+    Filter semantics:
+        - The three filters AND together: a segment is drawn only if
+          its group is in `track_groups`, its kind is in
+          `entity_kinds`, and (for agent kinds) its agent id is in
+          `agent_ids`.
+        - Arrow filtering follows segment filtering: an arrow whose
+          source or target segment was filtered out is dropped.
     """
     import plotly.graph_objects as go
     bundle = seq.annotation
@@ -314,12 +336,55 @@ def _paint_timeline_onto(
             if k in enabled_arrows:
                 enabled_arrows[k] = bool(v)
 
+    # Resolve filter whitelists. `None` means "all", which we mirror by
+    # building a set populated with every legal value.
+    allowed_kinds: set[str] = (
+        {"env", "light", "object", "agent", "ego"}
+        if entity_kinds is None
+        else set(entity_kinds)
+    )
+    allowed_groups: set[str] = (
+        set(_TRACK_GROUPS) if track_groups is None else set(track_groups)
+    )
+    allowed_agent_ids: set[str] | None = (
+        None if agent_ids is None else set(agent_ids)
+    )
+
     shapes: list[dict[str, Any]] = []
 
     # Flatten the bundle into segments via PR-1's port. Empty bundles
     # produce an empty list — we'll still emit shapes-free axis layout,
     # which is what the spec asks for.
     segments = annotation_to_segments(bundle)
+
+    # ---------------------------------------------------------------
+    # Segment-level filter. Used both for the rectangle/label loop
+    # and for the arrow-endpoint check.
+    # ---------------------------------------------------------------
+    ann_for_filter = bundle.annotation
+    agent_id_by_index: dict[int, str] = {
+        i: a.id for i, a in enumerate(ann_for_filter.agents) if a.id
+    }
+
+    def _segment_allowed(seg: Segment) -> bool:
+        group = _track_id_to_group(seg.track_id)
+        if group is None or group not in allowed_groups:
+            return False
+        kind = _segment_kind(seg.track_id)
+        if kind is None or kind not in allowed_kinds:
+            return False
+        if kind == "agent" and allowed_agent_ids is not None:
+            ai = (seg.meta or {}).get("_agentIndex")
+            if not isinstance(ai, int):
+                return False
+            agent_id = agent_id_by_index.get(ai)
+            if agent_id is None or agent_id not in allowed_agent_ids:
+                return False
+        return True
+
+    # Cache the predicate result so arrow lookups can short-circuit
+    # quickly when the source / target segment was filtered out.
+    allowed_ids: set[str] = {s.id for s in segments if _segment_allowed(s)}
 
     # ---------------------------------------------------------------
     # 1. Optional highlight band — drawn first so it sits *under* the
@@ -365,6 +430,8 @@ def _paint_timeline_onto(
     # ---------------------------------------------------------------
     paintable: list[tuple[Segment, str, str]] = []
     for seg in segments:
+        if seg.id not in allowed_ids:
+            continue
         group = _track_id_to_group(seg.track_id)
         if group is None:
             continue
@@ -478,6 +545,11 @@ def _paint_timeline_onto(
         family: str,
     ) -> None:
         if src is None or tgt is None:
+            return
+        # Drop the arrow if either endpoint was filtered out (per
+        # `entity_kinds` / `agent_ids` / `track_groups`). Symmetric:
+        # both ends must be present for the bezier to make sense.
+        if src.id not in allowed_ids or tgt.id not in allowed_ids:
             return
         src_group = _track_id_to_group(src.track_id)
         tgt_group = _track_id_to_group(tgt.track_id)
@@ -694,6 +766,25 @@ def _paint_timeline_onto(
     #    callers can pre-paint playheads or other overlays without
     #    losing them.
     # ---------------------------------------------------------------
+    # When `track_groups` filters the y-axis, drop unrendered rows from
+    # the tick layout AND tighten the y-range to the visible band so
+    # the figure doesn't render with empty rows.
+    visible_rows: list[tuple[int, str]] = [
+        (_GROUP_ROW[g], g) for g in _TRACK_GROUPS if g in allowed_groups
+    ]
+    if visible_rows:
+        ticks_vals = [r for r, _ in visible_rows]
+        ticks_text = [g for _, g in visible_rows]
+        y_min = min(ticks_vals) - 0.5
+        y_max = max(ticks_vals) + 0.5
+    else:
+        # Pathological: caller asked for zero groups. Keep something
+        # sane so Plotly still renders a frame.
+        ticks_vals = list(range(len(_TRACK_GROUPS)))
+        ticks_text = list(_TRACK_GROUPS)
+        y_min = -0.5
+        y_max = len(_TRACK_GROUPS) - 0.5
+
     existing_shapes = list(fig.layout.shapes or ())
     existing_annotations = list(fig.layout.annotations or ())
     fig.update_layout(
@@ -708,9 +799,9 @@ def _paint_timeline_onto(
             },
             yaxis_key: {
                 "tickmode": "array",
-                "tickvals": list(range(len(_TRACK_GROUPS))),
-                "ticktext": list(_TRACK_GROUPS),
-                "range": [len(_TRACK_GROUPS) - 0.5, -0.5],  # top → bottom
+                "tickvals": ticks_vals,
+                "ticktext": ticks_text,
+                "range": [y_max, y_min],  # top → bottom
                 "showgrid": False,
                 "zeroline": False,
             },
@@ -729,6 +820,9 @@ def render_timeline(
     *,
     highlight: tuple[float, float] | None = None,
     arrows: dict[str, bool] | None = None,
+    entity_kinds: list[str] | None = None,
+    agent_ids: list[str] | None = None,
+    track_groups: list[str] | None = None,
 ) -> "go.Figure":
     """Return a Plotly Figure showing the clip's annotation timeline.
 
@@ -752,6 +846,13 @@ def render_timeline(
             `"because_of"`, `"link_to"`, `"containment"`, `"influence"`,
             `"action_target"`. Missing keys default to `True`. Unknown
             keys are ignored.
+        entity_kinds: optional kind whitelist (`"env"`, `"light"`,
+            `"object"`, `"agent"`, `"ego"`). `None` = all kinds.
+        agent_ids: optional `Agent.id` whitelist. Restricts only the
+            `"agent"` kind. `None` = all agents.
+        track_groups: optional group-row whitelist (`"Env"`, `"Lights"`,
+            `"Objects"`, `"Agents"`, `"Ego"`). Rows not in the
+            whitelist drop from the y-axis layout. `None` = all groups.
 
     Returns:
         A `plotly.graph_objects.Figure`. The visible rectangles, arrows,
@@ -774,6 +875,9 @@ def render_timeline(
         yaxis_key="yaxis",
         highlight=highlight,
         arrows=arrows,
+        entity_kinds=entity_kinds,
+        agent_ids=agent_ids,
+        track_groups=track_groups,
     )
     fig.update_layout(
         template="plotly_dark",
