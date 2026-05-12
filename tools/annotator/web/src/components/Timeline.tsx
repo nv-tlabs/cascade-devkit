@@ -442,8 +442,8 @@ function ZoomButton({
 
 function Kb({ keys, desc }: { keys: string; desc: string }) {
   return (
-    <div className="flex items-center gap-2 text-[11px] text-text-muted whitespace-nowrap flex-shrink-0">
-      <kbd className="font-mono text-[10px] h-6 px-3 inline-flex items-center bg-surface-overlay border border-border-default rounded-md text-text-secondary flex-shrink-0">
+    <div className="flex items-center gap-1.5 text-[11px] text-text-muted whitespace-nowrap flex-shrink-0">
+      <kbd className="font-mono text-[10px] h-6 px-2 inline-flex items-center bg-surface-overlay border border-border-default rounded-md text-text-secondary flex-shrink-0">
         {keys}
       </kbd>
       <span>{desc}</span>
@@ -3385,7 +3385,7 @@ export function Timeline() {
           <ZoomButton onClick={zoomIn} icon={ZoomIn} label="Zoom in" />
           <ZoomButton onClick={zoomOut} icon={ZoomOut} label="Zoom out" />
           <ZoomButton onClick={zoomFit} icon={Maximize2} label="Fill timeline" />
-          <div className="flex items-center gap-4 ml-auto">
+          <div className="flex items-center gap-3 ml-auto min-w-0">
             <Kb keys="Del" desc="Delete" />
             <Kb keys={'← →'} desc="Frame step" />
             <Kb keys="Space" desc="Play/Pause" />
