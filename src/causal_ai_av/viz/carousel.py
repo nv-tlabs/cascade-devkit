@@ -152,10 +152,16 @@ def build_matchset_carousel(
                 grid_template_columns=f"repeat({cols}, 1fr)"
             ),
         )
-    else:
-        # Default to "stack" — anything other than "grid" falls through
-        # here, mirroring the Literal[...] type annotation.
+    elif layout == "stack":
         body = ipywidgets.VBox(children=children)
+    else:
+        # The `Literal["stack", "grid"]` type hint is advisory at
+        # runtime only; a typo'd string would previously fall through
+        # to a `VBox` silently. Raise instead so the caller knows
+        # their `layout=` argument was ignored.
+        raise ValueError(
+            f"layout must be 'stack' or 'grid', got {layout!r}"
+        )
 
     if truncated:
         notice = ipywidgets.HTML(
