@@ -136,6 +136,31 @@ class MatchSet:
                 cache[m.clip_id] = seq
             yield m, seq
 
+    def visualize(self, **kwargs: Any) -> Any:
+        """Build a carousel of `ClipPlayer` widgets — one per match.
+
+        See `causal_ai_av.viz.carousel.build_matchset_carousel` for the
+        full keyword reference (`layout`, `cols`, `limit`, `pad`, `fps`,
+        `arrows`). The return type is intentionally `Any` — the viz
+        extra (`ipywidgets`, `plotly`) is optional, and an annotated
+        return would force importing it at module top here.
+
+        Raises:
+            RuntimeError: if this `MatchSet` has no dataset
+                back-reference. Bundle-level match sets (produced by
+                `find_on_bundle` without `dataset=`) can't be
+                visualized because there's no way to resolve a clip_id
+                to a video reader.
+        """
+        # Lazy import: `viz` pulls `dataset`, and `dataset` already
+        # imports from `causal_ai_av.query`. A top-level import here
+        # would close the cycle. The viz extra is also optional — keep
+        # the import inside the call so plain `from causal_ai_av.query
+        # import MatchSet` doesn't require ipywidgets / plotly.
+        from causal_ai_av.viz.carousel import build_matchset_carousel  # noqa: PLC0415
+
+        return build_matchset_carousel(self, **kwargs)
+
     def __bool__(self) -> bool:
         return len(self.matches) > 0
 
