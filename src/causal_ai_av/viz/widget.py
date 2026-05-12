@@ -168,6 +168,10 @@ class ClipPlayer:
             their longer side equals ``frame_max_dim`` before JPEG
             encoding — a power knob for very large frames or slow
             transports. ``None`` (default) keeps the source resolution.
+        show_inline_labels: forwarded to ``_paint_timeline_onto``; when
+            False, suppress every inline label annotation on the
+            timeline subplot. Hover tooltips still fire. Defaults to
+            True (historical behaviour).
 
     Display protocol:
         - In Jupyter / JupyterLab the widget renders inline through
@@ -205,6 +209,7 @@ class ClipPlayer:
         height: int | None = None,
         frame_quality: int = _DEFAULT_FRAME_QUALITY,
         frame_max_dim: int | None = None,
+        show_inline_labels: bool = True,
     ) -> None:
         # Defer the optional-extra imports so importing this module
         # without `[viz]` doesn't blow up at module load — only at
@@ -313,6 +318,7 @@ class ClipPlayer:
             entity_kinds=entity_kinds,
             agent_ids=agent_ids,
             track_groups=track_groups,
+            show_inline_labels=show_inline_labels,
         )
 
         # Adaptive height: frame_px on top, lane-count × _PX_PER_LANE

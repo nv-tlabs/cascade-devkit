@@ -1081,6 +1081,7 @@ def render_timeline(
     agent_ids: list[str] | None = None,
     track_groups: list[str] | None = None,
     height: int | None = None,
+    show_inline_labels: bool = True,
 ) -> "go.Figure":
     """Return a Plotly Figure showing the clip's annotation timeline.
 
@@ -1116,6 +1117,10 @@ def render_timeline(
             a busy clip gets a taller timeline while a sparse one
             stays compact. Pass an int to pin a specific value; useful
             when embedding the figure in a fixed-size dashboard cell.
+        show_inline_labels: when False, suppress every inline label
+            annotation; hover tooltips still fire. Defaults to True
+            (the historical behaviour). Useful when callers want a
+            maximally clean timeline for screenshots / dense clips.
 
     Returns:
         A `plotly.graph_objects.Figure`. The visible rectangles, arrows,
@@ -1141,6 +1146,7 @@ def render_timeline(
         entity_kinds=entity_kinds,
         agent_ids=agent_ids,
         track_groups=track_groups,
+        show_inline_labels=show_inline_labels,
     )
     resolved_height = (
         int(height) if height is not None else _timeline_px_for(paint)
