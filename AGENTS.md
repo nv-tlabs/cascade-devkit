@@ -83,7 +83,7 @@ truth; this table mirrors `make help`. If you add a new verb, update
 | `make test` | Run the full pytest suite |
 | `make lint` | `ruff check` on Python + `npm run lint` on the annotator frontend |
 | `make fmt` | `ruff format` on Python |
-| `make annotator-dev DATA=<path>` | Launch the annotator backend pointed at a directory of clips or videos |
+| `make annotator-dev DATA=<path> [PORT=<n>]` | Launch the annotator backend pointed at a directory of clips or videos; `PORT` is optional (default `8765`) |
 | `make annotator-build` | Build the annotator frontend bundle (`tools/annotator/web/dist`) |
 | `make help` | Print every target with its description |
 

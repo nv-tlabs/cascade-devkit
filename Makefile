@@ -28,12 +28,12 @@ lint:  ## Lint Python (ruff) and the annotator frontend (eslint).
 fmt:  ## Format Python with ruff.
 	uv run ruff format .
 
-annotator-dev:  ## Launch the annotator backend. Pass DATA=<path/to/clips-or-videos>.
+annotator-dev:  ## Launch the annotator backend. Pass DATA=<path>. Optional: PORT=<n>.
 	@if [ -z "$(DATA)" ]; then \
 	  echo "error: set DATA=<path>. example: make annotator-dev DATA=~/01_json_annotations"; \
 	  exit 2; \
 	fi
-	uv run causal-av-annotate $(DATA)
+	uv run causal-av-annotate $(DATA) $(if $(PORT),--port $(PORT))
 
 annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/dist).
 	cd tools/annotator/web && npm run build
