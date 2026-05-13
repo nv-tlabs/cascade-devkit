@@ -42,10 +42,10 @@ reads.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from causal_ai_av.query.time import parse_timestamp_or
 from causal_ai_av.spec import (
     Agent,
     AnnotationBundle,
@@ -78,29 +78,22 @@ SegmentFamily = Literal[
     "physical_containment",
 ]
 
-# Local M:S.D parser matching the TS `parseTs` semantics — returns 0.0 on
-# empty / malformed input rather than None. The DevKit's
-# `causal_ai_av.query.parse_timestamp` returns None for the same inputs;
-# we keep the TS behaviour locally to keep segment t0/t1 numeric.
-_TS_RE = re.compile(r"(\d+):(\d+(?:\.\d+)?)")
-
-
+# Numeric-coordinate-required parser. Delegates to the single
+# `causal_ai_av.query.time.parse_timestamp_or` helper so segment t0/t1
+# never silently disagree with the rest of the DevKit. The TS port's
+# `parseTs` returns 0.0 on empty / unparseable input; we preserve that
+# contract by passing `default=0.0`. The DevKit's strict variant
+# (`parse_timestamp`) returns `None` on the same inputs — the two used to
+# be implemented twice with subtly different regex anchoring (`search` vs
+# `match`); they're now one parser, two boundary contracts.
 def _parse_ts(ts: str | None) -> float:
-    """Parse a `M:S.D` timestamp string to seconds.
+    """Parse a `M:S.D` timestamp string to seconds; `0.0` on bad input.
 
-    Mirrors the annotator's `parseTs` in `timeline-utils.ts` — empty or
-    malformed input returns `0.0` (not `None`), matching the JS
-    `parseFloat(ts) || 0` fallback.
+    Thin alias for `parse_timestamp_or(ts, default=0.0)`. Kept for
+    intra-module readability and back-compat with `tests/test_viz_segments.py`,
+    which asserts the TS-parity contract.
     """
-    if not ts:
-        return 0.0
-    m = _TS_RE.search(ts)
-    if m:
-        return int(m.group(1)) * 60 + float(m.group(2))
-    try:
-        return float(ts)
-    except ValueError:
-        return 0.0
+    return parse_timestamp_or(ts, default=0.0)
 
 
 @dataclass(frozen=True, slots=True)

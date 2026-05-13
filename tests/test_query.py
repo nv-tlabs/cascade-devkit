@@ -23,6 +23,7 @@ from causal_ai_av.query import (
     iter_triplets,
     overlapping_actions,
     parse_timestamp,
+    parse_timestamp_or,
 )
 from causal_ai_av.spec import AnnotationBundle
 
@@ -43,6 +44,34 @@ def test_parse_timestamp_returns_none_on_bad_input() -> None:
     assert parse_timestamp(None) is None
     assert parse_timestamp("garbage") is None
     assert parse_timestamp("1:") is None
+
+
+def test_parse_timestamp_is_anchored() -> None:
+    # The unified parser is strict: leading or trailing garbage rejects.
+    # Locks the historical regression where the viz layer's `re.search`
+    # variant would accept "foo 1:30.0 bar" → 90.0 silently while the
+    # query layer's `re.match` variant returned None. They now agree.
+    assert parse_timestamp("foo 1:30.0") is None
+    assert parse_timestamp("1:30.0 bar") is None
+    assert parse_timestamp(" 1:30.0") is None
+    assert parse_timestamp_or("foo 1:30.0", 0.0) == 0.0
+    assert parse_timestamp_or("1:30.0 bar", 0.0) == 0.0
+
+
+def test_parse_timestamp_or_matches_parseTs_contract() -> None:
+    # Locked TS-parity behaviour: empty / None / unparseable → default.
+    assert parse_timestamp_or("0:5.4") == 5.4
+    assert parse_timestamp_or("1:30.0") == 90.0
+    assert parse_timestamp_or("") == 0.0
+    assert parse_timestamp_or(None) == 0.0
+    assert parse_timestamp_or("garbage") == 0.0
+    assert parse_timestamp_or("1:") == 0.0
+    # The default is configurable per call site.
+    assert parse_timestamp_or("garbage", default=-1.0) == -1.0
+    # And it stays the same parser as `parse_timestamp` — happy paths
+    # produce identical numerics.
+    for ts in ("0:0.0", "0:5.4", "1:30.0", "0:20.166"):
+        assert parse_timestamp_or(ts) == parse_timestamp(ts)
 
 
 def test_format_timestamp_round_trip() -> None:
