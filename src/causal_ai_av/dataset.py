@@ -590,6 +590,7 @@ class Sequence:
         fps: float = 8.0,
         highlight: tuple[float, float] | None = None,
         arrows: dict[str, bool] | None = None,
+        families: list[str] | None = None,
     ) -> Any:
         """Visualize this clip's video + timeline.
 
@@ -635,6 +636,14 @@ class Sequence:
                 priority — matching the carousel's behavior.
             arrows: per-family arrow-on/off toggles forwarded to
                 ``ClipPlayer``.
+            families: optional whitelist of family leaves to render
+                (``"condition"``, ``"containment"``, ``"state"``,
+                ``"pose"``, ``"influence"``, ``"action"``,
+                ``"property"``, ``"signal_head"``, ``"env_control"``,
+                ``"physical_containment"``). Parent entity headers
+                auto-render for any entity whose sub-rows survive;
+                entities with no surviving sub-rows drop completely.
+                ``None`` = all families. Ignored in the static path.
 
         Returns:
             ``PIL.Image.Image`` when ``static=True`` and ``t`` is a
@@ -761,6 +770,7 @@ class Sequence:
             fps=fps,
             highlight=resolved_highlight,
             arrows=arrows,
+            families=families,
         )
 
     # -- state_at implementation ---------------------------------------------

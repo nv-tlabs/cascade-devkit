@@ -1813,6 +1813,111 @@ def test_entity_block_skipped_when_category_filtered_out() -> None:
     )
 
 
+def test_families_filter_drops_non_whitelisted_family_rows() -> None:
+    """`families=["action"]` renders only `action` sub-rows. The
+    full-bundle fixture has condition, action, containment, influence,
+    and property segments — under the filter only the action rows
+    survive on the y-axis."""
+    fig = render_timeline(_seq(_make_full_bundle()), families=["action"])
+    yticks = [_label_text(t) for t in _yticks_raw(fig)]
+    sub_row_leaves = {t for t in yticks if t and "Track" not in t}
+    # `_FAMILY_LABEL` pluralizes most leaves; "action" → "actions".
+    assert sub_row_leaves == {"actions"}, (
+        f"expected only `actions` sub-rows, got {sub_row_leaves}"
+    )
+
+
+def test_families_filter_keeps_parent_row_for_surviving_entity() -> None:
+    """Parent rows are NOT named in the family whitelist — they auto-
+    render for any entity whose sub-rows survive. With
+    `families=["action"]` and the full-bundle fixture, the Agent entity
+    has an action sub-row, so its parent header ("Agent Track 1")
+    stays visible to label the block."""
+    fig = render_timeline(_seq(_make_full_bundle()), families=["action"])
+    yticks = [_label_text(t) for t in _yticks_raw(fig)]
+    assert "Agent Track 1" in yticks, (
+        f"Agent Track 1 parent should survive when its `action` "
+        f"sub-row is in the whitelist; got y-ticks {yticks}"
+    )
+
+
+def test_families_filter_drops_parent_for_entity_with_no_surviving_subrows() -> None:
+    """When an entity has no surviving sub-row under the family filter,
+    its parent row drops too — no orphan section heads. Env Track 1 has
+    only a `condition` sub-row in the fixture; under `families=["action"]`
+    Env has nothing to show, so its entity block (parent included)
+    disappears entirely."""
+    fig = render_timeline(_seq(_make_full_bundle()), families=["action"])
+    yticks = [_label_text(t) for t in _yticks_raw(fig)]
+    assert "Env Track 1" not in yticks, (
+        f"Env Track 1 parent should drop when its only sub-row "
+        f"(`condition`) is filtered out; got y-ticks {yticks}"
+    )
+    block_names = {s.get("name") for s in _entity_block_shapes(fig)}
+    assert "entity_block:Environments:0" not in block_names, (
+        f"Environments entity-block rect should not paint when no "
+        f"sub-rows survive; got blocks {block_names}"
+    )
+
+
+def test_families_filter_drops_arrows_whose_endpoints_were_filtered() -> None:
+    """The `families` whitelist propagates to arrows through the
+    existing endpoint-id check — any arrow whose source or target
+    segment was filtered out is dropped. `families=["action"]` keeps
+    the action segments but drops the condition/containment/influence/
+    property segments those arrows might point at, so arrow count
+    shrinks vs the unfiltered baseline."""
+    full = render_timeline(_seq(_make_full_bundle()))
+    filtered = render_timeline(
+        _seq(_make_full_bundle()), families=["action"]
+    )
+    full_arrows = [s for s in _shapes(full) if s.get("type") == "path"]
+    filtered_arrows = [s for s in _shapes(filtered) if s.get("type") == "path"]
+    assert len(filtered_arrows) < len(full_arrows), (
+        f"family filter should drop at least one arrow whose endpoint "
+        f"was filtered out; full={len(full_arrows)} "
+        f"filtered={len(filtered_arrows)}"
+    )
+
+
+def test_families_filter_none_preserves_unfiltered_band_count() -> None:
+    """`families=None` (the default) is a no-op — band keys identical
+    to a call without the kwarg. Guards against accidental filtering
+    when the caller does not pass a whitelist."""
+    explicit = render_timeline(_seq(_make_full_bundle()), families=None)
+    implicit = render_timeline(_seq(_make_full_bundle()))
+    explicit_yticks = [_label_text(t) for t in _yticks_raw(explicit)]
+    implicit_yticks = [_label_text(t) for t in _yticks_raw(implicit)]
+    assert explicit_yticks == implicit_yticks, (
+        f"families=None should match no-kwarg baseline; "
+        f"explicit={explicit_yticks} implicit={implicit_yticks}"
+    )
+
+
+def test_families_filter_composes_with_track_groups() -> None:
+    """`families` ANDs with the other filter whitelists. Combining
+    `families=["action"]` and `track_groups=["Agents"]` should produce
+    only the Agent block's action sub-row — no Ego action row even
+    though Ego also has actions."""
+    fig = render_timeline(
+        _seq(_make_full_bundle()),
+        families=["action"],
+        track_groups=["Agents"],
+    )
+    yticks = [_label_text(t) for t in _yticks_raw(fig)]
+    block_names = {s.get("name") for s in _entity_block_shapes(fig)}
+    assert "Agent Track 1" in yticks, (
+        f"Agent parent should survive; got {yticks}"
+    )
+    assert all("Ego" not in t for t in yticks), (
+        f"Ego rows should be dropped by track_groups filter; got {yticks}"
+    )
+    # Only the Agents entity block paints — Env / Ego / etc. drop.
+    assert block_names == {"entity_block:Agents:0"}, (
+        f"expected only the Agents block, got {block_names}"
+    )
+
+
 def test_entity_block_spans_label_margin_via_paper_xref() -> None:
     """The block rect uses `xref="paper"` with a negative left edge
     so it walks INTO the y-tick-label margin, clustering the labels

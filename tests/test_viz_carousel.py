@@ -11,6 +11,7 @@ gets a `FakeVideoReader` from `tests/conftest.py`.
 from __future__ import annotations
 
 import weakref
+from typing import Any
 
 import ipywidgets
 import pytest
@@ -304,6 +305,44 @@ def test_same_clip_matches_each_get_own_player(
 # ---------------------------------------------------------------------------
 # 8. MatchSet.visualize delegates to build_matchset_carousel with kwargs.
 # ---------------------------------------------------------------------------
+
+
+def test_families_kwarg_forwarded_to_each_clip_player(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`build_matchset_carousel(ms, families=[...])` forwards the
+    whitelist to every per-match `ClipPlayer`. Monkeypatching the
+    `ClipPlayer` constructor lets us capture the kwargs each
+    instantiation receives — every call should see the same family
+    list."""
+    captured: list[dict[str, Any]] = []
+
+    class _SpyClipPlayer:
+        def __init__(self, _seq: Any, **kwargs: Any) -> None:  # noqa: D401
+            captured.append(kwargs)
+            self.widget = ipywidgets.VBox([])  # minimum interface
+
+    monkeypatch.setattr(
+        "causal_ai_av.viz.carousel.ClipPlayer", _SpyClipPlayer
+    )
+
+    seq_a = _seq_with_fake_video("clip_a")
+    ds = _FakeDataset({"clip_a": seq_a})
+    matches = [
+        Match("clip_a", "agent_0", Interval(1.0, 2.0)),
+        Match("clip_a", "agent_1", Interval(3.0, 4.0)),
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    build_matchset_carousel(ms, families=["action", "condition"])
+
+    assert len(captured) == 2, (
+        f"expected one ClipPlayer per match, got {len(captured)}"
+    )
+    for kw in captured:
+        assert kw.get("families") == ["action", "condition"], (
+            f"families kwarg not forwarded; got {kw.get('families')!r}"
+        )
 
 
 def test_matchset_visualize_delegates_with_kwargs(

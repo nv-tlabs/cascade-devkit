@@ -176,6 +176,11 @@ class ClipPlayer:
             whitelist.
         track_groups: forwarded to `_paint_timeline_onto`; group-row
             whitelist.
+        families: forwarded to `_paint_timeline_onto`; family-leaf
+            whitelist. See `render_timeline` for the recognized leaf
+            names. Parent entity headers auto-render for entities
+            whose sub-rows survive — orphan headers are dropped.
+            `None` = all families.
         height: optional explicit pixel height for the whole player.
             `None` (default) means adaptive — the timeline subplot
             scales to the deepest sub-lane stack on the bottom row
@@ -231,6 +236,7 @@ class ClipPlayer:
         entity_kinds: list[str] | None = None,
         agent_ids: list[str] | None = None,
         track_groups: list[str] | None = None,
+        families: list[str] | None = None,
         height: int | None = None,
         width: int | None = None,
         frame_quality: int = _DEFAULT_FRAME_QUALITY,
@@ -346,6 +352,7 @@ class ClipPlayer:
             entity_kinds=entity_kinds,
             agent_ids=agent_ids,
             track_groups=track_groups,
+            families=families,
             show_inline_labels=show_inline_labels,
         )
 
