@@ -367,6 +367,17 @@ def _band_label_text(key: BandKey) -> str:
 # matches the annotator's row-label layout.
 _LABEL_PAD: str = " "
 
+# Extra padding chars added past the longest plain label width.
+# Without this cushion, when a parent row is the widest label
+# (e.g., "Object Track 1" tying with a sub-row's pad-to width),
+# centering math gives the parent 0 trailing nbsp's — visually
+# it right-aligns against the axis. With +4, every parent gets at
+# least 2 trailing nbsp's (visibly dents inward = clearly
+# centered), and every sub-row pads at least +4 nbsp's past the
+# longest label (visibly extends left = clearly left-aligned).
+# The two row types now read as distinct alignments at a glance.
+_PAD_COLUMN_EXTRA: int = 4
+
 
 def _band_label_html(key: BandKey, pad_to: int) -> str:
     """Render a band's tick label as colored HTML with per-row-type
@@ -1410,14 +1421,24 @@ def _paint_timeline_onto(
     # ---------------------------------------------------------------
     if band_keys:
         ticks_vals = [band_row[k] for k in band_keys]
-        # Left-align all tick labels by padding each visible text to
-        # the longest plain-text width with trailing non-breaking
-        # spaces. SVG `<text>` anchors at the end (the y-axis line),
-        # so trailing nbsp's push the visible portion leftward — the
-        # net effect is left-aligned y-tick labels along a consistent
-        # vertical edge, matching the annotator's row-label layout.
+        # Per-row alignment via trailing non-breaking-space padding.
+        # SVG `<text>` anchors at the end (y-axis line), so trailing
+        # nbsp's push the visible portion leftward.
+        #
+        # `pad_to` is intentionally WIDER than the longest plain
+        # label by `_PAD_COLUMN_EXTRA` chars so:
+        #   - The longest parent still gets some trailing nbsp's
+        #     (its visible right edge dents inward from the axis,
+        #     reading as "centered" rather than "right-aligned").
+        #   - Sub-rows pad even further past the longest label, so
+        #     their visible left edge sits clearly left of any
+        #     parent's left edge — reading as "left-aligned".
+        # Without this extra width, the longest parent (when a
+        # parent happens to be the widest label) would tie with the
+        # axis line and visually right-align.
         plain_texts = [_band_label_text(k) for k in band_keys]
-        pad_to = max((len(t) for t in plain_texts if t), default=0)
+        max_label = max((len(t) for t in plain_texts if t), default=0)
+        pad_to = max_label + _PAD_COLUMN_EXTRA if max_label > 0 else 0
         ticks_text = [_band_label_html(k, pad_to=pad_to) for k in band_keys]
         y_min = -0.5
         y_max = len(band_keys) - 0.5

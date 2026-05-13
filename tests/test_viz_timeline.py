@@ -1630,14 +1630,21 @@ def test_tick_label_per_row_alignment() -> None:
     as every other sub-row). Padding is U+00A0 (non-breaking space)
     so SVG renders the padding width without collapsing.
 
-    Concretely, for a fixture whose longest tick text is "Agent
-    Track 1" (13 chars):
-      - Sub-rows ("conditions"=10, "actions"=7, etc.) pad with the
-        full deficit → inner width = 13 for every sub-row.
-      - Parent rows ("Env Track 1" = 11) pad with `(13 - 11) // 2 =
-        1` trailing nbsp → inner width = 12, less than the sub-row
-        width because the visible text now sits CENTERED inside
-        the column.
+    The pad column is `max_label + _PAD_COLUMN_EXTRA` chars wide
+    (not just `max_label`). The extra cushion guarantees even the
+    longest parent gets some trailing nbsp's so it visibly dents
+    inward from the axis — without this, a longest-parent row
+    would visually right-align (which the user reads as the
+    wrong alignment).
+
+    Concretely, for `_make_full_bundle` (longest label = "Agent
+    Track 1" = 13 chars, `_PAD_COLUMN_EXTRA = 4` → pad column 17
+    chars wide):
+      - Sub-rows pad to 17 chars each (full left-align — visible
+        text starts at the column's left edge).
+      - Parent rows pad to `len + (17 - len) // 2` chars (visible
+        text centered in the column; longest parent gets `+2`
+        nbsp's so it doesn't visually right-align).
     """
     fig = render_timeline(_seq(_make_full_bundle()))
     raw = _yticks_raw(fig)
@@ -1682,6 +1689,16 @@ def test_tick_label_per_row_alignment() -> None:
                 f"parent inner width {w} > sub-row width {max_sub} — "
                 "parent should pad with at most half the deficit"
             )
+        # Pin: parent width is STRICTLY less than sub-row width.
+        # If a parent ties the sub-row width, it would visually
+        # right-align against the axis — the pad column must be
+        # wide enough that even the longest parent gets some
+        # trailing nbsp's (visibly dents inward from the axis).
+        assert max(parent_inner_lens) < max_sub, (
+            f"parent ties or exceeds sub-row width "
+            f"({sorted(parent_inner_lens)} vs {max_sub}) — pad column "
+            f"too narrow; longest parent would visually right-align"
+        )
 
 
 def test_tick_labels_wrap_text_in_category_colored_span() -> None:
