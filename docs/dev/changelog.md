@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 docs(dev): unblock architecture.md + fix contrib table + relocate uv-run advice (#57)
 - 2026-05-13 fix(viz): validate `families=[...]` kwarg + parametrize parent-bold test across all categories + tighten arrow drop-through test (closes #51, #52, #53) (#56)
 - 2026-05-13 feat(annotator): probe ffprobe for real fps + duration when creating an empty bundle for an unlabelled clip (resolves phase-3 TODO) (#55)
 - 2026-05-13 fix(query): drop unused `typing.Mapping` import in `query/engine.py` — clears the long-standing F401 (closes #21) (#54)

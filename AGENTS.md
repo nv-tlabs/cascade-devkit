@@ -88,6 +88,14 @@ truth; this table mirrors `make help`. If you add a new verb, update
 | `make annotator-build` | Build the annotator frontend bundle (`tools/annotator/web/dist`) |
 | `make help` | Print every target with its description |
 
+## Running Python
+
+Prefer `uv run <cmd>` over bare `python` so the workspace environment
+(all extras + dev/notebooks groups, the `tools/annotator/` workspace
+member, and the project's pinned interpreter) is used. The Makefile
+targets already do this; reach for `uv run` directly for ad-hoc scripts,
+notebook builds, or one-off REPLs.
+
 ## Testing
 
 `make test` runs `uv run pytest`. The annotator's video tests mock

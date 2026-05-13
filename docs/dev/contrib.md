@@ -133,6 +133,7 @@ The `docs/dev` directory is the project's living memory. All contributors must k
 |------|---------|
 | `docs/dev/architecture.md` | Design decisions, system design, rationale. **Check this before starting any non-trivial work.** |
 | `docs/dev/contrib.md` | This document, explaining how to do contributions to the project. |
+| `docs/dev/changelog.md` | One-line entry per merged PR (newest first). **Update in the same PR that makes the change** — see [Pull Requests](#pull-requests). |
 
 ### Rules for agents
 
@@ -253,6 +254,10 @@ Starting a new piece of work (preferred — uses a worktree so your main checkou
 git fetch origin
 git worktree add -b feat/your-feature ../av-causal-dataset-tools-feat-your-feature origin/main
 cd ../av-causal-dataset-tools-feat-your-feature
+
+# Install deps into this worktree (fresh worktrees have no .venv or
+# node_modules). Cheap if everything is already cached.
+make install
 
 # make changes
 git commit -m "feat(scope): what and why"
