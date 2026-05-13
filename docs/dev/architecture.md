@@ -8,16 +8,95 @@ Design decisions, system shape, and rationale for `av-causal-dataset-tools`.
 
 ## Overview
 
-_TBD — high-level picture of what this repo does and how the pieces fit._
+`causal_ai_av` is a Python DevKit plus a local annotation tool, layered on
+NVIDIA's *Physical AI AV Dataset*. The library reads per-clip annotation
+JSONs (schema `2.0.0`) into a typed Pydantic tree, joins them to the parent
+dataset's egomotion and video, and exposes a small DSL for querying the
+corpus by entity, attribute, time, and cause. A visualization surface turns
+matches into static figures or interactive widgets in notebooks.
+
+The data flow, in one sentence: **on-disk JSON → `spec` Pydantic models →
+`io` loaders → `CausalAVDataset` / `Sequence` → `query` DSL / engine →
+`MatchSet` → `viz` figures or widgets.**
+
+Two boundaries matter:
+
+- **`src/causal_ai_av/` is the library.** It never imports from `tools/`.
+- **`tools/annotator/` is a separate uv workspace member** with its own
+  Python entry point (`causal-av-annotate`) and a Vite + React frontend.
+  It depends on the DevKit's schema; the DevKit does not depend on it.
+
+The visualization layer is gated behind the optional `[viz]` extra so the
+library stays importable in headless environments without Plotly /
+ipywidgets installed. Likewise, the HuggingFace-backed data loaders live
+behind the `[hf]` extra so the top-level package imports cleanly when
+`physical_ai_av` is not installed.
 
 ## Components
 
-One subsection per top-level directory. Describe its role, its boundaries, and
-how it talks to its neighbours.
+One subsection per top-level directory. Describes its role, its boundaries,
+and how it talks to its neighbours.
 
 ### `src/`
 
-_TBD_
+Single Python package: `causal_ai_av`. Sub-packages mirror the data flow.
+
+- **`spec/`** — Pydantic v2 models for the annotation format, schema
+  version `2.0.0`. `AnnotationBundle` is the single entry point; every
+  other model is reachable from it. Two intentional invariants:
+  - `model_config = ConfigDict(extra="allow")` on every model, so the
+    annotator (or any other producer) can add fields without breaking
+    reads.
+  - Vocabulary-typed fields (action types, agent types, light colors,
+    etc.) are declared as plain `str`, not `Enum`. The on-disk corpus is
+    ground truth; unknown values must round-trip rather than fail
+    validation. Advisory `*Vocab` namespace classes near the bottom of
+    `schema.py` enumerate the known values for autocomplete and queries.
+- **`io/`** — load/save annotation files. `io/local.py` handles a
+  directory of `*.json` on disk (atomic write via `os.replace`,
+  filename parser, per-clip grouping). `io/hf.py` loads from a
+  HuggingFace dataset repo and is gated behind the `[hf]` extra.
+- **`dataset.py`** — `CausalAVDataset` (a thin subclass of
+  `physical_ai_av.PhysicalAIAVDatasetInterface`) and `Sequence` (one
+  clip's bundle joined with egomotion + video features). If the
+  `[hf]` extra is missing, `CausalAVDataset` and `Sequence` import as
+  `None` at the package root so non-corpus code paths still work.
+- **`query/`** — the DSL and evaluator. Layered:
+  - `time.py` — `Interval` and timestamp parsing.
+  - `index.py` — `IdIndex`, the by-ID lookup of every addressable
+    entity in a bundle (agents, actions, conditions, signal heads, …).
+  - `temporal.py` / `spatial.py` — point-in-time and windowed predicates
+    over agents, actions, lights, ego pose.
+  - `triplets.py` — extracts `(subject, predicate, cause)` causal
+    triplets from `because_of` references.
+  - `constants.py` — DSL value aliases, grounded against the corpus by
+    `scripts/scan_corpus_vocabulary.py`.
+  - `entities.py` — DSL entity descriptors.
+  - `dsl.py` — lexer + parser → AST (`And` / `Or` / `Not` /
+    `EntityClause` / `AttrPredicate` / `BecauseOf` / `Within` /
+    `Then` / `While`).
+  - `engine.py` — AST evaluator → `MatchSet` (`Match` rows hold the
+    bound subjects, the time window, and a weakref to the source
+    dataset for re-hydration).
+  - `context.py` — point-in-time `ContextWindow` (agents visible,
+    light states) bundled around a match.
+  - `api.py` — thin wrappers: `find_on_bundle`, `find_on_dataset`,
+    `count_on_dataset`, `group_by_on_dataset`.
+- **`viz/`** — the visualization surface, gated behind the optional
+  `[viz]` extra. Contains:
+  - `segments.py` — `Segment` + `annotation_to_segments`, the Python
+    port of the annotator's `TimelineSegment[]` shape (so the DevKit
+    and the annotator render the same thing).
+  - `colors.py` — `entity_color` / `family_color`, the annotator's
+    palette as hex strings.
+  - `render.py` — `render_frame` (headless single-frame decode →
+    `PIL.Image`) and `render_timeline` (static Plotly figure).
+  - `widget.py` — `ClipPlayer`, an interactive Plotly + ipywidgets
+    scrubber.
+  - `carousel.py` — `build_matchset_carousel`, fans a `MatchSet` out
+    into one `ClipPlayer` per match. Surfaced as `MatchSet.visualize()`.
+- **`state.py`** — small utilities for point-in-time state extraction
+  shared by `dataset` and `query`.
 
 ### `tools/`
 
@@ -27,31 +106,76 @@ self-contained tool with its own README and (when applicable) its own
 
 - `tools/annotator/` — local FastAPI + React annotation tool, a uv
   workspace member exposing the `causal-av-annotate` console script.
+  Its Python backend depends on `causal_ai_av.spec` for schema
+  validation and on `causal_ai_av.io` for atomic file writes; the
+  React frontend is its own Vite + React 19 + Tailwind v4 app under
+  `tools/annotator/web/`.
 
 The DevKit (`src/causal_ai_av/`) does not depend on anything in
 `tools/`; the arrows point inward.
 
 ### `scripts/`
 
-_TBD_
+One-off Python utilities. Not packaged, not imported by the library —
+just `uv run python scripts/<name>.py`. Currently:
+
+- `build_notebooks.py` — generates the `notebooks/*.ipynb` files from
+  Python sources. Run after edits to any notebook source. Use the
+  `notebooks` dependency group: `uv run --group notebooks python
+  scripts/build_notebooks.py`.
+- `scan_corpus_vocabulary.py` — scans the corpus and prints every
+  distinct value for query-relevant fields. Drives the alias tables in
+  `src/causal_ai_av/query/constants.py`. Re-run when the corpus
+  vocabulary changes.
 
 ### `notebooks/`
 
-_TBD_
+Six numbered notebooks (`01_quickstart` through `06_visualize`) that
+double as runnable tutorials and end-to-end examples. They are
+**generated artifacts**: edit the Python source in
+`scripts/build_notebooks.py`, not the `.ipynb` directly. Every notebook
+reads the corpus from `CAUSAL_AV_DATASET_ROOT`; without it, only the
+schema-only cells run.
 
 ### `tests/`
 
-_TBD_
+Pytest suite at the repo root, sibling to `src/`. Layout:
+
+- `conftest.py` — shared fixtures, including `FakeVideoReader` for
+  viz tests that need a stand-in for the parent dataset's video
+  reader.
+- `test_schema_against_corpus.py` — validates every JSON in the live
+  corpus against the schema. The corpus is ground truth: if a file
+  fails, the schema is wrong, not the file.
+- `test_io.py` — local-disk load/save round-trips, including the
+  atomic-write + `.bak` invariant.
+- `test_dataset.py` — `CausalAVDataset` / `Sequence` against the
+  corpus, including egomotion-missing fallback.
+- `test_query*.py` (`test_query`, `test_query_dsl`,
+  `test_query_context`) — DSL parse, evaluate, entity-clause coupling,
+  boolean composition, `because_of`, dataset-level aggregation.
+- `test_sequence_visualize.py`, `test_viz_*.py` (carousel, segments,
+  timeline, widget) — the visualization surface.
+- `test_download_clips.py` — the HF download path; gated by the
+  `[hf]` extra.
+
+Tests that need the corpus expect `CAUSAL_AV_DATASET_ROOT`. Unit tests
+do not require it; they use fixtures from `conftest.py`. The annotator
+also has its own test suite under `tools/annotator/tests/` (mocks
+`subprocess.run` / `shutil.which`, never invokes real `ffmpeg`).
 
 ### `docs/`
 
 `docs/dev/` is the project's living memory for contributors (this file,
-[`contrib.md`](./contrib.md), [`changelog.md`](./changelog.md)). Reference
-material for end users lives directly under `docs/` (e.g. `query_language.md`).
+[`contrib.md`](./contrib.md), [`changelog.md`](./changelog.md)). User-facing
+reference material lives under `docs/user/` (`query_language.md`,
+`visualization.md`, `annotator.md`).
 
 ## Decisions
 
 Record significant choices here as short ADR-style entries. Newest first.
+When adding a new entry, copy the [ADR template](#adr-template) at the
+bottom of this file.
 
 ### 2026-05-12 — Tools live under `tools/`
 
@@ -78,9 +202,16 @@ Record significant choices here as short ADR-style entries. Newest first.
   Library code in `src/causal_ai_av/` never imports from `tools/`;
   tools may depend on the library via the workspace.
 
-### YYYY-MM-DD — &lt;decision title&gt;
+## ADR template
+
+Copy this template when adding a new entry above. The fenced block keeps
+it from rendering as an empty decision.
+
+```markdown
+### YYYY-MM-DD — <decision title>
 
 - **Context:** what forced the decision.
 - **Decision:** what we chose.
 - **Alternatives considered:** what we rejected and why.
 - **Consequences:** what this locks in or rules out.
+```
