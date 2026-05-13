@@ -331,23 +331,29 @@ def _segment_band_key(seg: Segment) -> BandKey | None:
 def _band_label(key: BandKey) -> str:
     """Y-axis tick text for a band.
 
-    Short-form labels: the per-entity background band (painted by
-    `_entity_block_shapes`) carries the visual grouping cue, so the
-    tick text only has to identify the row WITHIN the block. No
-    category prefix, no entity prefix on sub-rows.
+    Short-form labels wrapped in an HTML `<span style="color:#...">`
+    so each tick text carries the category cue via color. The
+    per-entity background band (painted by `_paint_timeline_onto`)
+    handles row-clustering; the color of the label tells the reader
+    which category the row belongs to. The result is a
+    `plotly`-rendered SVG `<text>` with a colored child — every
+    "Agent Track N" / "containment" / "actions" tick shows up in
+    purple, every "Env Track N" / "conditions" in green, etc.
 
       - Parent row:                            "<Entity Track Name>"
         (e.g. "Env Track 1", "Agent Track 2")
       - Sub-row, family head (sub_row_idx == 0):   "<leaf>"
         (e.g. "conditions", "actions", "containment")
-      - Sub-row, trailing (sub_row_idx > 0):        ""
+      - Sub-row, trailing (sub_row_idx > 0):        ""  (no wrapper)
       - Lights per-SH family head:             "sh<i> · <leaf>"
         (kept — a single Light can host multiple signal heads, so
         the sh tag is the only disambiguator within the block)
       - Lights per-SH trailing sub-row:              ""
-      - Ego: singleton — no entity tag, just the leaf.
+      - Ego: singleton — no entity tag, just the leaf (still
+        category-colored).
     """
     category, entity_idx, family, sub_row_idx, sh_idx = key
+    text: str
     if family == "parent":
         # The parent bar labels its own row. For Ego, no per-entity tag
         # (Ego doesn't emit a `parent` band — it's excluded from
@@ -355,16 +361,16 @@ def _band_label(key: BandKey) -> str:
         if category == "Ego":
             return ""
         track_prefix = _ENTITY_TRACK_PREFIX.get(category, f"{category} Track")
-        return f"{track_prefix} {entity_idx + 1}"
-    # Trailing sub-rows render with a blank label so the annotator's
-    # visual grouping reads cleanly (only the first sub-row carries
-    # the family name).
-    if sub_row_idx > 0:
+        text = f"{track_prefix} {entity_idx + 1}"
+    elif sub_row_idx > 0:
+        # Trailing sub-rows render blank — the annotator's labeling
+        # rule keeps the family name on the FIRST sub-row only.
         return ""
-    leaf = _FAMILY_LABEL.get(family, family)
-    if sh_idx is not None:
-        return f"sh{sh_idx} · {leaf}"
-    return leaf
+    else:
+        leaf = _FAMILY_LABEL.get(family, family)
+        text = f"sh{sh_idx} · {leaf}" if sh_idx is not None else leaf
+    color = _category_label_color(category)
+    return f'<span style="color:{color}">{text}</span>'
 
 
 def _populated_bands(segments: list[Segment]) -> list[BandKey]:
@@ -587,19 +593,30 @@ def _segments_by_entity_id(
     return by_id
 
 
-# Per-entity background band tints. Each block uses the category's base
-# color from `entity_color()` at very low opacity — quiet enough not to
-# compete with the per-family bar fills (which paint at opacity 0.85)
-# but visible enough on `plotly_dark` to group rows belonging to one
-# entity. Within a category, alternating opacities make adjacent
-# entities (e.g. Agent Track 1 vs Agent Track 2) visually separable
-# without doubling up on category hue.
+# Per-entity background band tints. Mirrors the annotator's
+# "soft background spanning an entity's rows" pattern: a quiet
+# *neutral* white tint that clusters every row belonging to one
+# entity, with adjacent blocks alternating opacities so neighboring
+# entities stay visually separable. The category cue moves to the
+# colored tick label (`_band_label`'s HTML span), not the band —
+# so the band stays soft/neutral and doesn't compete with the
+# per-family bar palette.
 _ENTITY_BLOCK_TINT_EVEN: float = 0.05
 _ENTITY_BLOCK_TINT_ODD: float = 0.10
 
-# Map category label → `entity_color()` kind. Mirrors the private
-# `_CATEGORY_KIND` table in `colors.py` so the entity-block tinter
-# can resolve a category's base hue without reaching into a
+# Paper-x extent for the entity-block band's left edge. The band
+# uses `xref="paper"` and walks *into the y-tick-label margin* so it
+# clusters the label region along with the bar region (the
+# annotator's bigger-soft-background trick). Calibrated to our
+# `render_timeline` margin (`l=80`) at moderate figure widths
+# (700-900px wide); -0.18 cushions narrower Jupyter cells.
+_ENTITY_BLOCK_PAPER_X_LEFT: float = -0.18
+_ENTITY_BLOCK_PAPER_X_RIGHT: float = 1.0
+
+# Map category label → `entity_color()` kind. Used by the
+# entity-block tinter's fallback path AND by the colored-tick-label
+# wrapper in `_band_label`. Mirrors the private `_CATEGORY_KIND`
+# table in `colors.py` so the timeline module doesn't reach into a
 # sibling module's privates.
 _CATEGORY_KIND: dict[str, str] = {
     "Environments": "env",
@@ -654,28 +671,35 @@ def _entity_blocks(
     return blocks
 
 
-def _entity_block_fill(category: str, entity_idx: int) -> str:
+def _entity_block_fill(_category: str, entity_idx: int) -> str:
     """Translucent fillcolor for a `(category, entity_idx)` block.
 
-    Picks the category's base color from `entity_color()` and renders
-    at `_ENTITY_BLOCK_TINT_EVEN` / `_ENTITY_BLOCK_TINT_ODD` based on
-    the entity's parity within its category. The alternating opacity
-    keeps adjacent entities visually distinct without picking different
-    hues per entity (the category hue already carries category
-    identity).
+    Soft neutral white tint — the category cue is carried by the
+    colored tick label, not the band. Alternating opacities
+    (`_ENTITY_BLOCK_TINT_EVEN` vs `_ENTITY_BLOCK_TINT_ODD`) per-entity
+    keep adjacent blocks visually distinct, like the annotator's
+    soft-row-background pattern.
     """
-    kind = _CATEGORY_KIND.get(category)
-    if kind is None:
-        # Unknown category — should be unreachable because the painter
-        # filters to `_CATEGORIES`, but keep the painter robust.
-        return _hex_to_rgba("#ffffff", _ENTITY_BLOCK_TINT_EVEN)
-    base_hex = entity_color(kind)
     alpha = (
         _ENTITY_BLOCK_TINT_EVEN
         if entity_idx % 2 == 0
         else _ENTITY_BLOCK_TINT_ODD
     )
-    return _hex_to_rgba(base_hex, alpha)
+    return _hex_to_rgba("#ffffff", alpha)
+
+
+def _category_label_color(category: str) -> str:
+    """`#RRGGBB` hex for tick labels belonging to `category`.
+
+    Wraps `entity_color()` with the category → kind lookup. Used by
+    `_band_label` to color each tick text per its block's category —
+    the visual category cue that complements the per-family bar
+    palette in the timeline.
+    """
+    kind = _CATEGORY_KIND.get(category)
+    if kind is None:
+        return "#ffffff"
+    return entity_color(kind)
 
 
 @dataclass(frozen=True)
@@ -861,23 +885,42 @@ def _paint_timeline_onto(
     # ---------------------------------------------------------------
     # 1pre. Per-entity background bands. One translucent rect per
     #     `(category, entity_idx)` block, spanning all of that block's
-    #     band rows. Painted FIRST (so it sits below the highlight
-    #     band, the segment rectangles, and the arrows) with
-    #     `layer: "below"`. Carries the visual grouping cue that lets
-    #     the y-tick labels drop their category + entity prefix on
-    #     sub-rows (see `_band_label`).
+    #     band rows.
+    #
+    #     `xref="paper"` (not the subplot's data x) so the band extends
+    #     across the y-tick-label margin AND the bar region — that
+    #     gives the annotator's "soft background spanning labels and
+    #     boxes" look. y is still data coords so each band lines up
+    #     with its block's row range.
+    #
+    #     Y-extent is inset to `[first_row - _ROW_HALF_HEIGHT,
+    #     last_row + _ROW_HALF_HEIGHT]` (i.e. ±0.4 instead of ±0.5).
+    #     The lane bands inside each row already span exactly
+    #     ±_ROW_HALF_HEIGHT, so this tightens the entity block to
+    #     hug the painted segments AND leaves a 0.2-row dark gap
+    #     between adjacent blocks — the "visual break" between
+    #     entities the annotator uses.
+    #
+    #     Painted FIRST (so it sits below the highlight band, segment
+    #     rectangles, and arrows) with `layer: "below"`.
     # ---------------------------------------------------------------
-    x0_block = 0.0
-    x1_block = duration if duration > 0 else 1.0
+    # Pick the right paper xref for the current subplot. Plotly
+    # treats `"paper"` as figure-relative for the primary subplot;
+    # for stacked subplots (the widget), each subplot's `xref`
+    # already maps to its own axis. The entity-block intentionally
+    # uses paper so it reaches into the y-tick-label margin — the
+    # widget's bottom-subplot timeline uses `yref="y2"` but the same
+    # `xref="paper"` still anchors the band to the figure's left
+    # edge (which IS the label margin for the timeline subplot).
     for category, entity_idx, first_row, last_row in _entity_blocks(band_keys):
         shapes.append(
             {
                 "type": "rect",
-                "x0": x0_block,
-                "x1": x1_block,
-                "y0": first_row - 0.5,
-                "y1": last_row + 0.5,
-                "xref": xref,
+                "x0": _ENTITY_BLOCK_PAPER_X_LEFT,
+                "x1": _ENTITY_BLOCK_PAPER_X_RIGHT,
+                "y0": first_row - _ROW_HALF_HEIGHT,
+                "y1": last_row + _ROW_HALF_HEIGHT,
+                "xref": "paper",
                 "yref": yref,
                 "fillcolor": _entity_block_fill(category, entity_idx),
                 "opacity": 1.0,

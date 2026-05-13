@@ -9,6 +9,8 @@ entirely from shapes (no traces) per the PR-2 design.
 
 from __future__ import annotations
 
+import re
+
 import plotly.graph_objects as go
 
 from causal_ai_av.dataset import Sequence
@@ -142,6 +144,42 @@ def _shapes(fig: go.Figure) -> list[dict]:
 
 def _arrow_shapes(fig: go.Figure, family: str) -> list[dict]:
     return [s for s in _shapes(fig) if s.get("name", "").startswith(f"arrow:{family}:")]
+
+
+# Tick-label labels are wrapped in `<span style="color:#xxx">...</span>`
+# so each tick carries its category-color cue. The helpers below pull
+# the plain text out for `==` comparisons and pull the color hex out
+# for category-anchored tests.
+_LABEL_TEXT_RE = re.compile(r"<[^>]+>")
+_LABEL_COLOR_RE = re.compile(r"color\s*:\s*(#[0-9a-fA-F]{6})")
+
+
+def _label_text(tick_html: str) -> str:
+    """Strip `<span ...>` wrappers to recover plain tick text.
+
+    Blank ticks (trailing sub-rows) stay blank — no wrapper means
+    nothing to strip.
+    """
+    return _LABEL_TEXT_RE.sub("", tick_html)
+
+
+def _label_color(tick_html: str) -> str | None:
+    """Extract the `#RRGGBB` color from a tick label's HTML span,
+    or `None` if the tick is blank / unwrapped."""
+    m = _LABEL_COLOR_RE.search(tick_html)
+    return m.group(1) if m else None
+
+
+# Inverse of `entity_color()` — for tests that need to recover the
+# category from a label's color. Kept in test land so the source
+# module doesn't need to expose the reverse mapping.
+_HEX_TO_CATEGORY: dict[str, str] = {
+    "#22c55e": "Environments",
+    "#ef4444": "Traffic Lights",
+    "#f59e0b": "Objects",
+    "#a855f7": "Agents",
+    "#3b82f6": "Ego",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -836,6 +874,15 @@ def test_filter_propagation_drops_arrows_with_filtered_endpoints() -> None:
 
 
 def _yticks(fig: go.Figure) -> list[str]:
+    """Return tick labels with the `<span>` color wrapper stripped.
+
+    Tests that need the raw HTML (e.g. category-color anchoring) read
+    `fig.layout.yaxis.ticktext` directly.
+    """
+    return [_label_text(t) for t in (fig.layout.yaxis.ticktext or ())]
+
+
+def _yticks_raw(fig: go.Figure) -> list[str]:
     return list(fig.layout.yaxis.ticktext or ())
 
 
@@ -1522,7 +1569,8 @@ def test_entity_block_layer_is_below() -> None:
 def test_entity_block_tint_alternates_within_category() -> None:
     """Within a category, adjacent entity blocks use alternating
     opacities so the user can visually separate Agent Track 1 from
-    Agent Track 2 even though they share the same category hue."""
+    Agent Track 2. The tint is a *neutral* white (not category-hued)
+    — the category cue lives on the tick label color."""
 
     def _agent(idx: int) -> Agent:
         return Agent.model_validate(
@@ -1557,15 +1605,82 @@ def test_entity_block_tint_alternates_within_category() -> None:
         s for s in _entity_block_shapes(fig)
         if s.get("name") == "entity_block:Agents:1"
     )
-    # Same category → same RGB triple. Different parity → different
-    # alpha. fillcolor is `rgba(r, g, b, alpha)`.
+    # Same neutral white base, alternating opacity → different
+    # fillcolor strings.
     assert a0["fillcolor"] != a1["fillcolor"], (
         "adjacent Agent blocks share the same fillcolor — "
         "alternating opacity broke"
     )
-    # Both should reference the agent base hue (purple = 168, 85, 247).
-    assert "168" in a0["fillcolor"] and "85" in a0["fillcolor"]
-    assert "168" in a1["fillcolor"] and "85" in a1["fillcolor"]
+    # Neutral white triple: every channel = 255.
+    assert "255, 255, 255" in a0["fillcolor"] or "255,255,255" in a0["fillcolor"]
+    assert "255, 255, 255" in a1["fillcolor"] or "255,255,255" in a1["fillcolor"]
+
+
+def test_tick_labels_wrap_text_in_category_colored_span() -> None:
+    """Every non-blank tick label wraps its text in an HTML
+    `<span style="color:#xxx">...</span>` whose color matches the
+    category's `entity_color()` base hex. The color is the visual
+    cue identifying which category a row belongs to."""
+    fig = render_timeline(_seq(_make_full_bundle()))
+    raw = _yticks_raw(fig)
+    # Every non-blank tick carries a `<span style="color:#xxx">` wrap.
+    non_blank = [t for t in raw if t]
+    assert non_blank, "expected at least one non-blank tick label"
+    for t in non_blank:
+        color = _label_color(t)
+        assert color is not None, f"tick {t!r} missing color wrapper"
+        assert color in _HEX_TO_CATEGORY, (
+            f"tick {t!r} has unknown category color {color!r}"
+        )
+    # Sanity check: each tick's color maps to a known category.
+    seen_categories: set[str] = set()
+    for t in non_blank:
+        color = _label_color(t)
+        assert color is not None  # narrowed above
+        seen_categories.add(_HEX_TO_CATEGORY[color])
+    # Full-bundle fixture exercises Environments, Agents, and Ego.
+    assert {"Environments", "Agents", "Ego"}.issubset(seen_categories), (
+        f"expected E/A/Ego categories represented in tick colors, got "
+        f"{seen_categories}"
+    )
+
+
+def test_tick_label_color_matches_category_for_parent_and_sub_rows() -> None:
+    """All ticks within one entity block share the same color —
+    parent row AND every sub-row paint with the category hue. This
+    is the load-bearing visual: the colored label is what tells the
+    reader "this row belongs to Agents" once the band itself goes
+    soft / neutral."""
+    fig = render_timeline(_seq(_make_full_bundle()))
+    raw = _yticks_raw(fig)
+    yticks = [_label_text(t) for t in raw]
+    # Find the Agent block's parent row + each sub-row leaf.
+    parent_idx = yticks.index("Agent Track 1")
+    parent_color = _label_color(raw[parent_idx])
+    assert parent_color == "#a855f7", (
+        f"Agent parent color {parent_color!r} ≠ #a855f7 (agent purple)"
+    )
+    # Every Agents sub-row leaf must share the same purple. Walk down
+    # from the parent until the tick color changes — that's the
+    # boundary where we cross into the next entity block. The label
+    # text alone isn't a reliable end-of-block signal because Ego
+    # has no parent row (its sub-rows lead the block), so a "next
+    # parent" sentinel can't fire.
+    agent_leaves_seen = 0
+    for i in range(parent_idx + 1, len(yticks)):
+        text = yticks[i]
+        if not text:
+            continue  # blank trailing sub-row inside this block
+        color = _label_color(raw[i])
+        if color != "#a855f7":
+            break  # crossed into the next entity block
+        agent_leaves_seen += 1
+    # `_make_full_bundle` puts one containment, one influence, one
+    # action, and one property on agent_0 — four sub-row family heads
+    # all colored purple. (Trailing sub-rows are blank and skipped.)
+    assert agent_leaves_seen >= 4, (
+        f"expected ≥4 purple Agents sub-rows, saw {agent_leaves_seen}"
+    )
 
 
 def test_entity_block_skipped_when_category_filtered_out() -> None:
@@ -1580,13 +1695,66 @@ def test_entity_block_skipped_when_category_filtered_out() -> None:
     )
 
 
-def test_entity_block_x_spans_clip_duration() -> None:
-    """The block rect spans `[0, duration]` so its color reads behind
-    the full timeline length, not just inside the segment x-extent."""
+def test_entity_block_spans_label_margin_via_paper_xref() -> None:
+    """The block rect uses `xref="paper"` with a negative left edge
+    so it walks INTO the y-tick-label margin, clustering the labels
+    along with the bars. Mirrors the annotator's soft-background
+    pattern: the entity tint reads behind both the row labels and
+    the segment rectangles. Right edge sits at `x=1.0` (plot right
+    edge in paper coords)."""
     fig = render_timeline(_seq(_make_full_bundle()))
     for s in _entity_block_shapes(fig):
-        assert float(s["x0"]) == 0.0
-        # Full-bundle fixture has duration_s = 10.0.
-        assert abs(float(s["x1"]) - 10.0) < 1e-6, (
-            f"block {s.get('name')!r} x1={s['x1']} ≠ duration 10.0"
+        assert s.get("xref") == "paper", (
+            f"block {s.get('name')!r} xref={s.get('xref')!r}, expected 'paper'"
+        )
+        assert float(s["x0"]) < 0.0, (
+            f"block {s.get('name')!r} x0={s['x0']} must extend into the "
+            f"y-tick-label margin (negative paper-x)"
+        )
+        assert abs(float(s["x1"]) - 1.0) < 1e-6, (
+            f"block {s.get('name')!r} x1={s['x1']} ≠ 1.0 (plot right edge)"
+        )
+
+
+def test_entity_block_gap_between_adjacent_blocks() -> None:
+    """Adjacent entity blocks leave a visible y-gap between their
+    rects so the user reads the "this entity ended, next entity
+    starts" cue — the annotator's "visual break" between entities.
+    The gap exists by construction: each block's y-extent is inset
+    to `±_ROW_HALF_HEIGHT` (0.4) instead of `±0.5`, so the dark
+    template bg shows through a 0.2-row strip between blocks."""
+
+    def _agent(idx: int) -> Agent:
+        return Agent.model_validate(
+            {
+                "id": f"agent_{idx}",
+                "type": "oxd:Car",
+                "visibility_start_timestamp": "0:0.0",
+                "visibility_end_timestamp": "0:5.0",
+                "actions": [
+                    AgentAction(
+                        id=f"agent_{idx}_act_0",
+                        action_type="Yield",
+                        start_timestamp="0:1.0",
+                        end_timestamp="0:2.0",
+                    ).model_dump()
+                ],
+                "_track_index": idx,
+            }
+        )
+
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="gap", duration_s=10.0),
+        annotation=SilAvAnnotation(agents=[_agent(0), _agent(1)]),
+    )
+    fig = render_timeline(_seq(bundle))
+    blocks = _entity_block_shapes(fig)
+    # Sort by y0 so adjacent-in-y blocks are adjacent in the list.
+    blocks_by_y = sorted(blocks, key=lambda s: float(s["y0"]))
+    for prev, nxt in zip(blocks_by_y, blocks_by_y[1:], strict=False):
+        gap = float(nxt["y0"]) - float(prev["y1"])
+        assert gap > 0.0, (
+            f"no gap between {prev.get('name')!r} (y1={prev['y1']}) and "
+            f"{nxt.get('name')!r} (y0={nxt['y0']})"
         )

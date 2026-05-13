@@ -172,8 +172,14 @@ def _shapes(fig: go.Figure) -> list[dict]:
 
 
 def _bottom_subplot_shapes(fig: go.Figure) -> list[dict]:
-    """Shapes whose axes reference the second (timeline) subplot."""
-    return [s for s in _shapes(fig) if s.get("xref") == "x2"]
+    """Shapes whose axes reference the second (timeline) subplot.
+
+    Identified by yref="y2" (the bottom subplot's y-axis) rather
+    than xref, because entity-block bands use `xref="paper"` so they
+    can reach into the y-tick-label margin while still being
+    pinned to the timeline subplot's y-axis.
+    """
+    return [s for s in _shapes(fig) if s.get("yref") == "y2"]
 
 
 # ---------------------------------------------------------------------------
