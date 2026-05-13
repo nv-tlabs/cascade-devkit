@@ -44,6 +44,7 @@ def build_matchset_carousel(
     pad: float = 1.0,
     fps: float = 8.0,
     arrows: dict[str, bool] | None = None,
+    families: list[str] | None = None,
 ) -> "ipywidgets.Widget":
     """Build a carousel of `ClipPlayer` widgets — one per match.
 
@@ -64,6 +65,13 @@ def build_matchset_carousel(
         fps: scrub rate forwarded to each `ClipPlayer`.
         arrows: per-family arrow-on/off toggles forwarded to each
             `ClipPlayer`. See `_paint_timeline_onto` for the keys.
+        families: optional whitelist of family-leaf names (e.g.
+            `["action"]`, `["condition", "containment"]`) forwarded to
+            each `ClipPlayer`. Parent entity headers auto-render for
+            entities whose sub-rows survive; entities with no
+            surviving sub-rows drop completely. `None` = all
+            families. See `render_timeline` for the recognized leaf
+            names.
 
     Returns:
         an `ipywidgets.Widget` — `HTML` if `matchset` is empty,
@@ -135,6 +143,7 @@ def build_matchset_carousel(
             fps=fps,
             highlight=(t0_raw, t1_raw),
             arrows=arrows,
+            families=families,
         )
 
         label = (

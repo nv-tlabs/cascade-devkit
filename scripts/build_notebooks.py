@@ -990,6 +990,8 @@ def build_visualize() -> None:
         4. `viz.render_timeline(seq)` — static Plotly timeline figure.
         5. `matches.visualize()` — fan out a query result into a
            carousel of mini-players, one per match.
+        6. `families=[...]` — render only a subset of the annotation
+           families (just the actions, just the conditions, etc.).
 
         > Requires the optional `viz` extra (`uv sync --extra viz`)
         > and the `hf` extra (`uv sync --extra hf`) for the video
@@ -1092,6 +1094,37 @@ def build_visualize() -> None:
         ds.download_clips(first_three_clips)
 
         matches.visualize(limit=3)
+        """),
+        md("""
+        ## 6. `families=[...]` — render only selected annotation families
+
+        Every visualize entry point (`seq.visualize`, `render_timeline`,
+        `matches.visualize`) accepts a `families` whitelist. Pass a list
+        of family leaves — `"action"`, `"condition"`, `"containment"`,
+        `"influence"`, `"property"`, `"pose"`, `"state"`,
+        `"signal_head"`, `"env_control"`, `"physical_containment"` —
+        and the timeline collapses to just those rows.
+
+        Parent entity headers ("Env Track 1", "Agent Track 2", ...) are
+        NOT named in the whitelist. They auto-render for any entity
+        whose sub-rows survive the filter; entities with zero
+        surviving sub-rows drop entirely (no orphan headers). This is
+        the same composition rule used by `track_groups`, `entity_kinds`,
+        and `agent_ids` — all four whitelists AND together.
+        """),
+        code("""
+        # Just the action rows across the clip — ego actions and any
+        # agent actions, with their entity headers as the only context.
+        viz.render_timeline(
+            seq,
+            highlight=(m.interval.start, m.interval.end),
+            families=["action"],
+        )
+        """),
+        code("""
+        # Compose with `matches.visualize` — every mini-player in the
+        # carousel renders the same family subset.
+        matches.visualize(limit=3, families=["action", "condition"])
         """),
         md("""
         ## Where to next

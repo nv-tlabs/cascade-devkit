@@ -814,6 +814,7 @@ def _paint_timeline_onto(
     entity_kinds: list[str] | None = None,
     agent_ids: list[str] | None = None,
     track_groups: list[str] | None = None,
+    families: list[str] | None = None,
     show_inline_labels: bool = True,
 ) -> PaintResult:
     """Append timeline shapes for `seq` onto `fig`, on the given axes.
@@ -855,6 +856,18 @@ def _paint_timeline_onto(
             with PR-37 callers. Rows not in the whitelist drop their
             tick labels too, so the y-axis collapses to the visible
             categories. `None` = all five categories.
+        families: optional whitelist of family names to render. The
+            recognized values are the per-category family leaves —
+            `"condition"`, `"containment"`, `"physical_containment"`,
+            `"signal_head"`, `"env_control"`, `"state"`, `"pose"`,
+            `"influence"`, `"action"`, `"property"`. Parent rows
+            (the entity-track headers like "Env Track 1" / "Agent
+            Track 2") are NOT named in this whitelist — they auto-
+            render for any entity that has at least one surviving
+            non-parent segment, so the family filter never produces
+            orphan headers. Entities with zero surviving sub-rows
+            drop completely (their parent disappears too).
+            `None` = all families.
         show_inline_labels: when False, suppress every inline label
             annotation; hover tooltips still fire. Defaults to True
             (the historical behaviour). Callers wanting a maximally
@@ -870,10 +883,11 @@ def _paint_timeline_onto(
         path). The figure itself is also mutated in place.
 
     Filter semantics:
-        - The three filters AND together: a segment is drawn only if
-          its group is in `track_groups`, its kind is in
-          `entity_kinds`, and (for agent kinds) its agent id is in
-          `agent_ids`.
+        - The four whitelists AND together: a segment is drawn only
+          if its group is in `track_groups`, its kind is in
+          `entity_kinds`, (for agent kinds) its agent id is in
+          `agent_ids`, and its family is in `families` (or it is a
+          `"parent"` segment for an entity whose sub-rows survived).
         - Arrow filtering follows segment filtering: an arrow whose
           source or target segment was filtered out is dropped.
     """
@@ -909,6 +923,13 @@ def _paint_timeline_onto(
     allowed_agent_ids: set[str] | None = (
         None if agent_ids is None else set(agent_ids)
     )
+    # `families` is a flat whitelist of family-leaf names (sub-rows).
+    # Parents are never named here — they survive automatically for
+    # any entity whose sub-rows pass the filter (see two-pass logic
+    # below). `None` = no family filter.
+    allowed_families: set[str] | None = (
+        None if families is None else set(families)
+    )
 
     shapes: list[dict[str, Any]] = []
 
@@ -926,7 +947,10 @@ def _paint_timeline_onto(
         i: a.id for i, a in enumerate(ann_for_filter.agents) if a.id
     }
 
-    def _segment_allowed(seg: Segment) -> bool:
+    def _segment_passes_non_family_filters(seg: Segment) -> bool:
+        """Group / kind / agent-id checks. Used by both the family
+        pre-pass (to find entities with surviving sub-rows) and the
+        full `_segment_allowed` predicate."""
         group = _track_id_to_group(seg.track_id)
         if group is None or group not in allowed_groups:
             return False
@@ -941,6 +965,39 @@ def _paint_timeline_onto(
             if agent_id is None or agent_id not in allowed_agent_ids:
                 return False
         return True
+
+    # Pre-compute the set of `(category, entity_idx)` pairs that have
+    # at least one surviving NON-parent segment under the family
+    # filter. A parent row only renders if its entity's sub-rows
+    # survive — otherwise we'd leave orphan section heads pointing
+    # at nothing.
+    surviving_entities: set[tuple[str, int]] = set()
+    if allowed_families is not None:
+        for s in segments:
+            if s.family == "parent":
+                continue
+            if s.family not in allowed_families:
+                continue
+            if not _segment_passes_non_family_filters(s):
+                continue
+            cat = _track_id_to_category(s.track_id)
+            if cat is None:
+                continue
+            ent_idx = _track_id_to_entity_idx(s.track_id)
+            surviving_entities.add((cat, ent_idx))
+
+    def _segment_allowed(seg: Segment) -> bool:
+        if not _segment_passes_non_family_filters(seg):
+            return False
+        if allowed_families is None:
+            return True
+        if seg.family == "parent":
+            cat = _track_id_to_category(seg.track_id)
+            if cat is None:
+                return False
+            ent_idx = _track_id_to_entity_idx(seg.track_id)
+            return (cat, ent_idx) in surviving_entities
+        return seg.family in allowed_families
 
     # Cache the predicate result so arrow lookups can short-circuit
     # quickly when the source / target segment was filtered out.
@@ -1548,6 +1605,7 @@ def render_timeline(
     entity_kinds: list[str] | None = None,
     agent_ids: list[str] | None = None,
     track_groups: list[str] | None = None,
+    families: list[str] | None = None,
     height: int | None = None,
     show_inline_labels: bool = True,
 ) -> "go.Figure":
@@ -1582,6 +1640,13 @@ def render_timeline(
             legacy short names `"Env"` and `"Lights"` are accepted as
             aliases. Rows not in the whitelist drop from the y-axis
             layout. `None` = all categories.
+        families: optional whitelist of family leaves to render
+            (`"condition"`, `"containment"`, `"physical_containment"`,
+            `"signal_head"`, `"env_control"`, `"state"`, `"pose"`,
+            `"influence"`, `"action"`, `"property"`). Parent entity
+            headers auto-render for any entity whose sub-rows survive
+            — entities with zero surviving sub-rows drop completely.
+            `None` = all families.
         height: optional explicit pixel height. `None` (default) means
             adaptive — the height tracks the deepest sub-lane stack so
             a busy clip gets a taller timeline while a sparse one
@@ -1616,6 +1681,7 @@ def render_timeline(
         entity_kinds=entity_kinds,
         agent_ids=agent_ids,
         track_groups=track_groups,
+        families=families,
         show_inline_labels=show_inline_labels,
     )
     resolved_height = (

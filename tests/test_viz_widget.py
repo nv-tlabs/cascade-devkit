@@ -386,6 +386,32 @@ def test_filter_kwargs_forwarded_to_timeline_subplot() -> None:
         )
 
 
+def test_families_kwarg_forwarded_to_timeline_subplot() -> None:
+    """`ClipPlayer(seq, families=["action"])` forwards the whitelist to
+    `_paint_timeline_onto`. The bottom subplot's segment shapes survive
+    only inside the Agents entity-block band (the fixture's Agent block
+    has an `action` sub-row); the Env block drops entirely because its
+    only family is `condition`.
+    """
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq, families=["action"])
+    bottom_shapes = _bottom_subplot_shapes(player._fig)
+    block_names = {
+        s.get("name") for s in bottom_shapes
+        if (s.get("name") or "").startswith("entity_block:")
+    }
+    assert "entity_block:Environments:0" not in block_names, (
+        f"Env block should drop when only `action` family is allowed; "
+        f"got blocks {block_names}"
+    )
+    assert any(
+        (n or "").startswith("entity_block:Agents:") for n in block_names
+    ), (
+        f"Agents entity block should survive (it has an action sub-row); "
+        f"got blocks {block_names}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 11. Adaptive height — grows with deepest sub-lane stack
 # ---------------------------------------------------------------------------
