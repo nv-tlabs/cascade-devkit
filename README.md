@@ -1,4 +1,4 @@
-# cascade_av
+# CASCADE DevKit
 
 Python DevKit for the **CASCADE dataset** — *Causal Spatio-Temporal
 Analysis of Driving Environments*. Causal and spatio-temporal action
