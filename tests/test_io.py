@@ -71,3 +71,21 @@ def test_group_by_clip_id_partitions_input() -> None:
 def test_hf_adapter_importable() -> None:
     """Smoke check that the optional HF adapter resolves with the `[hf]` extra."""
     from causal_ai_av.io.hf import CausalAnnotationsHfRepo  # noqa: F401
+
+
+def test_condition_type_accepts_bare_string() -> None:
+    """Some corpora write `conditions[].type` as a bare string ("Construction
+    Zone") rather than the canonical list shape. The schema coerces it so
+    downstream consumers always see a list."""
+    from causal_ai_av.spec.schema import Condition
+
+    c_str = Condition.model_validate({"id": "c1", "type": "Construction Zone"})
+    assert c_str.type == ["Construction Zone"]
+
+    # Canonical list shape still works.
+    c_list = Condition.model_validate({"id": "c2", "type": ["Clear", "Wet"]})
+    assert c_list.type == ["Clear", "Wet"]
+
+    # Empty / missing defaults to [].
+    c_empty = Condition.model_validate({"id": "c3"})
+    assert c_empty.type == []
