@@ -1279,14 +1279,15 @@ def test_per_entity_bands() -> None:
     )
 
 
-def test_singleton_ego_has_no_entity_label() -> None:
-    """Ego is a singleton — its tick labels are bare leaves
-    (`"containment"`, `"influences"`, `"actions"`, `"properties"`)
-    with no per-track tag and no category prefix. The Ego background
-    band carries the category cue.
+def test_singleton_ego_parent_label_is_bare_ego() -> None:
+    """Ego is a singleton — no `_track_index`, no name field — so its
+    parent row label is just `"Ego"` (no `Track N` ordinal). Sub-rows
+    are the bare family leaves (`"containment"`, `"influences"`,
+    `"actions"`, `"properties"`) with no entity prefix; the Ego
+    background band carries the category cue.
 
-    We anchor on the Ego entity_block shape's row range to find the
-    Ego rows, then assert each tick label is a bare leaf.
+    We anchor on the Ego entity_block shape's row range to find the Ego
+    rows, then check the parent + sub-row label split.
     """
     fig = render_timeline(_seq(_make_full_bundle()))
     yticks = _yticks(fig)
@@ -1303,11 +1304,14 @@ def test_singleton_ego_has_no_entity_label() -> None:
         t for t, v in zip(yticks, yvals, strict=False)
         if y_lo <= float(v) <= y_hi and t
     ]
-    assert ego_labels, "expected at least one labeled Ego sub-row"
-    legal_leaves = {"containment", "influences", "actions", "properties"}
+    assert "Ego" in ego_labels, (
+        f"Ego parent label `Ego` missing from Ego block ticks {ego_labels!r}"
+    )
+    legal_subrow_leaves = {"containment", "influences", "actions", "properties"}
     for label in ego_labels:
-        assert label in legal_leaves, (
-            f"Ego sub-row label {label!r} not a known leaf"
+        assert label == "Ego" or label in legal_subrow_leaves, (
+            f"Ego tick label {label!r} is neither the `Ego` parent nor a "
+            f"recognized sub-row leaf"
         )
 
 
@@ -1749,7 +1753,13 @@ def test_tick_label_per_row_alignment() -> None:
             assert all(ch == nbsp for ch in tail), (
                 f"tick {html!r} padded with non-nbsp whitespace"
             )
-        is_parent = plain.endswith(" Track 1") or plain.endswith(" Track 2")
+        # Ego is the lone parent label without a "Track N" ordinal —
+        # the singleton ego category renders as just "Ego".
+        is_parent = (
+            plain.endswith(" Track 1")
+            or plain.endswith(" Track 2")
+            or plain == "Ego"
+        )
         if is_parent:
             parent_inner_lens.add(len(inner))
             parents_seen += 1
@@ -1856,12 +1866,18 @@ def test_tick_label_color_matches_category_for_parent_and_sub_rows() -> None:
     [
         pytest.param(
             _make_full_bundle,
-            {"Env Track 1", "Agent Track 1"},
+            {"Env Track 1", "Agent Track 1", "Ego"},
             id="env_agent_ego",
         ),
         pytest.param(
             _make_all_categories_bundle,
-            {"Env Track 1", "Light Track 1", "Object Track 1", "Agent Track 1"},
+            {
+                "Env Track 1",
+                "Light Track 1",
+                "Object Track 1",
+                "Agent Track 1",
+                "Ego",
+            },
             id="all_categories",
         ),
     ],
@@ -1928,10 +1944,13 @@ def test_families_filter_drops_non_whitelisted_family_rows() -> None:
     """`families=["action"]` renders only `action` sub-rows. The
     full-bundle fixture has condition, action, containment, influence,
     and property segments — under the filter only the action rows
-    survive on the y-axis."""
+    survive on the y-axis. Parent rows ("Agent Track 1", "Ego") are
+    excluded from the sub-row set; they're tested separately by the
+    parent-retention tests."""
     fig = render_timeline(_seq(_make_full_bundle()), families=["action"])
     yticks = [_label_text(t) for t in _yticks_raw(fig)]
-    sub_row_leaves = {t for t in yticks if t and "Track" not in t}
+    parent_labels = {"Ego"} | {t for t in yticks if t and "Track" in t}
+    sub_row_leaves = {t for t in yticks if t and t not in parent_labels}
     # `_FAMILY_LABEL` pluralizes most leaves; "action" → "actions".
     assert sub_row_leaves == {"actions"}, (
         f"expected only `actions` sub-rows, got {sub_row_leaves}"
@@ -1949,6 +1968,46 @@ def test_families_filter_keeps_parent_row_for_surviving_entity() -> None:
     assert "Agent Track 1" in yticks, (
         f"Agent Track 1 parent should survive when its `action` "
         f"sub-row is in the whitelist; got y-ticks {yticks}"
+    )
+
+
+def test_families_filter_keeps_ego_parent_when_ego_subrow_survives() -> None:
+    """Same parent-retention rule for Ego: `families=["action"]` leaves
+    only the ego action sub-row from the Ego block, but the "Ego" parent
+    header is preserved so the row isn't orphaned. Locks the user-
+    reported bug where `matches.visualize(families=["action"])` rendered
+    Ego's action row with no indication it belonged to Ego."""
+    fig = render_timeline(_seq(_make_full_bundle()), families=["action"])
+    yticks = [_label_text(t) for t in _yticks_raw(fig)]
+    assert "Ego" in yticks, (
+        f"Ego parent header should survive when an Ego sub-row is in "
+        f"the families whitelist; got y-ticks {yticks}"
+    )
+    # And the Ego entity_block shape still paints — the survival
+    # pre-pass added ("Ego", 0) to `surviving_entities`.
+    block_names = {s.get("name") for s in _entity_block_shapes(fig)}
+    assert "entity_block:Ego:0" in block_names, (
+        f"Ego entity block should still paint when an Ego sub-row "
+        f"survives the filter; got blocks {block_names}"
+    )
+
+
+def test_families_filter_drops_ego_when_no_ego_family_survives() -> None:
+    """Conjugate of the parent-retention rule: if no Ego sub-row
+    survives the families filter, the Ego parent and its entity block
+    drop completely. With `families=["condition"]` the only surviving
+    sub-row in the fixture is the Env condition; Ego has nothing to
+    show so its block disappears."""
+    fig = render_timeline(_seq(_make_full_bundle()), families=["condition"])
+    yticks = [_label_text(t) for t in _yticks_raw(fig)]
+    assert "Ego" not in yticks, (
+        f"Ego parent should drop when no Ego sub-row is in the "
+        f"families whitelist; got y-ticks {yticks}"
+    )
+    block_names = {s.get("name") for s in _entity_block_shapes(fig)}
+    assert "entity_block:Ego:0" not in block_names, (
+        f"Ego entity block should not paint when no Ego sub-row "
+        f"survives; got blocks {block_names}"
     )
 
 

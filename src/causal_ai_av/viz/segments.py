@@ -317,8 +317,33 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
             )
         )
 
-    # --- Ego actions ---
+    # --- Ego parent ---
+    # Ego is a singleton (no track_index, no name field) but emits a
+    # parent band like every other category so the families filter
+    # retains an "Ego" header above whichever sub-rows survive. Only
+    # emitted when Ego has at least one sub-row — mirrors the "no
+    # orphan parent" rule used in the families-filter pre-pass and
+    # keeps `annotation_to_segments` empty-bundle-clean. The parent
+    # spans the full clip duration; Ego is present the whole clip by
+    # definition. Carries `_isEgoParent` in meta so the painter can
+    # distinguish it from regular ego_act subtracks if needed.
     ego = ann.ego_vehicle
+    if ego.actions or ego.containment or ego.influenced_by or ego.properties:
+        duration_s = (
+            float(bundle.video.duration_s or 0.0) if bundle.video else 0.0
+        )
+        segs.append(
+            Segment(
+                id=f"ego_parent_{_next()}",
+                track_id="ego_act",
+                label="Ego",
+                t0=0.0,
+                t1=duration_s,
+                meta={"_isEgoParent": True},
+                family="parent",
+            )
+        )
+    # --- Ego actions ---
     for i, act in enumerate(ego.actions):
         segs.append(
             Segment(
