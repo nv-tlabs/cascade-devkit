@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for `query.context.context_at` / `CausalAVDataset.context_for`."""
+"""Tests for `query.context.context_at` / `CascadeDataset.context_for`."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from causal_ai_av.dataset import CausalAVDataset
-from causal_ai_av.query import ContextWindow, Interval, context_at
+from cascade_av.dataset import CascadeDataset
+from cascade_av.query import ContextWindow, Interval, context_at
 
 CORPUS = Path("/home/horde/01_json_annotations")
 
@@ -17,7 +17,7 @@ CORPUS = Path("/home/horde/01_json_annotations")
 @pytest.fixture
 def patched_parent(monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub out the parent PhysicalAIAV interface — context tests don't need video."""
-    from causal_ai_av import dataset as ds_mod
+    from cascade_av import dataset as ds_mod
 
     class _StubParent:
         def __init__(self, *a, **kw):
@@ -27,7 +27,7 @@ def patched_parent(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_context_at_overlaps_window(patched_parent: None) -> None:
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     # Pick a clip with a real "ped while ego decel" moment.
     matches = ds.find("agent.type = ped while ego.action = decel")
     assert matches, "expected at least one match across the corpus"
@@ -51,7 +51,7 @@ def test_context_at_overlaps_window(patched_parent: None) -> None:
 
 
 def test_context_at_directly_on_bundle(patched_parent: None) -> None:
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     # Reach into the dataset for a bundle; we want to exercise the
     # bundle-level entry point without a Match.
     clip_id = next(iter(ds._by_clip))

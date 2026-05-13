@@ -23,11 +23,11 @@ GB. By default this example **only prints the recipes** — set
 a frame.
 
     # catalog + recipes only (no downloads)
-    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+    CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \\
         uv run python examples/06_sensor_data.py
 
     # opt in to the actual download (~several GB)
-    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+    CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \\
         SENSOR_DEMO_DOWNLOAD=1 \\
         uv run python examples/06_sensor_data.py
 """
@@ -39,17 +39,17 @@ from pathlib import Path
 
 import numpy as np
 
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
 
 def main() -> None:
     try:
-        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+        dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
     except KeyError:
-        raise SystemExit("set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations")
+        raise SystemExit("set CASCADE_AV_DATASET_ROOT to the directory of JSON annotations")
 
     # Auto-confirm larger downloads — fine for a scripted example.
-    ds = CausalAVDataset(dataset_root, confirm_download_threshold_gb=1000.0)
+    ds = CascadeDataset(dataset_root, confirm_download_threshold_gb=1000.0)
 
     # 1) What's available per clip
     print("# sensor catalog (per clip)")

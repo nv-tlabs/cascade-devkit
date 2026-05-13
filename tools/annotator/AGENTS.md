@@ -9,7 +9,7 @@ AGENTS.md files automatically.
 ## What this is
 
 A slim FastAPI server that hosts a vendored Vite + React 19 frontend
-for editing the AV Causal Dataset annotation JSONs in a browser. No
+for editing the CASCADE dataset annotation JSONs in a browser. No
 auth, no database, no admin layer — you point the CLI at a directory of
 annotation JSONs or videos, and it serves an editor over `localhost`.
 Reference docs live in [`README.md`](README.md).
@@ -18,7 +18,7 @@ Reference docs live in [`README.md`](README.md).
 
 | Path | Role |
 |------|------|
-| `src/annotator/server/cli.py` | argparse + uvicorn entry point (console script `causal-av-annotate`) |
+| `src/annotator/server/cli.py` | argparse + uvicorn entry point (console script `cascade-annotate`) |
 | `src/annotator/server/app.py` | FastAPI app factory; `/api/*` routes; mounts `web/dist` at `/` |
 | `src/annotator/server/io_adapter.py` | disk ↔ `AnnotationBundle`; atomic save with `.bak` snapshot |
 | `src/annotator/server/video.py` | HEVC → H.264 transcode; HF / local video resolver |
@@ -73,7 +73,7 @@ approval:
 - **Saves are explicit** (Save button or `Cmd/Ctrl+S`). There is no
   autosave.
 - **Disk writes are atomic.** `io_adapter.py` writes through
-  `os.replace` (via `causal_ai_av.io.save_file`). An interrupted
+  `os.replace` (via `cascade_av.io.save_file`). An interrupted
   process cannot produce a half-written JSON.
 - **First save per server session stamps `<file>.json.bak`.**
   Subsequent saves in the same session do not re-stamp the backup, so
@@ -91,10 +91,10 @@ approval:
   video logic — agents that add subprocess calls without mocking will
   break the suite on machines without ffmpeg.
 - **Transcode cache** lives at
-  `$XDG_CACHE_HOME/causal-av-annotator/transcoded/` (or
-  `~/.cache/causal-av-annotator/transcoded/` if XDG is unset). The
+  `$XDG_CACHE_HOME/cascade-annotator/transcoded/` (or
+  `~/.cache/cascade-annotator/transcoded/` if XDG is unset). The
   cache directory name is derived from the package name
-  (`causal-av-annotator`); renaming the package would orphan existing
+  (`cascade-annotator`); renaming the package would orphan existing
   caches.
 - **Frontend dist resolution.** `app.py` resolves `web/dist` via
   `Path(__file__).resolve().parents[3] / "web" / "dist"`. If you

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""FastAPI app for the causal-av-annotator local server.
+"""FastAPI app for the cascade-annotator local server.
 
 Routes:
   - GET  /api/health
@@ -25,7 +25,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.spec import AnnotationBundle
 
 from annotator.server.io_adapter import ClipEntry, load_bundle, save_bundle
 from annotator.server.video import (
@@ -51,7 +51,7 @@ def create_app(
     video_resolver: VideoResolver | None = None,
 ) -> FastAPI:
     """Construct the FastAPI app bound to this in-memory clip index."""
-    app = FastAPI(title="causal-av-annotator", version="0.1.0")
+    app = FastAPI(title="cascade-annotator", version="0.1.0")
 
     # ----- API routes -----
 

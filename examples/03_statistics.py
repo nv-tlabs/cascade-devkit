@@ -6,7 +6,7 @@ Demonstrates the two perspectives the API supports — clip-level
 ("how many clips contain X?") and entity-level ("how many X
 instances are there in total?").
 
-    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+    CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \\
         uv run python examples/03_statistics.py
 """
 
@@ -16,7 +16,7 @@ import os
 from collections import Counter
 from pathlib import Path
 
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
 
 def print_bar_chart(title: str, counts: dict[object, int], width: int = 40) -> None:
@@ -30,7 +30,7 @@ def print_bar_chart(title: str, counts: dict[object, int], width: int = 40) -> N
         print(f"  {str(key)[:30]:>30}  {n:>5}  {bar}")
 
 
-def entity_count(ds: CausalAVDataset, query: str) -> int:
+def entity_count(ds: CascadeDataset, query: str) -> int:
     """Number of *matching entities* across the corpus (not clips).
 
     For single-entity predicates (`agent.type = ped`, `obj.type = stop_sign`,
@@ -41,7 +41,7 @@ def entity_count(ds: CausalAVDataset, query: str) -> int:
     return len(ds.find(query).matches)
 
 
-def entities_by_attr(ds: CausalAVDataset, query: str, attr: str) -> dict[object, int]:
+def entities_by_attr(ds: CascadeDataset, query: str, attr: str) -> dict[object, int]:
     """Bucket matching entities by a top-level attribute (e.g. `type`).
 
     Like `ds.group_by` but counts entities rather than clips.
@@ -59,11 +59,11 @@ def entities_by_attr(ds: CausalAVDataset, query: str, attr: str) -> dict[object,
 
 def main() -> None:
     try:
-        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+        dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
     except KeyError:
-        raise SystemExit("set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations")
+        raise SystemExit("set CASCADE_AV_DATASET_ROOT to the directory of JSON annotations")
 
-    ds = CausalAVDataset(dataset_root)
+    ds = CascadeDataset(dataset_root)
     print(f"corpus has {len(ds)} clips")
 
     # ----- headline counts: clips vs entities side by side -----

@@ -21,9 +21,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from causal_ai_av.query.index import EGO_ID, IdIndex, Subject
-from causal_ai_av.query.time import Interval
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.query.index import EGO_ID, IdIndex, Subject
+from cascade_av.query.time import Interval
+from cascade_av.spec import AnnotationBundle
 
 
 @dataclass(frozen=True, slots=True)

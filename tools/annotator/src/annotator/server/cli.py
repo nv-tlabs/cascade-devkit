@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Command-line entry point for `causal-av-annotate`.
+"""Command-line entry point for `cascade-annotate`.
 
 Resolves source paths into a clip index, builds the FastAPI app, and runs
 uvicorn. Video probing (real fps/duration) lands in Phase 3.
@@ -21,9 +21,9 @@ VIDEO_EXTS: frozenset[str] = frozenset({".mp4", ".mkv", ".mov", ".avi"})
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="causal-av-annotate",
+        prog="cascade-annotate",
         description=(
-            "Local annotation tool for the AV Causal Dataset. Accepts one or "
+            "Local annotation tool for the CASCADE dataset. Accepts one or "
             "more directories or files (annotation JSONs and/or video files) "
             "and serves a browser UI for editing them."
         ),
@@ -80,7 +80,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Optional annotations directory or repo for the HF dataset, passed "
-            "to CausalAVDataset. If omitted, the parent dataset interface is "
+            "to CascadeDataset. If omitted, the parent dataset interface is "
             "used directly (video-only access)."
         ),
     )

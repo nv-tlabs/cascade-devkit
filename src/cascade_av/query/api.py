@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Thin wrappers for `find` / `count` / `group_by` / `histogram`.
 
-`Sequence.find` and `CausalAVDataset.find` delegate here. The
+`Sequence.find` and `CascadeDataset.find` delegate here. The
 corpus-scope aggregations are clip-level: `count` returns the number of
 *clips* with ≥1 match (not the number of match tuples).
 """
@@ -12,13 +12,13 @@ from __future__ import annotations
 import weakref
 from typing import Any, TYPE_CHECKING
 
-from causal_ai_av.query.dsl import parse
-from causal_ai_av.query.engine import Match, MatchSet, evaluate
-from causal_ai_av.query.entities import ENTITIES
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.query.dsl import parse
+from cascade_av.query.engine import Match, MatchSet, evaluate
+from cascade_av.query.entities import ENTITIES
+from cascade_av.spec import AnnotationBundle
 
 if TYPE_CHECKING:
-    from causal_ai_av.dataset import CausalAVDataset
+    from cascade_av.dataset import CascadeDataset
 
 
 def find_on_bundle(
@@ -42,7 +42,7 @@ def find_on_bundle(
     return MatchSet(ms.matches, _dataset=weakref.ref(dataset))
 
 
-def find_on_dataset(dataset: "CausalAVDataset", dsl_text: str) -> MatchSet:
+def find_on_dataset(dataset: "CascadeDataset", dsl_text: str) -> MatchSet:
     """Run the query across every clip in a dataset; return a union MatchSet.
 
     The returned MatchSet carries a weakref to `dataset` so follow-up
@@ -56,7 +56,7 @@ def find_on_dataset(dataset: "CausalAVDataset", dsl_text: str) -> MatchSet:
     return MatchSet(tuple(all_matches), _dataset=weakref.ref(dataset))
 
 
-def count_on_dataset(dataset: "CausalAVDataset", dsl_text: str) -> int:
+def count_on_dataset(dataset: "CascadeDataset", dsl_text: str) -> int:
     """Number of clips with ≥1 match for `dsl_text`."""
     expr = parse(dsl_text)
     n = 0
@@ -68,7 +68,7 @@ def count_on_dataset(dataset: "CausalAVDataset", dsl_text: str) -> int:
 
 
 def group_by_on_dataset(
-    dataset: "CausalAVDataset", dsl_text: str, key: str
+    dataset: "CascadeDataset", dsl_text: str, key: str
 ) -> dict[object, int]:
     """Run `dsl_text` and bucket clips by the value of `key` on each
     matched entity. Returns `{value: count_of_clips}`.

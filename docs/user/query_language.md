@@ -1,7 +1,7 @@
 # Query Language Specification
 
-The DSL evaluated by `causal_ai_av.query` against an `AnnotationBundle`
-(per-clip) or a `CausalAVDataset` (corpus). Examples, grammar, and
+The DSL evaluated by `cascade_av.query` against an `AnnotationBundle`
+(per-clip) or a `CascadeDataset` (corpus). Examples, grammar, and
 semantics.
 
 This document is the **spec**. If a question about syntax or semantics
@@ -285,7 +285,7 @@ within light.color = red: not ego.action = stop
 ### 4.8 Value aliasing
 
 The DSL accepts short aliases (`ped`) and full literals (`oxd:Pedestrian`)
-interchangeably. Aliases live in `causal_ai_av.query.constants`, with
+interchangeably. Aliases live in `cascade_av.query.constants`, with
 hierarchical parents — e.g. `vehicle` is the parent set of
 `{car, truck, bus, motorcycle, …}`; `vru` is the parent set of
 `{ped, cyclist}`. Using a parent expands to the union.
@@ -349,10 +349,10 @@ four within the first half-hour of using the DevKit.
 
 | Type | Where it lives | What it is |
 |---|---|---|
-| `Match` | `causal_ai_av.query` | One hit: `(clip_id, entity, interval)`. `interval` is the entity's lifetime clipped to the operator's window. |
-| `MatchSet` | `causal_ai_av.query` | The full result of `ds.find(...)`. A tuple of `Match`es plus a weakref back to the producing dataset. |
-| `Sequence` | `causal_ai_av.dataset` | The per-clip handle returned by `ds.get_sequence(clip_id)`: parsed annotation + camera / sensor accessors + `.visualize()`. |
-| `ContextWindow` | `causal_ai_av.query.context` | A snapshot of every entity in a clip whose annotated time range overlaps a given interval — agents, ego actions, environments, conditions, light states, traffic objects. Built by `ds.context_for(match)`. |
+| `Match` | `cascade_av.query` | One hit: `(clip_id, entity, interval)`. `interval` is the entity's lifetime clipped to the operator's window. |
+| `MatchSet` | `cascade_av.query` | The full result of `ds.find(...)`. A tuple of `Match`es plus a weakref back to the producing dataset. |
+| `Sequence` | `cascade_av.dataset` | The per-clip handle returned by `ds.get_sequence(clip_id)`: parsed annotation + camera / sensor accessors + `.visualize()`. |
+| `ContextWindow` | `cascade_av.query.context` | A snapshot of every entity in a clip whose annotated time range overlaps a given interval — agents, ego actions, environments, conditions, light states, traffic objects. Built by `ds.context_for(match)`. |
 
 ### 5.1 What a `MatchSet` carries
 
@@ -363,7 +363,7 @@ len(matches)              # number of Match tuples
 list(matches.clips())     # unique clip_ids (preserves first-seen order)
 matches.matches           # the underlying tuple[Match, ...]
 matches.matches[0].entity # the schema object that matched (Agent, EgoAction, …)
-matches.matches[0].interval  # causal_ai_av.query.time.Interval (start, end in seconds)
+matches.matches[0].interval  # cascade_av.query.time.Interval (start, end in seconds)
 matches.intervals()       # list[Interval] for every Match with an interval
 matches.entities()        # list of every entity object
 matches.sequences()       # iterator of (Match, Sequence) pairs — resolves clips
@@ -378,7 +378,7 @@ bool(matches)             # True iff there is at least one match
 Match sets built from a bundle without a dataset reference raise
 `RuntimeError` on these methods.
 
-### 5.2 Aggregation helpers on `CausalAVDataset`
+### 5.2 Aggregation helpers on `CascadeDataset`
 
 `find()` returns every match. When you only need counts, three
 aggregations are wired on the dataset:

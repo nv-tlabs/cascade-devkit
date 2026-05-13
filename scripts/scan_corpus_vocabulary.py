@@ -3,7 +3,7 @@
 """Scan the corpus and print every distinct value for query-relevant fields.
 
 Output is grouped by entity + attribute, sorted, with counts. Drives the
-alias tables in `src/causal_ai_av/query/constants.py`.
+alias tables in `src/cascade_av/query/constants.py`.
 
 Usage:
     uv run python scripts/scan_corpus_vocabulary.py [CORPUS_DIR]
@@ -15,8 +15,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from causal_ai_av.io import load_dir
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.io import load_dir
+from cascade_av.spec import AnnotationBundle
 
 DEFAULT_CORPUS = Path("/home/horde/01_json_annotations")
 

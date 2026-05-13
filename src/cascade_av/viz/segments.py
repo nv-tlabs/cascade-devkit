@@ -31,7 +31,7 @@ building segments (`migrateEgoActions`, `migrateAgentActions`,
 `migrateLanesObscuredToCondition`, etc.). Those normalize older corpus
 forms into the current schema. The Python port deliberately skips them:
 the corpus is parsed via the canonical `AnnotationBundle` schema 2.0.0
-(`src/causal_ai_av/spec/schema.py`) which is already in the target form,
+(`src/cascade_av/spec/schema.py`) which is already in the target form,
 and we never mutate the user's annotation here.
 
 Lane indexing (`_track_index`, `_cond_track_index`, etc.) is preserved
@@ -45,8 +45,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from causal_ai_av.query.time import parse_timestamp_or
-from causal_ai_av.spec import (
+from cascade_av.query.time import parse_timestamp_or
+from cascade_av.spec import (
     Agent,
     AnnotationBundle,
     Condition,
@@ -79,7 +79,7 @@ SegmentFamily = Literal[
 ]
 
 # Numeric-coordinate-required parser. Delegates to the single
-# `causal_ai_av.query.time.parse_timestamp_or` helper so segment t0/t1
+# `cascade_av.query.time.parse_timestamp_or` helper so segment t0/t1
 # never silently disagree with the rest of the DevKit. The TS port's
 # `parseTs` returns 0.0 on empty / unparseable input; we preserve that
 # contract by passing `default=0.0`. The DevKit's strict variant

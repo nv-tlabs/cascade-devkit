@@ -1,20 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 [project]
-name = "causal-av-annotator"
+name = "cascade-annotator"
 version = "0.1.0"
-description = "Local annotation tool for the AV Causal Dataset — slim FastAPI server + vendored React frontend."
+description = "Local annotation tool for the CASCADE dataset — slim FastAPI server + vendored React frontend."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "causal_ai_av",
+    "cascade_av",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.6",
 ]
 
 [project.scripts]
-causal-av-annotate = "annotator.server.cli:main"
+cascade-annotate = "annotator.server.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]
@@ -24,4 +24,4 @@ build-backend = "uv_build"
 module-name = "annotator"
 
 [tool.uv.sources]
-causal_ai_av = { workspace = true }
+cascade_av = { workspace = true }

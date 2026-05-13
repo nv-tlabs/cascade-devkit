@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from annotator.server.app import create_app
 from annotator.server.io_adapter import build_clip_index
-from causal_ai_av.io import load_file
+from cascade_av.io import load_file
 
 
 def _client(corpus_dir: Path, *, read_only: bool = False) -> TestClient:
@@ -366,7 +366,7 @@ def test_make_empty_bundle_falls_back_to_defaults_when_probe_fails(
     bundle = make_empty_bundle("broken", video_path=video)
 
     # Schema defaults: fps=30.0, duration_s=0.0 (see VideoMeta in
-    # src/causal_ai_av/spec/schema.py).
+    # src/cascade_av/spec/schema.py).
     assert bundle.video.fps == 30.0
     assert bundle.video.duration_s == 0.0
     # Bundle still valid; clip_id + status both set.
@@ -392,7 +392,7 @@ def test_make_empty_bundle_skips_probe_when_video_path_is_none() -> None:
 
 def test_build_clip_index_dedupes_duplicate_clip_ids(tmp_path: Path) -> None:
     """Two JSONs with the same video.clip_id collapse to one entry with a warning."""
-    from causal_ai_av.spec import AnnotationBundle, VideoMeta
+    from cascade_av.spec import AnnotationBundle, VideoMeta
 
     b = AnnotationBundle(video=VideoMeta(clip_id="dup-clip"))
     a_path = tmp_path / "aaa__dup-clip.json"

@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""HuggingFace I/O for AV Causal annotation JSON files.
+"""HuggingFace I/O for CASCADE annotation JSON files.
 
-Requires the optional `hf` extra (`pip install causal_ai_av[hf]`), which pulls
+Requires the optional `hf` extra (`pip install cascade_av[hf]`), which pulls
 in `physical_ai_av` and uses its `HfRepoInterface` so caching, offline mode,
 and multi-threaded downloads come for free.
 
@@ -19,16 +19,16 @@ try:
     from physical_ai_av.utils.hf_interface import HfRepoInterface
 except ImportError as e:  # pragma: no cover
     raise ImportError(
-        "causal_ai_av.io.hf requires the `hf` extra. "
-        "Install with: pip install 'causal_ai_av[hf]'"
+        "cascade_av.io.hf requires the `hf` extra. "
+        "Install with: pip install 'cascade_av[hf]'"
     ) from e
 
-from causal_ai_av.io.local import load_file
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.io.local import load_file
+from cascade_av.spec import AnnotationBundle
 
 
 class CausalAnnotationsHfRepo(HfRepoInterface):
-    """A HuggingFace *dataset* repo of AV Causal annotation JSON files."""
+    """A HuggingFace *dataset* repo of CASCADE annotation JSON files."""
 
     def __init__(
         self,

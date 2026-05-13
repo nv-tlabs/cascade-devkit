@@ -8,7 +8,7 @@ clip whose annotated time range overlaps the match's interval —
 visible agents, ego actions, environments, conditions, traffic-light
 states, and persistent traffic objects.
 
-    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+    CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \\
         uv run python examples/05_context.py
 """
 
@@ -17,16 +17,16 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
 
 def main() -> None:
     try:
-        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+        dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
     except KeyError:
-        raise SystemExit("set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations")
+        raise SystemExit("set CASCADE_AV_DATASET_ROOT to the directory of JSON annotations")
 
-    ds = CausalAVDataset(dataset_root)
+    ds = CascadeDataset(dataset_root)
 
     # Pick a query that pairs entities via a temporal operator — `while`
     # tightens each match's interval to the intersection, so the window

@@ -10,8 +10,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from causal_ai_av.io import load_file
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.io import load_file
+from cascade_av.spec import AnnotationBundle
 
 CORPUS = Path("/home/horde/01_json_annotations")
 

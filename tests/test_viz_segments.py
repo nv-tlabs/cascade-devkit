@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for `causal_ai_av.viz` — segments port, entity colors, and the
+"""Tests for `cascade_av.viz` — segments port, entity colors, and the
 headless `render_frame` Pillow path.
 
 Bundles are built from scratch — no corpus dependency.
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from causal_ai_av.spec import (
+from cascade_av.spec import (
     Agent,
     AgentAction,
     AgentProperty,
@@ -27,13 +27,13 @@ from causal_ai_av.spec import (
     SilAvAnnotation,
     VideoMeta,
 )
-from causal_ai_av.viz import (
+from cascade_av.viz import (
     Segment,
     annotation_to_segments,
     entity_color,
     render_frame,
 )
-from causal_ai_av.viz.segments import _parse_ts
+from cascade_av.viz.segments import _parse_ts
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +267,7 @@ def test_segment_carries_family() -> None:
 def test_segment_carries_family_for_lights() -> None:
     """Per-signal-head light families: signal_head, state, env_control,
     plus physical_containment (at the light's top level)."""
-    from causal_ai_av.spec import (
+    from cascade_av.spec import (
         LightStates,
         SignalHead,
         TrafficLight,
@@ -339,7 +339,7 @@ def test_segment_carries_family_for_lights() -> None:
 
 def test_segment_carries_family_for_traffic_objects() -> None:
     """Traffic-object parent + state + containment families."""
-    from causal_ai_av.spec import ObjectStateEntry, TrafficObject
+    from cascade_av.spec import ObjectStateEntry, TrafficObject
 
     env = Environment(
         id="env_0",
@@ -460,7 +460,7 @@ def test_family_color_palette_matches_annotator(
     """Pin every `(category, family) → hex` to the annotator's
     `subColor` table in `Timeline.tsx:990-1068`. Any palette edit must
     update this table and document why."""
-    from causal_ai_av.viz import family_color
+    from cascade_av.viz import family_color
 
     assert family_color(category, family) == expected
 
@@ -481,7 +481,7 @@ def test_family_color_fallback_to_entity_color(
     """For families with no family-specific color (notably the `parent`
     row), `family_color` falls back to `entity_color(group_kind)` so
     parent bars keep their entity hue."""
-    from causal_ai_av.viz import family_color
+    from cascade_av.viz import family_color
 
     assert family_color(category, "parent") == entity_color(group_kind)
     # An unknown family also falls through to the entity base — this
@@ -493,7 +493,7 @@ def test_family_color_fallback_to_entity_color(
 def test_family_color_unknown_category_raises() -> None:
     """Unknown categories raise — silently mis-spelling a label should
     not silently mis-color a row."""
-    from causal_ai_av.viz import family_color
+    from cascade_av.viz import family_color
 
     with pytest.raises(KeyError):
         family_color("NotACategory", "containment")

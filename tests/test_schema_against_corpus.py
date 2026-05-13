@@ -5,7 +5,7 @@
 If a file fails, the schema is wrong — not the file. The on-disk corpus is the
 ground truth for schema_version 2.0.0. Triage failures by reading the
 diagnostic, then relax / extend the corresponding field in
-`causal_ai_av.spec.schema`.
+`cascade_av.spec.schema`.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.spec import AnnotationBundle
 
 CORPUS = Path("/home/horde/01_json_annotations")
 ALL_FILES = sorted(CORPUS.glob("*.json"))

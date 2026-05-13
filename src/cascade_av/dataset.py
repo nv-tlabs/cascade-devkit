@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""`CausalAVDataset` + `Sequence` — the user-facing DevKit entry points.
+"""`CascadeDataset` + `Sequence` — the user-facing DevKit entry points.
 
-`CausalAVDataset` is a thin subclass of `physical_ai_av.PhysicalAIAVDatasetInterface`.
+`CascadeDataset` is a thin subclass of `physical_ai_av.PhysicalAIAVDatasetInterface`.
 It extends the parent with:
 - annotation I/O (local directory of `*.json`, or eventually a HF repo),
 - per-clip `Sequence` objects bundling the annotation with the parent's
   egomotion / video features,
 - point-in-time and windowed state queries (`Sequence.state_at`),
 - `Sequence.visualize` — a polymorphic dispatcher into the
-  `causal_ai_av.viz` package; returns a ``ClipPlayer`` widget for
+  `cascade_av.viz` package; returns a ``ClipPlayer`` widget for
   scrub-and-play, or a ``PIL.Image`` for headless single-frame use.
 """
 
@@ -23,8 +23,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from physical_ai_av import PhysicalAIAVDatasetInterface
 
-from causal_ai_av.io import load_file
-from causal_ai_av.query import (
+from cascade_av.io import load_file
+from cascade_av.query import (
     Interval,
     MatchSet,
     agents_visible_at,
@@ -34,21 +34,21 @@ from causal_ai_av.query import (
     filter_active_in_range,
     parse_timestamp,
 )
-from causal_ai_av.query.api import (
+from cascade_av.query.api import (
     count_on_dataset,
     find_on_bundle,
     find_on_dataset,
     group_by_on_dataset,
 )
-from causal_ai_av.query.context import ContextWindow, context_at
-from causal_ai_av.query.engine import Match
-from causal_ai_av.query.triplets import CausalTriplet
-from causal_ai_av.spec import (
+from cascade_av.query.context import ContextWindow, context_at
+from cascade_av.query.engine import Match
+from cascade_av.query.triplets import CausalTriplet
+from cascade_av.spec import (
     AnnotationBundle,
     BoundingBox,
     BoundingBoxFrame,
 )
-from causal_ai_av.state import (
+from cascade_av.state import (
     ActorState,
     ActorStateRange,
     EgoState,
@@ -114,16 +114,16 @@ def _frames_in_window(
 
 
 # -----------------------------------------------------------------------------
-# CausalAVDataset
+# CascadeDataset
 # -----------------------------------------------------------------------------
 
-class CausalAVDataset(PhysicalAIAVDatasetInterface):
-    """DevKit for the AV Causal Dataset.
+class CascadeDataset(PhysicalAIAVDatasetInterface):
+    """DevKit for the CASCADE dataset.
 
     Extends `PhysicalAIAVDatasetInterface` with annotation I/O and per-clip
     state queries. Construct from a local directory of annotation JSONs:
 
-        ds = CausalAVDataset("/path/to/01_json_annotations")
+        ds = CascadeDataset("/path/to/01_json_annotations")
         seq = ds.get_sequence(ds.list_sequences()[0])
 
     Pass `annotations=None` to load from the HF repo — currently unimplemented;
@@ -227,10 +227,10 @@ class CausalAVDataset(PhysicalAIAVDatasetInterface):
             n = len(duplicate_summary)
             warnings.warn(
                 f"{n} clip_id(s) had multiple annotation files; kept first by "
-                "filename. (Set CAUSAL_AV_VERBOSE=1 for per-file detail.)",
+                "filename. (Set CASCADE_AV_VERBOSE=1 for per-file detail.)",
                 stacklevel=2,
             )
-            if os.environ.get("CAUSAL_AV_VERBOSE"):
+            if os.environ.get("CASCADE_AV_VERBOSE"):
                 import sys
                 for clip_id, kept, dropped in duplicate_summary:
                     dropped_names = ", ".join(p.name for p in dropped)
@@ -400,7 +400,7 @@ class _CamerasView(Mapping[str, "SeekVideoReader"]):
 class Sequence:
     """One annotated clip plus access to the parent dataset's per-clip features.
 
-    Constructed via `CausalAVDataset.get_sequence`. For test or notebook use
+    Constructed via `CascadeDataset.get_sequence`. For test or notebook use
     without the parent dataset, use `Sequence.from_annotation(bundle)`; the
     parent-backed properties (`video`, `cameras`, `egomotion`,
     `egomotion_interpolator`) will raise a descriptive error.
@@ -471,7 +471,7 @@ class Sequence:
             raise RuntimeError(
                 "Sequence has no parent dataset; this property requires a "
                 "`PhysicalAIAVDatasetInterface` to load clip features. "
-                "Construct via `CausalAVDataset.get_sequence` instead of "
+                "Construct via `CascadeDataset.get_sequence` instead of "
                 "`Sequence.from_annotation`."
             )
         return self._parent
@@ -561,7 +561,7 @@ class Sequence:
     def find(self, dsl: str) -> MatchSet:
         """Run a DSL query against this clip's annotation bundle.
 
-        If this Sequence was constructed via `CausalAVDataset.get_sequence`,
+        If this Sequence was constructed via `CascadeDataset.get_sequence`,
         the returned MatchSet carries a weakref to the parent dataset so
         follow-up operations like `matches.visualize()` can find it.
         Standalone Sequences (constructed via `from_annotation`) return a
@@ -647,7 +647,7 @@ class Sequence:
 
         Returns:
             ``PIL.Image.Image`` when ``static=True`` and ``t`` is a
-            scalar. Otherwise ``causal_ai_av.viz.ClipPlayer``.
+            scalar. Otherwise ``cascade_av.viz.ClipPlayer``.
 
         Raises:
             ValueError: if more than one of ``t`` / ``match`` /
@@ -690,11 +690,11 @@ class Sequence:
         # module must remain importable without Pillow / Plotly /
         # ipywidgets on the path. Failures surface at call time only.
         try:
-            from causal_ai_av.viz import ClipPlayer, render_frame
+            from cascade_av.viz import ClipPlayer, render_frame
         except ImportError as exc:
             raise ImportError(
                 "Sequence.visualize() requires the 'viz' extra. Install with: "
-                "pip install 'causal-ai-av[viz]'"
+                "pip install 'cascade-av[viz]'"
             ) from exc
 
         duration = float(self.duration_s) if self.duration_s else 0.0
@@ -980,4 +980,4 @@ class Sequence:
             return None
 
 
-__all__ = ["CausalAVDataset", "Sequence"]
+__all__ = ["CascadeDataset", "Sequence"]

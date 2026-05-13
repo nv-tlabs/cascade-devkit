@@ -6,10 +6,10 @@ Run after editing to regenerate:
 
     uv run --group notebooks python scripts/build_notebooks.py
 
-Each notebook reads the dataset root from the `CAUSAL_AV_DATASET_ROOT`
+Each notebook reads the dataset root from the `CASCADE_AV_DATASET_ROOT`
 environment variable — export it before launching Jupyter:
 
-    export CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations
+    export CASCADE_AV_DATASET_ROOT=/path/to/json_annotations
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def save(cells: list[nbf.NotebookNode], path: Path) -> None:
     nb = nbf.v4.new_notebook()
     nb.cells = cells
     nb.metadata["kernelspec"] = {
-        "display_name": "Python 3 (causal_ai_av)",
+        "display_name": "Python 3 (cascade_av)",
         "language": "python",
         "name": "python3",
     }
@@ -81,16 +81,16 @@ STYLING = """
 def build_quickstart() -> None:
     cells = [
         md("""
-        # Quickstart — `causal_ai_av`
+        # Quickstart — `cascade_av`
 
-        This notebook introduces the AV Causal Dataset DevKit. You will
+        This notebook introduces the CASCADE DevKit. You will
         load the corpus, inspect a single clip's annotation, and run
         your first queries in the embedded DSL.
         """),
         md("""
         ## About the dataset
 
-        The **AV Causal Dataset** adds causal and spatio-temporal action
+        The **CASCADE dataset** adds causal and spatio-temporal action
         annotations on top of NVIDIA's *Physical AI AV Dataset*. Each
         clip is a short front-facing driving video paired with a JSON
         annotation bundle (schema `2.0.0`). The DevKit parses those
@@ -140,7 +140,7 @@ def build_quickstart() -> None:
         3. Read back the `MatchSet` result type.
         4. Scope the same DSL to a single clip.
 
-        > Set the `CAUSAL_AV_DATASET_ROOT` environment variable to the
+        > Set the `CASCADE_AV_DATASET_ROOT` environment variable to the
         > directory containing the JSON annotations before running the
         > setup cell below.
         """),
@@ -149,19 +149,19 @@ def build_quickstart() -> None:
         import os
         from pathlib import Path
 
-        from causal_ai_av.dataset import CausalAVDataset
-        from causal_ai_av.io import load_dir
-        from causal_ai_av.query import find_on_bundle
+        from cascade_av.dataset import CascadeDataset
+        from cascade_av.io import load_dir
+        from cascade_av.query import find_on_bundle
         """ + STYLING),
         code("""
-        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
-        ds = CausalAVDataset(dataset_root)
+        dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
+        ds = CascadeDataset(dataset_root)
         print(f"corpus loaded — {len(ds)} clips")
         """),
         md("""
         ## 1. Inspect one clip's annotation
 
-        `CausalAVDataset.get_sequence` downloads the clip video lazily by
+        `CascadeDataset.get_sequence` downloads the clip video lazily by
         default. To keep this tour offline-friendly we parse the JSON
         annotations directly via the local `io.load_dir` helper.
         """),
@@ -185,7 +185,7 @@ def build_quickstart() -> None:
         md("""
         ## 2. Run a DSL query against the whole corpus
 
-        `CausalAVDataset.count(query)` returns the number of clips with
+        `CascadeDataset.count(query)` returns the number of clips with
         at least one match. Queries are plain strings in the DSL — the
         full grammar is covered in `02_query_dsl_tour.ipynb`.
         """),
@@ -313,10 +313,10 @@ def build_dsl_tour() -> None:
         import os
         from pathlib import Path
 
-        from causal_ai_av.dataset import CausalAVDataset
+        from cascade_av.dataset import CascadeDataset
         """ + STYLING),
         code("""
-        ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
+        ds = CascadeDataset(Path(os.environ["CASCADE_AV_DATASET_ROOT"]))
 
         def run(queries: list[str]) -> pd.DataFrame:
             \"\"\"Run a batch of DSL queries and tabulate clip counts.\"\"\"
@@ -496,10 +496,10 @@ def build_statistics() -> None:
         from collections import Counter
         from pathlib import Path
 
-        from causal_ai_av.dataset import CausalAVDataset
+        from cascade_av.dataset import CascadeDataset
         """ + STYLING),
         code("""
-        ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
+        ds = CascadeDataset(Path(os.environ["CASCADE_AV_DATASET_ROOT"]))
         print(f"corpus loaded — {len(ds)} clips")
 
         def entity_count(query: str) -> int:
@@ -686,10 +686,10 @@ def build_scenarios() -> None:
         from dataclasses import dataclass
         from pathlib import Path
 
-        from causal_ai_av.dataset import CausalAVDataset
+        from cascade_av.dataset import CascadeDataset
         """ + STYLING),
         code("""
-        ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
+        ds = CascadeDataset(Path(os.environ["CASCADE_AV_DATASET_ROOT"]))
 
         @dataclass(frozen=True)
         class Scenario:
@@ -855,10 +855,10 @@ def build_video_inspection() -> None:
 
         import numpy as np
 
-        from causal_ai_av.dataset import CausalAVDataset
+        from cascade_av.dataset import CascadeDataset
         """ + STYLING),
         code("""
-        ds = CausalAVDataset(Path(os.environ["CAUSAL_AV_DATASET_ROOT"]))
+        ds = CascadeDataset(Path(os.environ["CASCADE_AV_DATASET_ROOT"]))
         print(f"corpus loaded — {len(ds)} clips")
         """),
         md("""
@@ -969,7 +969,7 @@ def build_visualize() -> None:
         The DSL tells you *where* in the corpus a scenario happens.
         `05_video_inspection.ipynb` closes the loop with bare
         matplotlib frames. This notebook layers on the interactive
-        `causal_ai_av.viz` surface — the clip player widget that
+        `cascade_av.viz` surface — the clip player widget that
         scrubs a video alongside its annotation timeline, plus
         headless helpers for reports and figures.
 
@@ -995,12 +995,12 @@ def build_visualize() -> None:
         import os
         from pathlib import Path
 
-        from causal_ai_av import viz
-        from causal_ai_av.dataset import CausalAVDataset
+        from cascade_av import viz
+        from cascade_av.dataset import CascadeDataset
         """ + STYLING),
         code("""
-        ds = CausalAVDataset(
-            Path(os.environ["CAUSAL_AV_DATASET_ROOT"]),
+        ds = CascadeDataset(
+            Path(os.environ["CASCADE_AV_DATASET_ROOT"]),
             confirm_download_threshold_gb=1000.0,  # auto-confirm; notebook context
         )
         print(f"corpus loaded — {len(ds)} clips")

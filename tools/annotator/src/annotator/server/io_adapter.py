@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Adapter between source paths on disk and `AnnotationBundle` objects.
 
-This module is the only place in the server that talks to `causal_ai_av.io`.
+This module is the only place in the server that talks to `cascade_av.io`.
 It owns clip-index construction, fresh-bundle creation for unlabelled clips
 (video-only sources), and the save side of the round-trip.
 """
@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Literal
 
 from annotator.server.video import probe_video_meta
-from causal_ai_av.io import load_file, save_file
-from causal_ai_av.spec import AnnotationBundle, SilAvAnnotation, VideoMeta
+from cascade_av.io import load_file, save_file
+from cascade_av.spec import AnnotationBundle, SilAvAnnotation, VideoMeta
 
 LOG = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ def build_clip_index(sources: list[Path]) -> dict[str, ClipEntry]:
     Videos derive clip_id from the filename stem. When the same clip_id has
     both a JSON and a video, both paths populate the same `ClipEntry` and
     `kind = "annotated"`. Duplicate JSONs for one clip_id emit a single
-    summary warning (mirroring `causal_ai_av.dataset.CausalAVDataset._scan`).
+    summary warning (mirroring `cascade_av.dataset.CascadeDataset._scan`).
     """
     paths = _iter_paths(sources)
 
@@ -139,10 +139,10 @@ def build_clip_index(sources: list[Path]) -> dict[str, ClipEntry]:
         n = len(duplicate_summary)
         warnings.warn(
             f"{n} clip_id(s) had multiple annotation files; kept first by filename. "
-            "(Set CAUSAL_AV_VERBOSE=1 for per-file detail.)",
+            "(Set CASCADE_AV_VERBOSE=1 for per-file detail.)",
             stacklevel=2,
         )
-        if os.environ.get("CAUSAL_AV_VERBOSE"):
+        if os.environ.get("CASCADE_AV_VERBOSE"):
             for clip_id, kept, dropped in duplicate_summary:
                 dropped_names = ", ".join(p.name for p in dropped)
                 LOG.warning("clip %s: kept %s; dropped %s", clip_id, kept.name, dropped_names)
@@ -197,7 +197,7 @@ def save_bundle(
     """Save `bundle` for `entry`, returning the resulting path on disk.
 
     For already-annotated entries, writes back to `entry.path` (atomic
-    rename inside `causal_ai_av.io.save_file`). For unlabelled entries,
+    rename inside `cascade_av.io.save_file`). For unlabelled entries,
     creates `<destination_dir>/<clip_id>.json` and mutates the entry to
     `kind="annotated"` with its new path.
 

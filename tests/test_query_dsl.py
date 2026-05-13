@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from causal_ai_av.dataset import CausalAVDataset
-from causal_ai_av.query import (
+from cascade_av.dataset import CascadeDataset
+from cascade_av.query import (
     AttrPredicate,
     EntityClause,
     Match,
@@ -23,7 +23,7 @@ from causal_ai_av.query import (
     evaluate,
     parse,
 )
-from causal_ai_av.spec import Agent, AnnotationBundle
+from cascade_av.spec import Agent, AnnotationBundle
 
 CORPUS = Path("/home/horde/01_json_annotations")
 
@@ -94,7 +94,7 @@ def test_entity_clause_couples_constraints(rich_bundle: AnnotationBundle) -> Non
 
 def test_and_across_entities(patched_parent: None) -> None:
     """`agent.type = ped and env.type = crosswalk` finds at least one clip."""
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     ms = ds.find("agent.type = ped and env.type = crosswalk")
     # Soft assertion — corpus is real; we expect *some* clip to have both.
     assert isinstance(ms, MatchSet)
@@ -104,7 +104,7 @@ def test_and_across_entities(patched_parent: None) -> None:
 def test_because_of_parses_and_runs(patched_parent: None) -> None:
     """`ego.action = decel because_of agent.type = ped` parses and evaluates
     without crashing. Match count may be 0 — we only test wiring."""
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     # Just confirm it parses and runs against every clip without error.
     n = ds.count("ego.action = decel because_of agent.type = ped")
     assert isinstance(n, int)
@@ -112,7 +112,7 @@ def test_because_of_parses_and_runs(patched_parent: None) -> None:
 
 
 def test_dataset_count_and_group_by(patched_parent: None) -> None:
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     n = ds.count("agent.type = ped")
     assert isinstance(n, int)
     assert n > 0
@@ -127,7 +127,7 @@ def test_dataset_count_and_group_by(patched_parent: None) -> None:
 
 def test_match_set_carries_dataset_back_reference(patched_parent: None) -> None:
     """MatchSet from `ds.find(...)` resolves `.dataset` back to the dataset."""
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     ms = ds.find("agent.type = ped")
     assert ms.dataset is ds
 
@@ -147,7 +147,7 @@ def test_match_set_carries_dataset_back_reference_from_sequence(
         "get_clip_feature",
         lambda self, *a, **kw: None,
     )
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     clip_id = ds.list_sequences()[0]
     seq = ds.get_sequence(clip_id)
     ms = seq.find("agent.type = ped")
@@ -159,7 +159,7 @@ def test_bundle_level_match_set_has_no_dataset(rich_bundle: AnnotationBundle) ->
     """A MatchSet built via `find_on_bundle` (no `dataset=` kwarg) has
     `.dataset` of None — the bundle-level entry doesn't fabricate a
     back-reference."""
-    from causal_ai_av.query.api import find_on_bundle
+    from cascade_av.query.api import find_on_bundle
 
     ms = find_on_bundle(rich_bundle, "agent.type = ped")
     assert ms.dataset is None
@@ -171,7 +171,7 @@ def test_match_set_dataset_raises_after_gc(patched_parent: None) -> None:
     import gc
     import weakref as _wr
 
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     ms = ds.find("agent.type = ped")
     # Sanity: ms holds only a weakref, not a strong reference back.
     ds_wr = _wr.ref(ds)
@@ -193,7 +193,7 @@ def test_match_set_sequences_yields_pairs(
     """`ms.sequences()` yields `(Match, Sequence)` pairs whose clip_ids match."""
     from physical_ai_av import PhysicalAIAVDatasetInterface
 
-    from causal_ai_av.dataset import Sequence
+    from cascade_av.dataset import Sequence
 
     # `Sequence.__init__` eagerly loads egomotion via the parent — stub it
     # so the constructor doesn't try to hit the network.
@@ -202,7 +202,7 @@ def test_match_set_sequences_yields_pairs(
         "get_clip_feature",
         lambda self, *a, **kw: None,
     )
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     ms = ds.find("agent.type = ped")
     if not ms:
         pytest.skip("corpus has no pedestrian matches")
@@ -228,7 +228,7 @@ def test_match_set_sequences_dedups_per_clip(
         "get_clip_feature",
         lambda self, *a, **kw: None,
     )
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     ms = ds.find("agent.type = ped")
 
     # Find a clip_id that produced at least two matches in this MatchSet.
@@ -256,7 +256,7 @@ def test_match_set_sequences_raises_without_dataset(
     rich_bundle: AnnotationBundle,
 ) -> None:
     """A bundle-level MatchSet has no dataset; `.sequences()` must raise."""
-    from causal_ai_av.query.api import find_on_bundle
+    from cascade_av.query.api import find_on_bundle
 
     ms = find_on_bundle(rich_bundle, "agent.type = ped")
     with pytest.raises(RuntimeError, match="no dataset back-reference"):

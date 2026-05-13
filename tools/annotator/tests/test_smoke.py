@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from causal_ai_av.spec import AnnotationBundle, VideoMeta
+from cascade_av.spec import AnnotationBundle, VideoMeta
 
 
 def _free_port() -> int:

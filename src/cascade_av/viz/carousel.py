@@ -17,7 +17,7 @@ Layouts:
 - `grid`  — `ipywidgets.GridBox` with `repeat(cols, 1fr)` columns.
 
 The carousel is a free function rather than a method on `MatchSet`
-because `MatchSet` lives in `causal_ai_av.query.engine` and a top-level
+because `MatchSet` lives in `cascade_av.query.engine` and a top-level
 import of `viz` from `query/engine.py` would create a cycle
 (`query → viz → dataset → query`). `MatchSet.visualize()` is a two-line
 delegator that imports this function lazily inside the method body.
@@ -27,12 +27,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from causal_ai_av.viz.widget import ClipPlayer
+from cascade_av.viz.widget import ClipPlayer
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     import ipywidgets
 
-    from causal_ai_av.query.engine import MatchSet
+    from cascade_av.query.engine import MatchSet
 
 
 def build_matchset_carousel(

@@ -4,12 +4,12 @@
 
 These are plain frozen dataclasses, *not* Pydantic models, because they are
 computed views over an `AnnotationBundle` rather than serialized state. The
-authoritative on-disk schema lives in `causal_ai_av.spec`.
+authoritative on-disk schema lives in `cascade_av.spec`.
 
 The point-in-time snapshot is `SequenceState`; the window aggregate is
 `SequenceStateRange`. Both are populated by `Sequence.state_at(t, t_end=None)`.
 
-Active-at-t semantics used to populate these (see `CausalAVDataset` for the
+Active-at-t semantics used to populate these (see `CascadeDataset` for the
 implementation):
 
 - Actions, properties, containments, influences, conditions, environments,
@@ -29,8 +29,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from causal_ai_av.query import CausalTriplet
-from causal_ai_av.spec import (
+from cascade_av.query import CausalTriplet
+from cascade_av.spec import (
     Agent,
     AgentAction,
     AgentProperty,

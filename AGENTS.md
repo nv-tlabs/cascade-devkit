@@ -9,7 +9,8 @@
 
 ## What this repo is
 
-`causal_ai_av` is the **DevKit for the AV Causal Dataset** — causal and
+`cascade_av` is the **DevKit for the CASCADE dataset** (*Causal
+Spatio-Temporal Analysis of Driving Environments*) — causal and
 spatio-temporal action annotations on top of NVIDIA's *Physical AI AV
 Dataset*. It parses the annotation JSON into a typed Pydantic tree and
 exposes a small query language for searching the corpus by entity,
@@ -56,10 +57,10 @@ If you are new to the repo, read in this order:
 
 | Path | What lives here |
 |------|-----------------|
-| `src/causal_ai_av/` | Python DevKit: schema, I/O, dataset, query DSL |
-| `src/causal_ai_av/spec/` | Pydantic models for the annotation JSON (schema `2.0.0`) |
-| `src/causal_ai_av/query/` | DSL lexer + parser + evaluator |
-| `src/causal_ai_av/viz/` | Visualization surface: `render_frame`, `render_timeline`, `ClipPlayer`, carousel. Lives behind the optional `[viz]` extra. |
+| `src/cascade_av/` | Python DevKit: schema, I/O, dataset, query DSL |
+| `src/cascade_av/spec/` | Pydantic models for the annotation JSON (schema `2.0.0`) |
+| `src/cascade_av/query/` | DSL lexer + parser + evaluator |
+| `src/cascade_av/viz/` | Visualization surface: `render_frame`, `render_timeline`, `ClipPlayer`, carousel. Lives behind the optional `[viz]` extra. |
 | `tools/` | User-facing utilities layered on the DevKit |
 | `tools/annotator/` | Local FastAPI + React annotation tool (uv workspace member) |
 | `tools/annotator/web/` | Vite + React 19 + Tailwind v4 frontend |
@@ -100,7 +101,7 @@ notebook builds, or one-off REPLs.
 
 `make test` runs `uv run pytest`. The annotator's video tests mock
 `subprocess.run` / `shutil.which`, so real `ffmpeg` is never invoked.
-Tests that need the corpus expect `CAUSAL_AV_DATASET_ROOT` to point at
+Tests that need the corpus expect `CASCADE_AV_DATASET_ROOT` to point at
 a directory of annotation JSONs; unit tests do not require it.
 
 ## Skills
@@ -116,7 +117,7 @@ Current project skills:
 |-------|---------|
 | [`run-tests`](.claude/skills/run-tests/SKILL.md) | Run the pytest suite via `make test`; diagnose common failure modes. |
 | [`annotator-dev`](.claude/skills/annotator-dev/SKILL.md) | Launch the annotator backend; diagnose blank-page / port / video issues. |
-| [`add-annotator-cli-flag`](.claude/skills/add-annotator-cli-flag/SKILL.md) | Add a new flag to the `causal-av-annotate` CLI; conventions + test pattern. |
+| [`add-annotator-cli-flag`](.claude/skills/add-annotator-cli-flag/SKILL.md) | Add a new flag to the `cascade-annotate` CLI; conventions + test pattern. |
 
 More skills land as repeated patterns emerge. Personal/experimental
 skills live in `~/.claude/skills/`; only project-wide procedures
@@ -165,8 +166,8 @@ The DevKit reads these from the environment. Copy
 
 | Variable | Purpose | Required? |
 |----------|---------|-----------|
-| `CAUSAL_AV_DATASET_ROOT` | Path to the annotation-JSON directory | Yes for examples / notebooks / tests that iterate the real corpus |
-| `CAUSAL_AV_VERBOSE` | Set to `1` for per-file detail in dataset-scan warnings | No (default `0`) |
+| `CASCADE_AV_DATASET_ROOT` | Path to the annotation-JSON directory | Yes for examples / notebooks / tests that iterate the real corpus |
+| `CASCADE_AV_VERBOSE` | Set to `1` for per-file detail in dataset-scan warnings | No (default `0`) |
 
 Setting options: shell `export` (or per-command
 `VAR=... make test`); a `.env` file at the repo root (auto-loaded by
@@ -178,7 +179,7 @@ which auto-inject across sessions.
 
 - `.env` (real values; gitignored).
 - `*.bak` — annotator first-save backups of user data.
-- `~/.cache/causal-av-annotator/` — transcode cache.
+- `~/.cache/cascade-annotator/` — transcode cache.
 - Anything under `meta/` — gitignored working/research notes.
 - Real corpus paths in source. Use `/path/to/json_annotations` in
   examples and docs.

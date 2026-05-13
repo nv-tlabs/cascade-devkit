@@ -12,8 +12,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "causal-ai-av",
-    "causal-av-annotator",
+    "cascade-annotator",
+    "cascade-av",
 ]
 
 [[package]]
@@ -217,7 +217,26 @@ css = [
 ]
 
 [[package]]
-name = "causal-ai-av"
+name = "cascade-annotator"
+version = "0.1.0"
+source = { editable = "tools/annotator" }
+dependencies = [
+    { name = "cascade-av" },
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cascade-av", editable = "." },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "pydantic", specifier = ">=2.6" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+]
+
+[[package]]
+name = "cascade-av"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -226,7 +245,7 @@ dependencies = [
 
 [package.optional-dependencies]
 annotator = [
-    { name = "causal-av-annotator" },
+    { name = "cascade-annotator" },
 ]
 hf = [
     { name = "physical-ai-av" },
@@ -254,7 +273,7 @@ notebooks = [
 [package.metadata]
 requires-dist = [
     { name = "anywidget", marker = "extra == 'viz'", specifier = ">=0.9" },
-    { name = "causal-av-annotator", marker = "extra == 'annotator'", editable = "tools/annotator" },
+    { name = "cascade-annotator", marker = "extra == 'annotator'", editable = "tools/annotator" },
     { name = "ipywidgets", marker = "extra == 'viz'", specifier = ">=8.0" },
     { name = "physical-ai-av", marker = "extra == 'hf'", specifier = ">=0.2.2" },
     { name = "pillow", marker = "extra == 'viz'", specifier = ">=10.0" },
@@ -274,25 +293,6 @@ notebooks = [
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "nbformat", specifier = ">=5.9" },
     { name = "pandas", specifier = ">=2.1" },
-]
-
-[[package]]
-name = "causal-av-annotator"
-version = "0.1.0"
-source = { editable = "tools/annotator" }
-dependencies = [
-    { name = "causal-ai-av" },
-    { name = "fastapi" },
-    { name = "pydantic" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "causal-ai-av", editable = "." },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "pydantic", specifier = ">=2.6" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 
 [[package]]

@@ -3,7 +3,7 @@
 """Dispatch-matrix coverage for ``Sequence.visualize``.
 
 The placeholder dict-shape return was replaced in PR-6 by a polymorphic
-dispatcher into ``causal_ai_av.viz``. The dispatch matrix is:
+dispatcher into ``cascade_av.viz``. The dispatch matrix is:
 
     seq.visualize()                 -> ClipPlayer over the whole clip
     seq.visualize(t=2.5)            -> ClipPlayer ±1s around 2.5
@@ -25,12 +25,12 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from causal_ai_av.dataset import Sequence
-from causal_ai_av.query.context import context_at
-from causal_ai_av.query.engine import Match
-from causal_ai_av.query.time import Interval
-from causal_ai_av.spec import AnnotationBundle, SilAvAnnotation, VideoMeta
-from causal_ai_av.viz import ClipPlayer
+from cascade_av.dataset import Sequence
+from cascade_av.query.context import context_at
+from cascade_av.query.engine import Match
+from cascade_av.query.time import Interval
+from cascade_av.spec import AnnotationBundle, SilAvAnnotation, VideoMeta
+from cascade_av.viz import ClipPlayer
 from tests.conftest import FakeVideoReader
 
 
@@ -291,7 +291,7 @@ def test_visualize_raises_when_window_outside_video_coverage() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 9. Import hygiene — `from causal_ai_av.dataset import Sequence` must NOT
+# 9. Import hygiene — `from cascade_av.dataset import Sequence` must NOT
 # pull in Pillow / Plotly / ipywidgets. The viz extras are optional and the
 # dispatcher lazy-imports them inside `.visualize()`.
 # ---------------------------------------------------------------------------
@@ -306,7 +306,7 @@ def test_importing_sequence_does_not_eager_load_viz_extras() -> None:
 
     script = (
         "import sys\n"
-        "from causal_ai_av.dataset import Sequence  # noqa: F401\n"
+        "from cascade_av.dataset import Sequence  # noqa: F401\n"
         "banned = ['PIL', 'plotly', 'ipywidgets']\n"
         "leaked = [m for m in banned if m in sys.modules]\n"
         "print('LEAKED=' + ','.join(leaked))\n"

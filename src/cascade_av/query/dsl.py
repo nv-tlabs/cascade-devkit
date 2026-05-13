@@ -20,7 +20,7 @@ import difflib
 from dataclasses import dataclass
 from typing import Union
 
-from causal_ai_av.query.entities import (
+from cascade_av.query.entities import (
     ENTITIES,
     TOP_LEVEL_ENTITIES,
     candidate_attribute_names,

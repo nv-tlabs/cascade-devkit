@@ -1,6 +1,6 @@
 # Annotator user guide
 
-The annotator is a local web app for editing AV Causal Dataset annotation
+The annotator is a local web app for editing CASCADE dataset annotation
 JSON bundles in a browser. You launch it from the terminal, it opens
 `http://127.0.0.1:8765/` in your browser, and from there you click,
 drag, and key-stroke your way through annotating clips. No login, no

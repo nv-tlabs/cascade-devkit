@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PIL import Image
 
-from causal_ai_av.viz.timeline import (
+from cascade_av.viz.timeline import (
     _PX_PER_LANE,
     _paint_timeline_onto,
     _timeline_px_for,
@@ -42,7 +42,7 @@ from causal_ai_av.viz.timeline import (
 if TYPE_CHECKING:  # pragma: no cover — typing only
     import plotly.graph_objects as go
 
-    from causal_ai_av.dataset import Sequence
+    from cascade_av.dataset import Sequence
 
 
 # Subplot vertical-gap fraction. Top subplot is the video frame

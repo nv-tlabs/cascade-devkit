@@ -33,7 +33,7 @@ annotator-dev:  ## Launch the annotator backend. Pass DATA=<path>. Optional: POR
 	  echo "error: set DATA=<path>. example: make annotator-dev DATA=~/01_json_annotations"; \
 	  exit 2; \
 	fi
-	uv run causal-av-annotate $(DATA) $(if $(PORT),--port $(PORT))
+	uv run cascade-annotate $(DATA) $(if $(PORT),--port $(PORT))
 
 annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/dist).
 	cd tools/annotator/web && npm run build

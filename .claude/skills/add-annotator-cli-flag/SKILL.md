@@ -1,6 +1,6 @@
 ---
 name: add-annotator-cli-flag
-description: Add a new flag to the `causal-av-annotate` CLI. Extend `_build_parser`, thread the value through `main`, propagate to `create_app` / `VideoResolver`, document in the annotator README, and test.
+description: Add a new flag to the `cascade-annotate` CLI. Extend `_build_parser`, thread the value through `main`, propagate to `create_app` / `VideoResolver`, document in the annotator README, and test.
 ---
 
 # Add a flag to the annotator CLI
@@ -54,6 +54,6 @@ in `_build_parser()` inside
 ## Verify
 
 ```bash
-uv run causal-av-annotate --help          # new flag is listed
+uv run cascade-annotate --help          # new flag is listed
 make test                                  # the new test passes
 ```

@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Pydantic v2 schema for the AV Causal annotation format (schema_version 2.0.0).
+"""Pydantic v2 schema for the CASCADE annotation format (schema_version 2.0.0).
 
 Single entry point: `AnnotationBundle`. Everything is reachable from it.
 """
 
-from causal_ai_av.spec.schema import (
+from cascade_av.spec.schema import (
     Agent,
     AgentAction,
     AgentProperty,
