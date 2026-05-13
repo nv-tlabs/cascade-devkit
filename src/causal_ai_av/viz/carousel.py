@@ -138,7 +138,8 @@ def build_matchset_carousel(
         )
 
         label = (
-            f"<b>{match.clip_id}</b> &middot; {match.entity!s} &middot; "
+            f"<b>{match.clip_id}</b> &middot; "
+            f"{_short_entity_label(match.entity)} &middot; "
             f"[{t0_raw:.2f}, {t1_raw:.2f}]s"
         )
         children.append(
@@ -169,6 +170,51 @@ def build_matchset_carousel(
         )
         return ipywidgets.VBox([notice, body])
     return body
+
+
+def _short_entity_label(entity: Any) -> str:
+    """One-line summary of the matched entity for the carousel label.
+
+    `Match.entity` is typed `object` — at runtime it's one of the
+    spec Pydantic models (`Agent`, `EgoVehicle`, `Environment`,
+    `TrafficObject`, `TrafficLight`) or one of their sub-items
+    (`AgentAction`, `EgoAction`, `Containment`, `Condition`,
+    `LightStates`, `AgentProperty`, etc.). Pydantic's default
+    `__str__` / `__repr__` dumps every field, which floods the
+    Jupyter cell output for a 3-match carousel with thousands of
+    lines of state. Here we walk the common attribute set
+    (`id`, then a type-disambiguating field) and return a tight
+    `ClassName(id, kind)` string. Falls back to the bare class
+    name when no recognized attributes are present, so an unknown
+    entity type still renders something readable.
+    """
+    if entity is None:
+        return "&mdash;"
+    cls_name = type(entity).__name__
+    # `id` is the spec's stable handle; almost every entity has one.
+    entity_id = getattr(entity, "id", None)
+    # The disambiguating "what kind" attribute varies by class:
+    #   Agent / TrafficObject / Environment → `type`
+    #   AgentAction / EgoAction              → `action_type`
+    #   AgentProperty / EgoProperty          → `property_type`
+    #   LightStates                          → `color` or `type`
+    #   Condition                            → `type` (list)
+    # Try them in order and pick the first non-empty one.
+    kind: str | None = None
+    for attr in ("action_type", "property_type", "type", "color"):
+        value = getattr(entity, attr, None)
+        if value is None:
+            continue
+        # `Condition.type` is `list[str]`; stringify the first item.
+        if isinstance(value, list):
+            value = value[0] if value else None
+        if value:
+            kind = str(value)
+            break
+    parts = [p for p in (entity_id, kind) if p]
+    if not parts:
+        return cls_name
+    return f"{cls_name}({', '.join(parts)})"
 
 
 def _interval_seconds(match: Any, seq: Any) -> tuple[float, float]:

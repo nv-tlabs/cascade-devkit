@@ -449,3 +449,110 @@ def test_invalid_layout_raises_value_error() -> None:
 
     with pytest.raises(ValueError, match="layout must be 'stack' or 'grid'"):
         build_matchset_carousel(ms, layout="carousel")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Per-match label uses short entity summary, not Pydantic repr
+# ---------------------------------------------------------------------------
+
+
+def _collect_label_html(box: ipywidgets.Widget) -> list[str]:
+    """Walk a VBox/GridBox and pull out every ipywidgets.HTML's value.
+
+    The carousel emits one `[HTML(label), VBox(player)]` row per match;
+    we extract the label HTML strings for assertion.
+    """
+    out: list[str] = []
+    for child in getattr(box, "children", ()) or ():
+        if isinstance(child, ipywidgets.HTML):
+            out.append(child.value)
+        else:
+            out.extend(_collect_label_html(child))
+    return out
+
+
+def test_match_label_uses_short_entity_summary_not_pydantic_repr() -> None:
+    """Per-match label HTML must be a tight `ClassName(id, kind)`
+    string — NOT Pydantic's default repr (which dumps every field
+    and floods the Jupyter cell with thousands of lines per match
+    on a 3-match carousel).
+    """
+    from causal_ai_av.spec import Agent
+
+    seq = _seq_with_fake_video("clip_a", duration_s=10.0)
+    ds = _FakeDataset({"clip_a": seq})
+    agent = Agent(
+        id="Agent3",
+        type="oxd:Pedestrian",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:5.0",
+    )
+    match = Match("clip_a", agent, Interval(1.0, 2.0))
+    ms = _make_matchset([match], dataset=ds)
+    box = build_matchset_carousel(ms)
+    labels = _collect_label_html(box)
+    assert labels, "expected at least one label HTML in the carousel"
+    label = labels[0]
+    # Tight format: ClassName(id, kind)
+    assert "Agent(Agent3, oxd:Pedestrian)" in label, (
+        f"expected short label, got {label!r}"
+    )
+    # Negative pin: the Pydantic repr fields must NOT leak in.
+    for forbidden in (
+        "visibility_start_timestamp",
+        "visibility_end_timestamp",
+        "actions=[",
+        "properties=[",
+        "bounding_boxes=",
+    ):
+        assert forbidden not in label, (
+            f"Pydantic repr field {forbidden!r} leaked into label: "
+            f"{label[:300]!r}"
+        )
+
+
+def test_short_entity_label_per_type() -> None:
+    """Spot-check the short-label format across the common entity
+    types the carousel might receive."""
+    from causal_ai_av.spec import Agent, AgentAction, Condition, Environment
+
+    from causal_ai_av.viz.carousel import _short_entity_label
+
+    a = Agent(
+        id="Agent3",
+        type="oxd:Pedestrian",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:5.0",
+    )
+    assert _short_entity_label(a) == "Agent(Agent3, oxd:Pedestrian)"
+
+    aa = AgentAction(
+        id="AgentAction4",
+        action_type="oxd:Walk",
+        start_timestamp="0:0.0",
+        end_timestamp="0:5.0",
+    )
+    assert _short_entity_label(aa) == "AgentAction(AgentAction4, oxd:Walk)"
+
+    env = Environment(
+        id="Env3",
+        type="fst:Road",
+        start_timestamp="0:0.0",
+        end_timestamp="0:10.0",
+    )
+    assert _short_entity_label(env) == "Environment(Env3, fst:Road)"
+
+    cond = Condition(
+        id="Cond1",
+        env_id="Env3",
+        type=["Construction Zone"],
+        start_timestamp="0:0.0",
+        end_timestamp="0:5.0",
+    )
+    # `Condition.type` is `list[str]`; helper picks the first item.
+    assert _short_entity_label(cond) == "Condition(Cond1, Construction Zone)"
+
+    # Bare string (legacy) still produces something usable.
+    assert _short_entity_label("agent_0") == "str"
+    # None case.
+    assert _short_entity_label(None) == "&mdash;"
