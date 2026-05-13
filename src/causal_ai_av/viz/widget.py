@@ -294,7 +294,7 @@ class ClipPlayer:
         # `height` is overridden below once the adaptive sizing has
         # been computed from the timeline's lane counts.
         fig.update_layout(
-            template="plotly_dark",
+            template="plotly_white",
             margin={"l": 80, "r": 20, "t": 20, "b": 40},
             showlegend=False,
             xaxis={"showticklabels": False, "showgrid": False, "zeroline": False},

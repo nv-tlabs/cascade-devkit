@@ -155,12 +155,15 @@ _LABEL_COLOR_RE = re.compile(r"color\s*:\s*(#[0-9a-fA-F]{6})")
 
 
 def _label_text(tick_html: str) -> str:
-    """Strip `<span ...>` wrappers to recover plain tick text.
+    """Strip `<span ...>` wrappers AND trailing non-breaking spaces
+    to recover plain tick text.
 
-    Blank ticks (trailing sub-rows) stay blank — no wrapper means
-    nothing to strip.
+    Tick labels are left-aligned by padding the right edge with
+    ` ` (non-breaking space, U+00A0) so the visible text starts
+    at a consistent left column. For string comparisons (`.index(...)`
+    etc.) we strip both the HTML wrapper and the trailing padding.
     """
-    return _LABEL_TEXT_RE.sub("", tick_html)
+    return _LABEL_TEXT_RE.sub("", tick_html).rstrip("  ")
 
 
 def _label_color(tick_html: str) -> str | None:
@@ -243,9 +246,12 @@ def test_render_timeline_has_segment_shapes_per_group() -> None:
     )
 
 
-def test_render_timeline_layout_is_dark_with_locked_axes() -> None:
+def test_render_timeline_layout_is_light_with_locked_axes() -> None:
     fig = render_timeline(_seq(_make_full_bundle()))
-    assert fig.layout.template.layout.paper_bgcolor is not None  # plotly_dark
+    # Light template (`plotly_white`) — paper background is white,
+    # which makes the figure suitable for Jupyter notebooks (light
+    # bg by default) and paper figures.
+    assert fig.layout.template.layout.paper_bgcolor is not None  # plotly_white
     # Adaptive height: the figure should never collapse below the
     # 240px floor, even for a sparse clip. The exact value scales
     # with the deepest sub-lane stack so we only assert the floor
@@ -381,7 +387,7 @@ def test_render_timeline_on_empty_bundle() -> None:
         assert _arrow_shapes(fig, family) == []
     # With the family-band layout, an empty bundle has zero populated
     # bands, so the y-axis tick list is empty. The figure still
-    # renders (xaxis range + plotly_dark template are set).
+    # renders (xaxis range + plotly_white template are set).
     yticks = list(fig.layout.yaxis.ticktext or ())
     assert yticks == []
 
@@ -734,11 +740,11 @@ def test_disabling_arrow_family_drops_its_arrowheads() -> None:
 
 
 def test_arrowhead_has_visible_outline() -> None:
-    """Each arrowhead marker carries a 1.5px Tailwind slate-50
-    (`#f8fafc`) outline so the head pops off any same-hue target
-    row (e.g. containment-green over the Env row). Family fill is
-    preserved; only `marker.line` changes from the prior
-    invisible `{"width": 0}`.
+    """Each arrowhead marker carries a 1.5px Tailwind slate-900
+    (`#0f172a`) outline so the head pops off any same-hue target
+    row on the `plotly_white` template. Family fill is preserved;
+    only `marker.line` changes from the prior invisible
+    `{"width": 0}`.
     """
     fig = render_timeline(_seq(_make_full_bundle()))
     heads = [
@@ -750,8 +756,8 @@ def test_arrowhead_has_visible_outline() -> None:
         assert float(line.width) == 1.5, (
             f"arrowhead {head.name} has width={line.width!r}, expected 1.5"
         )
-        assert line.color == "#f8fafc", (
-            f"arrowhead {head.name} has color={line.color!r}, expected '#f8fafc'"
+        assert line.color == "#0f172a", (
+            f"arrowhead {head.name} has color={line.color!r}, expected '#0f172a'"
         )
 
 
@@ -1605,15 +1611,47 @@ def test_entity_block_tint_alternates_within_category() -> None:
         s for s in _entity_block_shapes(fig)
         if s.get("name") == "entity_block:Agents:1"
     )
-    # Same neutral white base, alternating opacity → different
-    # fillcolor strings.
+    # Same neutral slate-900 base, alternating opacity → different
+    # fillcolor strings. On the light `plotly_white` template, a
+    # dark tint reads as a faint gray on white.
     assert a0["fillcolor"] != a1["fillcolor"], (
         "adjacent Agent blocks share the same fillcolor — "
         "alternating opacity broke"
     )
-    # Neutral white triple: every channel = 255.
-    assert "255, 255, 255" in a0["fillcolor"] or "255,255,255" in a0["fillcolor"]
-    assert "255, 255, 255" in a1["fillcolor"] or "255,255,255" in a1["fillcolor"]
+    # Tailwind slate-900 triple: (15, 23, 42).
+    assert "15, 23, 42" in a0["fillcolor"] or "15,23,42" in a0["fillcolor"]
+    assert "15, 23, 42" in a1["fillcolor"] or "15,23,42" in a1["fillcolor"]
+
+
+def test_tick_labels_left_aligned_by_nbsp_padding() -> None:
+    """Tick labels are padded on the right with U+00A0 (non-breaking
+    space) so the visible text starts at a consistent left column.
+    SVG `<text>` anchors at its end, so the padding pushes the
+    visible portion leftward — that gives left-aligned y-tick
+    labels along a shared vertical edge.
+
+    Pin: every non-blank tick label ends in `<text>` + N nbsp's
+    + `</span>`, where (len(text) + N) is the same for every label
+    (i.e. all labels share the longest plain-text width).
+    """
+    fig = render_timeline(_seq(_make_full_bundle()))
+    raw = _yticks_raw(fig)
+    non_blank = [t for t in raw if t]
+    assert non_blank, "expected at least one non-blank tick"
+    # Extract padded text (HTML stripped, including the trailing
+    # nbsp's) by removing only the wrapper, not the padding.
+    inner_lengths: set[int] = set()
+    for t in non_blank:
+        inner = _LABEL_TEXT_RE.sub("", t)
+        inner_lengths.add(len(inner))
+        # Padding MUST be U+00A0, not a regular space.
+        if len(inner) > len(inner.rstrip("  ")):
+            assert "  " in inner, (
+                f"tick {t!r} padded with non-nbsp whitespace"
+            )
+    assert len(inner_lengths) == 1, (
+        f"tick label widths not equalized: {sorted(inner_lengths)}"
+    )
 
 
 def test_tick_labels_wrap_text_in_category_colored_span() -> None:
