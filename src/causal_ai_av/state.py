@@ -27,7 +27,7 @@ Range counterparts use `Interval.overlaps(Interval(t1, t2))` instead of
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from causal_ai_av.query import CausalTriplet
 from causal_ai_av.spec import (
@@ -49,10 +49,12 @@ from causal_ai_av.spec import (
 if TYPE_CHECKING:  # pragma: no cover — typing only
     # `EgomotionState` lives in the parent DevKit which is an optional
     # install-time dependency. Avoid importing it at module top so this
-    # module is usable without the `[hf]` extra.
+    # module is usable without the `[hf]` extra. The string-quoted
+    # annotations below resolve via this import under type-checkers;
+    # `from __future__ import annotations` keeps them as strings at
+    # runtime so the `else: EgomotionState = Any` fallback that used to
+    # live here is unnecessary.
     from physical_ai_av.egomotion import EgomotionState
-else:
-    EgomotionState = Any  # type: ignore[misc,assignment]
 
 
 # -----------------------------------------------------------------------------
