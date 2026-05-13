@@ -23,15 +23,15 @@ Timeline.tsx`. Each family has its own color:
                                               annotator's "BECAUSE" pill
                                               (the TS code uses `#b45309`;
                                               we pick a brighter rose so it
-                                              reads clearly on
-                                              `plotly_dark`).
+                                              reads clearly on the
+                                              `plotly_white` template).
 - `link_to`        → teal      (`#14b8a6`)
 - `containment`    → green     (`#10b981`)
 - `influence`      → purple    (`#a78bfa`)
 - `action_target`  → orange    (`#f97316`)
 
-These are chosen to be high-contrast against `plotly_dark` while staying
-distinguishable from each other. **Invariant:** the arrow palette must
+These are chosen to be high-contrast against `plotly_white` while
+staying distinguishable from each other. **Invariant:** the arrow palette must
 stay disjoint from `entity_color()`'s row-fill palette — an arrow that
 shares a hex with the row it crosses would visually disappear. A guard
 test in `tests/test_viz_timeline.py` pins this.
@@ -328,32 +328,21 @@ def _segment_band_key(seg: Segment) -> BandKey | None:
     return (category, entity_idx, family, sub_row_idx, sh_idx)
 
 
-def _band_label(key: BandKey) -> str:
-    """Y-axis tick text for a band.
-
-    Short-form labels wrapped in an HTML `<span style="color:#...">`
-    so each tick text carries the category cue via color. The
-    per-entity background band (painted by `_paint_timeline_onto`)
-    handles row-clustering; the color of the label tells the reader
-    which category the row belongs to. The result is a
-    `plotly`-rendered SVG `<text>` with a colored child — every
-    "Agent Track N" / "containment" / "actions" tick shows up in
-    purple, every "Env Track N" / "conditions" in green, etc.
+def _band_label_text(key: BandKey) -> str:
+    """Plain text for a band's y-tick label (no color wrapper).
 
       - Parent row:                            "<Entity Track Name>"
         (e.g. "Env Track 1", "Agent Track 2")
       - Sub-row, family head (sub_row_idx == 0):   "<leaf>"
         (e.g. "conditions", "actions", "containment")
-      - Sub-row, trailing (sub_row_idx > 0):        ""  (no wrapper)
+      - Sub-row, trailing (sub_row_idx > 0):        ""  (no label)
       - Lights per-SH family head:             "sh<i> · <leaf>"
         (kept — a single Light can host multiple signal heads, so
         the sh tag is the only disambiguator within the block)
       - Lights per-SH trailing sub-row:              ""
-      - Ego: singleton — no entity tag, just the leaf (still
-        category-colored).
+      - Ego: singleton — no entity tag, just the leaf.
     """
     category, entity_idx, family, sub_row_idx, sh_idx = key
-    text: str
     if family == "parent":
         # The parent bar labels its own row. For Ego, no per-entity tag
         # (Ego doesn't emit a `parent` band — it's excluded from
@@ -361,14 +350,58 @@ def _band_label(key: BandKey) -> str:
         if category == "Ego":
             return ""
         track_prefix = _ENTITY_TRACK_PREFIX.get(category, f"{category} Track")
-        text = f"{track_prefix} {entity_idx + 1}"
-    elif sub_row_idx > 0:
+        return f"{track_prefix} {entity_idx + 1}"
+    if sub_row_idx > 0:
         # Trailing sub-rows render blank — the annotator's labeling
         # rule keeps the family name on the FIRST sub-row only.
         return ""
-    else:
-        leaf = _FAMILY_LABEL.get(family, family)
-        text = f"sh{sh_idx} · {leaf}" if sh_idx is not None else leaf
+    leaf = _FAMILY_LABEL.get(family, family)
+    return f"sh{sh_idx} · {leaf}" if sh_idx is not None else leaf
+
+
+# Non-breaking space used to pad tick labels for left-alignment.
+# Regular spaces are collapsed by SVG text rendering; non-breaking
+# spaces are not. With the y-axis tick text anchored at its right
+# edge (the SVG default), trailing nbsp's push the visible text
+# leftward into the label margin — giving a left-aligned look that
+# matches the annotator's row-label layout.
+_LABEL_PAD: str = " "
+
+
+def _band_label_html(key: BandKey, pad_to: int) -> str:
+    """Render a band's tick label as colored HTML, left-aligned by
+    trailing-nbsp padding to `pad_to` characters.
+
+    The tick text is wrapped in `<span style="color:#...">` so each
+    tick carries the category cue via color (Plotly's SVG renderer
+    interprets HTML inside `ticktext`). The right edge of the span
+    sits at the y-axis tick anchor; trailing nbsp's are appended
+    *inside* the span so the visible text starts at a consistent
+    left edge across every label.
+    """
+    category, _entity_idx, _family, sub_row_idx, _sh_idx = key
+    text = _band_label_text(key)
+    if not text:
+        return ""
+    pad_count = max(0, pad_to - len(text))
+    padded_text = text + _LABEL_PAD * pad_count
+    # `sub_row_idx > 0` is already filtered to "" above; the active
+    # ticks here are parent rows + family heads, both of which want
+    # the category color.
+    _ = sub_row_idx  # silence "unused" — kept in signature for future use
+    color = _category_label_color(category)
+    return f'<span style="color:{color}">{padded_text}</span>'
+
+
+# Back-compat alias. Older call sites (and tests) may import
+# `_band_label` directly. The new two-stage API is
+# `_band_label_text` + `_band_label_html`; this alias produces an
+# unpadded label so out-of-tree callers keep working.
+def _band_label(key: BandKey) -> str:
+    text = _band_label_text(key)
+    if not text:
+        return ""
+    category = key[0]
     color = _category_label_color(category)
     return f'<span style="color:{color}">{text}</span>'
 
@@ -674,8 +707,10 @@ def _entity_blocks(
 def _entity_block_fill(_category: str, entity_idx: int) -> str:
     """Translucent fillcolor for a `(category, entity_idx)` block.
 
-    Soft neutral white tint — the category cue is carried by the
-    colored tick label, not the band. Alternating opacities
+    Soft neutral *dark* tint — paints `#0f172a` (Tailwind slate-900)
+    at low alpha so it reads as a faint gray on the `plotly_white`
+    background. The category cue is carried by the colored tick
+    label, not the band. Alternating opacities
     (`_ENTITY_BLOCK_TINT_EVEN` vs `_ENTITY_BLOCK_TINT_ODD`) per-entity
     keep adjacent blocks visually distinct, like the annotator's
     soft-row-background pattern.
@@ -685,7 +720,7 @@ def _entity_block_fill(_category: str, entity_idx: int) -> str:
         if entity_idx % 2 == 0
         else _ENTITY_BLOCK_TINT_ODD
     )
-    return _hex_to_rgba("#ffffff", alpha)
+    return _hex_to_rgba("#0f172a", alpha)
 
 
 def _category_label_color(category: str) -> str:
@@ -1188,13 +1223,13 @@ def _paint_timeline_onto(
                     "size": 10,
                     "angle": angle_deg,
                     "color": _ARROW_COLORS[family],
-                    # Tailwind slate-50 outline — pops off any
+                    # Tailwind slate-900 outline — pops off any
                     # same-hue target row (containment-green over
-                    # Env, influence-purple over Agents, etc.)
-                    # without strobing the way pure white would on
-                    # `plotly_dark`. Family color stays as the fill
-                    # so the head is still identifiable by hue.
-                    "line": {"color": "#f8fafc", "width": 1.5},
+                    # Env, influence-purple over Agents, etc.) on
+                    # the `plotly_white` background. Family color
+                    # stays as the fill so the head is still
+                    # identifiable by hue.
+                    "line": {"color": "#0f172a", "width": 1.5},
                 },
                 hoverinfo="text",
                 hovertext=(
@@ -1355,7 +1390,15 @@ def _paint_timeline_onto(
     # ---------------------------------------------------------------
     if band_keys:
         ticks_vals = [band_row[k] for k in band_keys]
-        ticks_text = [_band_label(k) for k in band_keys]
+        # Left-align all tick labels by padding each visible text to
+        # the longest plain-text width with trailing non-breaking
+        # spaces. SVG `<text>` anchors at the end (the y-axis line),
+        # so trailing nbsp's push the visible portion leftward — the
+        # net effect is left-aligned y-tick labels along a consistent
+        # vertical edge, matching the annotator's row-label layout.
+        plain_texts = [_band_label_text(k) for k in band_keys]
+        pad_to = max((len(t) for t in plain_texts if t), default=0)
+        ticks_text = [_band_label_html(k, pad_to=pad_to) for k in band_keys]
         y_min = -0.5
         y_max = len(band_keys) - 0.5
     else:
@@ -1517,7 +1560,7 @@ def render_timeline(
         int(height) if height is not None else _timeline_px_for(paint)
     )
     fig.update_layout(
-        template="plotly_dark",
+        template="plotly_white",
         height=resolved_height,
         margin={"l": 80, "r": 20, "t": 20, "b": 40},
     )
