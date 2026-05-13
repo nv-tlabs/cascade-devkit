@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import weakref
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Iterator, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Iterator, Sequence
 
 from causal_ai_av.query.constants import ALIAS_FAMILIES, resolve_alias
 from causal_ai_av.query.dsl import (
