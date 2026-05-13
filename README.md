@@ -35,29 +35,47 @@ through a `because_of` operator.
 ## Install
 
 This project uses [uv](https://docs.astral.sh/uv/) for environment and
-dependency management.
+dependency management. Clone the repo first; the package is not on
+PyPI.
 
 ```bash
-# Core install
-uv sync
+# One-shot — Python deps (all extras) + the annotator's npm deps.
+make install
 
-# With the Physical AI AV Dataset integration (video loading)
-uv sync --extra hf
-
-# Plus the notebook tooling (JupyterLab, matplotlib, pandas)
-uv sync --all-extras --group notebooks
+# Or run the steps explicitly:
+uv sync                                    # core install
+uv sync --extra hf                         # + parent-dataset integration (video loading)
+uv sync --all-extras --group notebooks     # + notebook tooling (JupyterLab, matplotlib, pandas)
 ```
 
 Requires Python ≥ 3.11.
 
-## Pointing at the corpus
+## Getting the data
 
-Examples and notebooks read the dataset root from an environment
-variable:
+The DevKit reads two kinds of artifacts:
+
+1. **Annotation JSON bundles** — the causal/spatio-temporal labels
+   this repo adds. You point `CausalAVDataset` at a local directory of
+   `*.json` files.
+2. **Sensor data** (camera videos, LiDAR, radar, egomotion) — the
+   underlying *Physical AI AV Dataset* on HuggingFace. Pulled
+   on-demand by `ds.download_clips(...)` when you need pixels or
+   sensors. See [Working with the sensor data](#working-with-the-sensor-data)
+   below.
+
+Until the annotation bundles ship publicly, obtain them from the
+project owners and put the directory of `*.json` files anywhere on
+local disk.
+
+Examples and notebooks read the path from an environment variable:
 
 ```bash
 export CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations
 ```
+
+A [`.env.example`](.env.example) ships at the repo root — copy it to
+`.env` if your tooling auto-loads dotenv (IDE test runners, Docker
+Compose, `dotenv-cli`; plain `uv run` does not).
 
 ## Quickstart
 
@@ -70,7 +88,7 @@ print(f"{len(ds)} clips")
 # Count clips matching a query
 ds.count("agent.type = ped and env.type = crosswalk")
 
-# Get the full MatchSet — (clip_id, entity, interval) tuples
+# Get the full MatchSet — a tuple of (clip_id, entity, interval) `Match`es
 matches = ds.find("light.color = red and ego.action = stop")
 clips = sorted(set(matches.clips()))
 
@@ -91,12 +109,12 @@ ego.action = decel because_of agent.type = ped
 ## Visualization
 
 `causal_ai_av.viz` renders any subset of a clip — a single instant, a
-time range, a `MatchSet`, or a `ContextWindow` — as a decoded camera
-frame paired with the clip's annotation timeline. The timeline carries
-one bar per agent action, ego action, environment, condition, and
-traffic-light state, plus five families of causal arrow
-(`because_of`, `link_to`, `containedIn`, `influencedBy`,
-`action_target`) and a yellow highlight band over any match interval.
+time range, or a `MatchSet` — as a decoded camera frame paired with
+the clip's annotation timeline. The timeline carries one bar per
+agent action, ego action, environment, condition, and traffic-light
+state, plus five families of causal arrow — `because_of`, `link_to`,
+`containment`, `influence`, `action_target` — and a yellow highlight
+band over any match interval.
 
 The viz API requires the optional `[viz]` extra and runs in
 JupyterLab, VS Code / Cursor notebooks, and similar Jupyter-protocol
@@ -106,7 +124,10 @@ environments. Colab support is best-effort.
 uv sync --extra viz
 ```
 
-The three common entry points hang off the objects you already use:
+The three common entry points hang off the objects you already use.
+`ds.get_sequence(clip_id)` returns a `Sequence` — the per-clip handle
+that bundles the parsed annotation with camera / sensor accessors and
+the `.visualize()` method:
 
 ```python
 seq = ds.get_sequence(clip_id)
@@ -278,24 +299,41 @@ directory of annotations (or fresh videos) and it serves an editor over
 `localhost`.
 
 ```bash
+make install                                              # Python + npm deps (once)
+make annotator-dev DATA=/path/to/json_annotations         # launches on :8765
+```
+
+If you want the explicit steps without `make`:
+
+```bash
 uv sync --extra annotator
 cd tools/annotator/web && npm install && npm run build
 uv run causal-av-annotate /path/to/json_annotations
 ```
 
 Lock-by-default, explicit Save (with `.bak` on first save), HEVC→H.264
-transcode pipeline for browser playback. See
-[`tools/annotator/README.md`](tools/annotator/README.md) for the full reference.
+transcode pipeline for browser playback. Two docs cover the rest:
+
+- [`docs/user/annotator.md`](docs/user/annotator.md) — UI walkthrough
+  end-to-end: mouse, keyboard, lock model, arrows, troubleshooting.
+- [`tools/annotator/README.md`](tools/annotator/README.md) — install,
+  CLI flags, transcode pipeline, architecture.
 
 ## Development
 
 ```bash
 # Run the test suite
-uv run pytest
+make test                  # or: uv run pytest
+
+# Lint + format
+make lint
+make fmt
 
 # Regenerate notebooks from the source-of-truth builder
 uv run --group notebooks python scripts/build_notebooks.py
 ```
+
+`make help` lists every target.
 
 Notebooks are committed without embedded outputs — the cells are
 short, regenerable, and ship the narrative rather than the data.

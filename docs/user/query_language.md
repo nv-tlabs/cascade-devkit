@@ -268,8 +268,7 @@ are equivalent; the comma form matches the worked examples in §1.
   emitted as match tuples for the clip:
     `(clip, mA.entity, mA.interval)` and
     `(clip, mB.entity, mB.interval)`.
-  Uses only the `because_of` edge. `link_to` / `action_target` are
-  separate operators (future).
+  Uses only the `because_of` edge.
 
 ### 4.7 Window scoping
 
@@ -343,7 +342,59 @@ bundle, the interval is the whole clip.
 
 ---
 
-## 5. Storage in markdown
+## 5. Result types
+
+The query API surfaces four small, related types. You will hit all
+four within the first half-hour of using the DevKit.
+
+| Type | Where it lives | What it is |
+|---|---|---|
+| `Match` | `causal_ai_av.query` | One hit: `(clip_id, entity, interval)`. `interval` is the entity's lifetime clipped to the operator's window. |
+| `MatchSet` | `causal_ai_av.query` | The full result of `ds.find(...)`. A tuple of `Match`es plus a weakref back to the producing dataset. |
+| `Sequence` | `causal_ai_av.dataset` | The per-clip handle returned by `ds.get_sequence(clip_id)`: parsed annotation + camera / sensor accessors + `.visualize()`. |
+| `ContextWindow` | `causal_ai_av.query.context` | A snapshot of every entity in a clip whose annotated time range overlaps a given interval — agents, ego actions, environments, conditions, light states, traffic objects. Built by `ds.context_for(match)`. |
+
+### 5.1 What a `MatchSet` carries
+
+```python
+matches = ds.find("ego.action = decel because_of agent.type = ped")
+
+len(matches)              # number of Match tuples
+list(matches.clips())     # unique clip_ids (preserves first-seen order)
+matches.matches           # the underlying tuple[Match, ...]
+matches.matches[0].entity # the schema object that matched (Agent, EgoAction, …)
+matches.matches[0].interval  # causal_ai_av.query.time.Interval (start, end in seconds)
+matches.intervals()       # list[Interval] for every Match with an interval
+matches.entities()        # list of every entity object
+matches.sequences()       # iterator of (Match, Sequence) pairs — resolves clips
+                          #   on the producing dataset (lazy, dedup-by-clip-id)
+matches.visualize()       # carousel of mini-players (one per match)
+bool(matches)             # True iff there is at least one match
+```
+
+`matches.sequences()` and `matches.visualize()` require the
+`MatchSet` to have been produced by a dataset-aware entry point
+(`ds.find(...)`, `find_on_dataset`, `find_on_bundle(..., dataset=ds)`).
+Match sets built from a bundle without a dataset reference raise
+`RuntimeError` on these methods.
+
+### 5.2 Aggregation helpers on `CausalAVDataset`
+
+`find()` returns every match. When you only need counts, three
+aggregations are wired on the dataset:
+
+| Call | Returns | Notes |
+|---|---|---|
+| `ds.count(query)` | `int` | Number of clips with at least one match. |
+| `ds.group_by(query, key=...)` | `dict[str, int]` | Clip count grouped by `key` (an attribute path the matched entities expose). |
+| `ds.histogram(query, key=...)` | `dict[str, int]` | Match-count distribution over `key` values (counts every match, not just clips). |
+
+`key` is the same dotted path you'd use on the right-hand side of an
+attribute predicate (e.g. `"agent.type"`, `"ego.action.type"`).
+
+---
+
+## 6. Storage in markdown
 
 Queries live in **fenced code blocks**, one query per block, language
 tag `query` for syntax highlighting:
@@ -361,7 +412,7 @@ For documentation that lists many scenarios (like
 
 ---
 
-## 6. Error model
+## 7. Error model
 
 The parser must produce **structured errors**:
 
@@ -374,19 +425,3 @@ The parser must produce **structured errors**:
   for a typed attribute (e.g. `env.lanes = "red"`).
 
 All errors carry `(line, column)` and a snippet of the offending text.
-
----
-
-## 7. Reserved for future extension
-
-These are deliberately **not** in v1:
-
-- `link_to` / `target_of` operators (the other causal edges).
-- Spatial-metric predicates (`bbox.area > 0.1`, `bbox.x in (0.4, 0.6)`).
-- Cross-entity bindings (`agent[A].action because_of agent[B].action`).
-- Quantifiers (`all`, `any` over collections).
-- Time-pinning (`at(t=5)`, `during(t1..t2)`).
-- Free-text natural language.
-
-If any of these get added later, the grammar above is the spine they
-extend.

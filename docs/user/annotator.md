@@ -326,13 +326,17 @@ Toggle them on or off with the `B L C I T` buttons in the bottom-right
 of the video player's controls. Each is a single coloured letter; the
 button is dimmed when the arrow type is hidden.
 
-| Button | Name | Meaning |
+The "family key" column matches the kwarg keys the DevKit's `arrows={}`
+filter accepts — so the same five names are used in the UI, in the
+visualization API, and on disk.
+
+| Button | Family key | Meaning |
 |---|---|---|
-| **B** | Because of | Action A happens because of entity B (causality). |
-| **L** | Link to | Action A is directed at agent / ego B. |
-| **C** | Contained in | Containment row points at the environment that contains it. |
-| **I** | Influenced by | Ego or agent influence row points at its influencers. |
-| **T** | Action target | Action whose target is a specific entity (e.g. "follow this agent"). |
+| **B** | `because_of` | Action A happens because of entity B (causality). |
+| **L** | `link_to` | Action A is directed at agent / ego B. |
+| **C** | `containment` | Containment row points at the environment that contains it. |
+| **I** | `influence` | Ego or agent influence row points at its influencers. |
+| **T** | `action_target` | Action whose target is a specific entity (e.g. "follow this agent"). |
 
 Hiding a type only hides the arrows; the underlying data is unchanged.
 
@@ -433,12 +437,6 @@ video toolbar does **not** delete the relationship.
 For action and containment segments, an **Mark as Illegal** toggle is
 exposed in the right panel — useful for recording that the ego or an
 agent did something against the rules (running a red, jaywalking, etc.).
-
-### 6.5 The label palette
-
-The label palette (drag-and-drop label chips) is implemented but not
-wired into the current top-level layout. Use the **Type** dropdown in
-the right-panel editor to set an entity's class.
 
 ---
 
@@ -579,8 +577,8 @@ Top of the right panel, next to the Save button:
 | `disapproved` | Reviewer rejected. |
 | `pending` | Default before any explicit status. |
 
-The pill is read-only here; status is updated by reviewers via the
-review workflow (not yet exposed in the UI).
+The pill is read-only — it reflects the bundle's `status` field as
+stored on disk.
 
 ### 10.2 Coverage bars
 
