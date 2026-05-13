@@ -45,8 +45,16 @@ def build_matchset_carousel(
     fps: float = 8.0,
     arrows: dict[str, bool] | None = None,
     families: list[str] | None = None,
+    unique_clips: bool = False,
 ) -> "ipywidgets.Widget":
-    """Build a carousel of `ClipPlayer` widgets — one per match.
+    """Build a carousel of `ClipPlayer` widgets.
+
+    By default the carousel renders **one player per match** — if the
+    same clip backs three matches, you see three players with that
+    clip's video. Set `unique_clips=True` to render **one player per
+    unique clip** instead, with the player's playback window covering
+    the union of all match intervals in that clip and its label showing
+    the match count.
 
     Args:
         matchset: a `MatchSet` whose `.sequences()` resolves the dataset
@@ -56,12 +64,16 @@ def build_matchset_carousel(
         layout: `"stack"` for a vertical `VBox`, `"grid"` for a
             `GridBox` with `cols` columns.
         cols: number of columns when `layout="grid"`. Ignored otherwise.
-        limit: cap the number of players. If the `MatchSet` has more
-            matches than `limit`, the first `limit` are rendered and a
-            small notice is prepended to the carousel.
+        limit: cap the number of players. With the default
+            `unique_clips=False`, `limit` caps the number of matches
+            rendered. With `unique_clips=True`, `limit` caps the number
+            of distinct clips rendered. In both cases a small notice is
+            prepended if the cap clipped the result.
         pad: seconds of padding to apply on either side of each match's
             interval when building the player's playback window. Clamped
-            to `[0, sequence.duration_s]`.
+            to `[0, sequence.duration_s]`. With `unique_clips=True` the
+            pad is applied around the union of all match intervals in
+            the clip, not each individually.
         fps: scrub rate forwarded to each `ClipPlayer`.
         arrows: per-family arrow-on/off toggles forwarded to each
             `ClipPlayer`. See `_paint_timeline_onto` for the keys.
@@ -72,13 +84,22 @@ def build_matchset_carousel(
             surviving sub-rows drop completely. `None` = all
             families. See `render_timeline` for the recognized leaf
             names.
+        unique_clips: when `True`, dedup matches by `clip_id` — exactly
+            one player per distinct clip, with playback window
+            `[min(t0)-pad, max(t1)+pad]` covering every match in the
+            clip and the highlight band spanning the union. The
+            per-player label shows `"N matches"` when the clip has more
+            than one. Use this when you want to *survey distinct clips*
+            (e.g., `matches.visualize(limit=3, unique_clips=True)` for
+            three distinct clips); leave the default `False` when you
+            want to see every match individually.
 
     Returns:
         an `ipywidgets.Widget` — `HTML` if `matchset` is empty,
         `VBox` for `layout="stack"`, or `GridBox` for `layout="grid"`.
-        The `VBox` / `GridBox` contains one labeled child per match
-        (a `VBox([HTML(label), player.widget])`), plus a leading
-        truncation notice if `limit` clipped the result.
+        The `VBox` / `GridBox` contains one labeled child per
+        rendered unit (match or clip), plus a leading truncation notice
+        if `limit` clipped the result.
 
     Raises:
         RuntimeError: if `matchset` has no dataset back-reference
@@ -97,18 +118,48 @@ def build_matchset_carousel(
     if len(matchset) == 0:
         return ipywidgets.HTML("<em>No matches.</em>")
 
-    total = len(matchset)
+    # A "unit" is what becomes one player: a clip_id, the matches that
+    # contribute to it, and the resolved Sequence. With `unique_clips`
+    # off the unit is (clip_id, [match], seq) — one per match. With it
+    # on we group by clip_id and union the intervals so each clip shows
+    # up exactly once. `matchset.sequences()` raises `RuntimeError` if
+    # `_dataset` is None; we deliberately do not catch — the carousel
+    # can't be built without a way to fetch each clip's video.
+    if unique_clips:
+        groups: dict[str, tuple[list[Any], Any]] = {}
+        for match, seq in matchset.sequences():
+            entry = groups.get(match.clip_id)
+            if entry is None:
+                groups[match.clip_id] = ([match], seq)
+            else:
+                entry[0].append(match)
+        units: list[tuple[str, list[Any], Any]] = [
+            (clip_id, ms, seq) for clip_id, (ms, seq) in groups.items()
+        ]
+        total = len(units)
+        unit_kind = "clips"
+    else:
+        units = [
+            (match.clip_id, [match], seq)
+            for match, seq in matchset.sequences()
+        ]
+        total = len(units)
+        unit_kind = "matches"
+
     truncated = total > limit
 
     children: list[Any] = []
-    # `matchset.sequences()` raises `RuntimeError` if `_dataset` is
-    # None; we deliberately do not catch — the carousel can't be built
-    # without a way to fetch each clip's video.
-    for i, (match, seq) in enumerate(matchset.sequences()):
+    for i, (clip_id, group, seq) in enumerate(units):
         if i >= limit:
             break
 
-        t0_raw, t1_raw = _interval_seconds(match, seq)
+        # Union the per-match intervals — for `unique_clips=False` the
+        # group has exactly one element so the union collapses to that
+        # single interval (no behaviour change for the default path).
+        intervals = [_interval_seconds(m, seq) for m in group]
+        t0_raw = min(t0 for t0, _ in intervals)
+        t1_raw = max(t1 for _, t1 in intervals)
+
         duration = float(seq.duration_s) if seq.duration_s else 0.0
         t_start = max(0.0, t0_raw - pad)
         t_end = min(duration, t1_raw + pad)
@@ -128,7 +179,7 @@ def build_matchset_carousel(
                 raise ValueError(
                     f"clip duration ({duration:.6f}s) is shorter than one "
                     f"frame at fps={fps}; cannot build a non-degenerate "
-                    f"playback window for match {match.clip_id}"
+                    f"playback window for match {clip_id}"
                 )
             if t_end >= duration:
                 # End-of-clip boundary: back `t_start` off by one tick.
@@ -146,11 +197,22 @@ def build_matchset_carousel(
             families=families,
         )
 
-        label = (
-            f"<b>{match.clip_id}</b> &middot; "
-            f"{_short_entity_label(match.entity)} &middot; "
-            f"[{t0_raw:.2f}, {t1_raw:.2f}]s"
-        )
+        # Single match in the group → original entity-led label. Multi
+        # match group (only possible with `unique_clips=True`) → swap
+        # the entity for a count so the reader knows why the highlight
+        # spans more than one match interval.
+        if len(group) == 1:
+            label = (
+                f"<b>{clip_id}</b> &middot; "
+                f"{_short_entity_label(group[0].entity)} &middot; "
+                f"[{t0_raw:.2f}, {t1_raw:.2f}]s"
+            )
+        else:
+            label = (
+                f"<b>{clip_id}</b> &middot; "
+                f"{len(group)} matches &middot; "
+                f"[{t0_raw:.2f}, {t1_raw:.2f}]s"
+            )
         children.append(
             ipywidgets.VBox([ipywidgets.HTML(label), player.widget])
         )
@@ -175,7 +237,7 @@ def build_matchset_carousel(
 
     if truncated:
         notice = ipywidgets.HTML(
-            f"<em>Showing {limit} of {total} matches.</em>"
+            f"<em>Showing {limit} of {total} {unit_kind}.</em>"
         )
         return ipywidgets.VBox([notice, body])
     return body

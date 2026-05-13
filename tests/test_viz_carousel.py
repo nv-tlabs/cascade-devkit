@@ -595,3 +595,171 @@ def test_short_entity_label_per_type() -> None:
     assert _short_entity_label("agent_0") == "str"
     # None case.
     assert _short_entity_label(None) == "&mdash;"
+
+
+# ---------------------------------------------------------------------------
+# 12. unique_clips=True — dedup matches by clip_id so the carousel renders
+# one player per distinct clip, with the union of intervals as the
+# playback window and a "N matches" label when the clip has more than one.
+# Locks the fix for the per-match default rendering the same clip three
+# times when a single clip contained three matches.
+# ---------------------------------------------------------------------------
+
+
+def test_unique_clips_dedups_by_clip_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seq_a = _seq_with_fake_video("clip_a")
+    seq_b = _seq_with_fake_video("clip_b")
+    ds = _FakeDataset({"clip_a": seq_a, "clip_b": seq_b})
+
+    # Three matches in clip_a, one in clip_b. Default behaviour would
+    # render four players; `unique_clips=True` collapses to two.
+    matches = [
+        Match("clip_a", "agent_0", Interval(1.0, 2.0)),
+        Match("clip_a", "agent_1", Interval(3.0, 4.0)),
+        Match("clip_a", "agent_2", Interval(5.0, 6.0)),
+        Match("clip_b", "agent_0", Interval(2.0, 3.0)),
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    captured: list[dict[str, Any]] = []
+
+    class _SpyClipPlayer:
+        def __init__(self, _seq: Any, **kwargs: Any) -> None:
+            captured.append(kwargs)
+            self.widget = ipywidgets.VBox([])
+
+    monkeypatch.setattr(
+        "causal_ai_av.viz.carousel.ClipPlayer", _SpyClipPlayer
+    )
+
+    out = build_matchset_carousel(ms, unique_clips=True)
+
+    assert len(captured) == 2, (
+        f"expected one player per unique clip, got {len(captured)}"
+    )
+    assert isinstance(out, ipywidgets.VBox)
+    assert len(out.children) == 2
+
+
+def test_unique_clips_unions_intervals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seq = _seq_with_fake_video("clip_a", duration_s=20.0)
+    ds = _FakeDataset({"clip_a": seq})
+
+    # Two matches far apart; union should span 1.0 → 11.0.
+    matches = [
+        Match("clip_a", "agent_0", Interval(1.0, 2.0)),
+        Match("clip_a", "agent_1", Interval(10.0, 11.0)),
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    captured: list[dict[str, Any]] = []
+
+    class _SpyClipPlayer:
+        def __init__(self, _seq: Any, **kwargs: Any) -> None:
+            captured.append(kwargs)
+            self.widget = ipywidgets.VBox([])
+
+    monkeypatch.setattr(
+        "causal_ai_av.viz.carousel.ClipPlayer", _SpyClipPlayer
+    )
+
+    build_matchset_carousel(ms, pad=0.5, unique_clips=True)
+
+    assert len(captured) == 1
+    kw = captured[0]
+    # Highlight = union of intervals (no pad).
+    assert kw["highlight"] == (1.0, 11.0)
+    # Playback window = union + pad on each side, clamped to clip.
+    assert kw["t_start"] == 0.5  # max(0, 1.0 - 0.5)
+    assert kw["t_end"] == 11.5  # min(20.0, 11.0 + 0.5)
+
+
+def test_unique_clips_limit_counts_clips_not_matches() -> None:
+    """`limit=2` with `unique_clips=True` caps at 2 distinct clips even
+    when the matchset contains many more matches. Without the flag the
+    same matchset would have rendered the first 2 matches (both in
+    clip_a), giving the same clip twice. Locks the surprise from
+    notebook 06 where `matches.visualize(limit=3, ...)` showed the same
+    clip three times."""
+    seqs = {f"clip_{i}": _seq_with_fake_video(f"clip_{i}") for i in range(5)}
+    ds = _FakeDataset(seqs)
+
+    # Five matches in clip_0 + one each in clip_1..clip_4. Default
+    # mode would render five clip_0 players; unique_clips caps at
+    # distinct clips.
+    matches = [Match("clip_0", f"a_{i}", Interval(float(i), float(i) + 0.5))
+               for i in range(5)]
+    matches += [Match(f"clip_{i}", "a_0", Interval(1.0, 2.0))
+                for i in range(1, 5)]
+    ms = _make_matchset(matches, dataset=ds)
+
+    out = build_matchset_carousel(ms, limit=2, unique_clips=True)
+
+    # Truncation wraps the body in [notice, body].
+    assert isinstance(out, ipywidgets.VBox)
+    assert len(out.children) == 2
+    notice = out.children[0]
+    assert isinstance(notice, ipywidgets.HTML)
+    # Notice copy switches "matches" → "clips" so the user knows which
+    # axis the limit was counted along.
+    assert "of 5 clips" in notice.value, notice.value
+    body = out.children[1]
+    assert isinstance(body, ipywidgets.VBox)
+    assert len(body.children) == 2
+
+
+def test_unique_clips_label_shows_match_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seq = _seq_with_fake_video("clip_a")
+    ds = _FakeDataset({"clip_a": seq})
+
+    matches = [
+        Match("clip_a", "agent_0", Interval(1.0, 2.0)),
+        Match("clip_a", "agent_1", Interval(3.0, 4.0)),
+        Match("clip_a", "agent_2", Interval(5.0, 6.0)),
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    out = build_matchset_carousel(ms, unique_clips=True)
+
+    # Single child (one clip), with label HTML showing "3 matches".
+    assert isinstance(out, ipywidgets.VBox)
+    assert len(out.children) == 1
+    cell = out.children[0]
+    label_html = cell.children[0]
+    assert isinstance(label_html, ipywidgets.HTML)
+    assert "3 matches" in label_html.value, label_html.value
+    # Entity-led format is suppressed when the group has > 1 match.
+    assert "agent_0" not in label_html.value
+
+
+def test_unique_clips_single_match_clip_keeps_entity_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A clip with exactly one match still gets the entity-led label
+    even with `unique_clips=True`. The "N matches" copy only kicks in
+    when the dedup actually collapsed something."""
+    seq_a = _seq_with_fake_video("clip_a")
+    seq_b = _seq_with_fake_video("clip_b")
+    ds = _FakeDataset({"clip_a": seq_a, "clip_b": seq_b})
+
+    # One match per clip — no collapse.
+    matches = [
+        Match("clip_a", "agent_42", Interval(1.0, 2.0)),
+        Match("clip_b", "agent_99", Interval(3.0, 4.0)),
+    ]
+    ms = _make_matchset(matches, dataset=ds)
+
+    out = build_matchset_carousel(ms, unique_clips=True)
+
+    assert isinstance(out, ipywidgets.VBox)
+    assert len(out.children) == 2
+    for cell in out.children:
+        label_html = cell.children[0]
+        # No "N matches" wording for single-match clips.
+        assert "matches" not in label_html.value, label_html.value

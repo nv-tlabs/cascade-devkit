@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 feat(viz): `unique_clips=True` on `matches.visualize()` — dedup carousel by clip_id, union intervals, "N matches" label; notebook 06 opts in (#63)
 - 2026-05-13 docs(install): Prerequisites (Ubuntu/Debian) subsection — `make`, Node, ffmpeg, uv with apt one-liner + devcontainer pointer (#62)
 - 2026-05-13 chore(gitignore): exclude .claude/worktrees/ — stop leftover agent worktrees from polluting `make lint` (#61)
 - 2026-05-13 fix: unify timestamp parser + drop stale TYPE_CHECKING + tighten annotator types (#59)
