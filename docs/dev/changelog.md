@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 fix(query): drop unused `typing.Mapping` import in `query/engine.py` — clears the long-standing F401 (closes #21) (#54)
 - 2026-05-13 docs(user): add `visualization.md` filter reference + README "Filtering" callout; drop v0/v1 forward-talk (#50)
 - 2026-05-13 chore(notebooks): drop "Where to next" trailing sections from notebooks 01 + 06 (#49)
 - 2026-05-13 feat(viz): `families=[...]` whitelist on visualize / render_timeline / carousel — render only selected annotation families, with parent rows auto-retained for surviving entities (#48)
