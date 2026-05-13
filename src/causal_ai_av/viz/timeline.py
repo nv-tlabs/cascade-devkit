@@ -1468,7 +1468,21 @@ def _paint_timeline_onto(
                 "tickmode": "array",
                 "tickvals": ticks_vals,
                 "ticktext": ticks_text,
-                "tickfont": {"size": 10},
+                # Monospace fontstack — the nbsp-based left-alignment
+                # in `_band_label_html` only produces visually aligned
+                # columns if every character has the same advance
+                # width. Plotly's default `Open Sans` is proportional,
+                # so two labels with the same total char count land
+                # at different pixel widths (a string of 'l's is far
+                # narrower than a string of 'M's). Switching to
+                # monospace makes char-count → pixel-width linear.
+                "tickfont": {
+                    "size": 10,
+                    "family": (
+                        "ui-monospace, SFMono-Regular, "
+                        "Menlo, Consolas, monospace"
+                    ),
+                },
                 "range": [y_max, y_min],  # top → bottom
                 "showgrid": False,
                 "zeroline": False,
