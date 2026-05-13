@@ -273,14 +273,6 @@ def build_quickstart() -> None:
             for a in ctx.agents
         ])
         """),
-        md("""
-        ## Where to next
-
-        - `02_query_dsl_tour.ipynb` — every DSL operator with examples.
-        - `03_statistics.ipynb` — count / group-by aggregations with charts.
-        - `04_scenario_catalog.ipynb` — twenty representative driving
-          scenarios encoded as DSL queries.
-        """),
     ]
     save(cells, NOTEBOOKS_DIR / "01_quickstart.ipynb")
 
@@ -1125,16 +1117,6 @@ def build_visualize() -> None:
         # Compose with `matches.visualize` — every mini-player in the
         # carousel renders the same family subset.
         matches.visualize(limit=3, families=["action", "condition"])
-        """),
-        md("""
-        ## Where to next
-
-        - `05_video_inspection.ipynb` — query + match + decode in
-          plain matplotlib (the pre-viz path).
-        - `examples/07_visualize.py` — headless equivalent of this
-          notebook (script, no widget).
-        - The Visualization section of the project README for the
-          one-screen reference.
         """),
     ]
     save(cells, NOTEBOOKS_DIR / "06_visualize.ipynb")
