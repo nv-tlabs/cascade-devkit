@@ -94,6 +94,82 @@ def _probe_codec(path: Path) -> str | None:
     return str(codec).lower() if codec else None
 
 
+def _parse_frame_rate(raw: str | None) -> float | None:
+    """Parse ffprobe's ``avg_frame_rate`` / ``r_frame_rate`` field.
+
+    ffprobe reports rates as rational strings: ``"30/1"`` for 30 fps,
+    ``"30000/1001"`` for NTSC 29.97, ``"0/0"`` for unknown. Returns
+    ``None`` for any value that doesn't parse to a positive float.
+    """
+    if not raw:
+        return None
+    if "/" in raw:
+        num_s, _, den_s = raw.partition("/")
+        try:
+            num, den = float(num_s), float(den_s)
+        except ValueError:
+            return None
+        if den <= 0:
+            return None
+        rate = num / den
+        return rate if rate > 0 else None
+    try:
+        val = float(raw)
+    except ValueError:
+        return None
+    return val if val > 0 else None
+
+
+def probe_video_meta(path: Path) -> tuple[float, float] | None:
+    """Return ``(fps, duration_s)`` for ``path``, or ``None`` on failure.
+
+    Uses a single ``ffprobe`` invocation that asks for both
+    ``stream.avg_frame_rate`` (the canonical fps field) and
+    ``format.duration`` (more reliable than ``stream.duration`` across
+    container types). All failure modes — missing ffprobe, malformed
+    JSON output, no video stream, unparseable rate — collapse to
+    ``None``; callers fall back to schema defaults.
+
+    No exception is raised on probe failure: ``make_empty_bundle`` must
+    succeed for any fresh clip even if its video is unprobeable.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=avg_frame_rate:format=duration",
+                "-of", "json", str(path),
+            ],
+            capture_output=True, text=True, timeout=15, check=True,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        LOG.warning("ffprobe failed on %s: %s", path, exc)
+        return None
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        LOG.warning("ffprobe returned non-JSON for %s", path)
+        return None
+
+    streams = payload.get("streams") or []
+    if not streams:
+        return None
+    fps = _parse_frame_rate(streams[0].get("avg_frame_rate"))
+    if fps is None:
+        return None
+
+    fmt = payload.get("format") or {}
+    raw_dur = fmt.get("duration")
+    try:
+        duration_s = float(raw_dur) if raw_dur is not None else None
+    except (TypeError, ValueError):
+        duration_s = None
+    if duration_s is None or duration_s < 0:
+        return None
+
+    return fps, duration_s
+
+
 def _transcode_to_h264(src: Path, dst: Path) -> None:
     """Run ffmpeg `src` → `dst.tmp.mp4` → rename to `dst` on success."""
     dst.parent.mkdir(parents=True, exist_ok=True)

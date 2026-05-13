@@ -313,6 +313,79 @@ def test_make_empty_bundle_includes_schema_and_status(tmp_path: Path) -> None:
     assert on_disk.get("status") == "annotating"
 
 
+def test_make_empty_bundle_probes_real_video_meta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When `make_empty_bundle` receives a `video_path`, it calls
+    ffprobe and threads the real `fps` / `duration_s` into the bundle's
+    `VideoMeta`. This is the phase-3 wiring that replaces the old
+    schema-defaults stub."""
+    import json as _json
+    import subprocess
+
+    from annotator.server.io_adapter import make_empty_bundle
+
+    probe_payload = _json.dumps({
+        "streams": [{"avg_frame_rate": "30000/1001"}],  # NTSC 29.97
+        "format": {"duration": "12.345"},
+    })
+
+    def _fake_probe(cmd: list[str], **_kwargs):  # type: ignore[no-untyped-def]
+        assert cmd[0] == "ffprobe"
+        return subprocess.CompletedProcess(cmd, 0, stdout=probe_payload, stderr="")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", _fake_probe)
+
+    video = tmp_path / "newclip.mp4"
+    video.touch()
+    bundle = make_empty_bundle("newclip", video_path=video)
+
+    assert bundle.video.fps == pytest.approx(30000.0 / 1001.0)
+    assert bundle.video.duration_s == pytest.approx(12.345)
+
+
+def test_make_empty_bundle_falls_back_to_defaults_when_probe_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Probe failure (missing ffprobe, malformed JSON, no video stream)
+    must NOT crash — `make_empty_bundle` falls back to the schema
+    defaults so the fresh-clip path still produces a valid bundle.
+    Important because the annotator must open unreadable / corrupt
+    clips to let the user fix them."""
+    import subprocess
+
+    from annotator.server.io_adapter import make_empty_bundle
+
+    def _failing_probe(cmd: list[str], **_kwargs):  # type: ignore[no-untyped-def]
+        raise subprocess.CalledProcessError(returncode=1, cmd=cmd)
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", _failing_probe)
+
+    video = tmp_path / "broken.mp4"
+    video.touch()
+    bundle = make_empty_bundle("broken", video_path=video)
+
+    # Schema defaults: fps=30.0, duration_s=0.0 (see VideoMeta in
+    # src/causal_ai_av/spec/schema.py).
+    assert bundle.video.fps == 30.0
+    assert bundle.video.duration_s == 0.0
+    # Bundle still valid; clip_id + status both set.
+    assert bundle.video.clip_id == "broken"
+    assert bundle.status == "annotating"
+
+
+def test_make_empty_bundle_skips_probe_when_video_path_is_none() -> None:
+    """`video_path=None` (the default) must short-circuit before any
+    subprocess call — synthetic test fixtures and unit tests that don't
+    care about real video metadata stay fast and side-effect-free."""
+    from annotator.server.io_adapter import make_empty_bundle
+
+    bundle = make_empty_bundle("synthetic")
+    assert bundle.video.fps == 30.0
+    assert bundle.video.duration_s == 0.0
+    assert bundle.video.clip_id == "synthetic"
+
+
 # -----------------------------------------------------------------------------
 # Source-resolution sanity (covers io_adapter directly).
 # -----------------------------------------------------------------------------

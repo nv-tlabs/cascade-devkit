@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 feat(annotator): probe ffprobe for real fps + duration when creating an empty bundle for an unlabelled clip (resolves phase-3 TODO) (#55)
 - 2026-05-13 fix(query): drop unused `typing.Mapping` import in `query/engine.py` — clears the long-standing F401 (closes #21) (#54)
 - 2026-05-13 docs(user): add `visualization.md` filter reference + README "Filtering" callout; drop v0/v1 forward-talk (#50)
 - 2026-05-13 chore(notebooks): drop "Where to next" trailing sections from notebooks 01 + 06 (#49)

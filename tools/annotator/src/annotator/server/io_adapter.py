@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from annotator.server.video import probe_video_meta
 from causal_ai_av.io import load_file, save_file
 from causal_ai_av.spec import AnnotationBundle, SilAvAnnotation, VideoMeta
 
@@ -149,24 +150,35 @@ def build_clip_index(sources: list[Path]) -> dict[str, ClipEntry]:
     return index
 
 
-def make_empty_bundle(clip_id: str) -> AnnotationBundle:
+def make_empty_bundle(
+    clip_id: str, video_path: Path | None = None
+) -> AnnotationBundle:
     """Construct a minimum-valid `AnnotationBundle` for a brand-new clip.
 
     Explicitly sets `schema_version` and `status` so fresh-clip JSONs are
     self-describing on disk — `exclude_unset=True` in save_file would
     otherwise drop them along with any other field still at its default.
 
-    Video metadata (fps, duration_s) defaults to the schema defaults
-    (`30.0` / `0.0`) because Phase 1 does not probe the video file. Phase 3
-    will revisit this with real probing.
+    When `video_path` is supplied, ffprobe is invoked to populate
+    `VideoMeta.fps` / `VideoMeta.duration_s` with the real values from
+    the file header. Probe failures (missing ffprobe, no video stream,
+    unparseable rate, container with no duration) silently fall back to
+    the schema defaults (`30.0` / `0.0`) — the bundle remains valid
+    either way. Pass `video_path=None` (the default) to skip probing
+    entirely, which keeps unit tests and synthetic fixtures fast.
     """
+    probe_kwargs: dict[str, float] = {}
+    if video_path is not None:
+        probed = probe_video_meta(video_path)
+        if probed is not None:
+            fps_val, duration_val = probed
+            probe_kwargs = {"fps": fps_val, "duration_s": duration_val}
     return AnnotationBundle(
         schema_version="2.0.0",
-        video=VideoMeta(clip_id=clip_id),
+        video=VideoMeta(clip_id=clip_id, **probe_kwargs),
         annotation=SilAvAnnotation(),
         status="annotating",
     )
-    # TODO(phase-3): probe the video file for real fps / duration / num_frames.
 
 
 def load_bundle(entry: ClipEntry) -> AnnotationBundle:
@@ -174,7 +186,7 @@ def load_bundle(entry: ClipEntry) -> AnnotationBundle:
     if entry.kind == "annotated":
         assert entry.path is not None  # invariant of `kind == "annotated"`
         return load_file(entry.path)
-    return make_empty_bundle(entry.clip_id)
+    return make_empty_bundle(entry.clip_id, video_path=entry.video_path)
 
 
 def save_bundle(
