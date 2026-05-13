@@ -1078,14 +1078,17 @@ def build_visualize() -> None:
         interval painted as the highlight band.
         """),
         code("""
-        # Prefetch the clips that will actually be rendered so the
-        # widget construction doesn't block on HF downloads. The
-        # `limit=3` keyword caps the carousel itself; we pre-download
-        # the same three clips here for parity.
-        first_three_clips = sorted({m.clip_id for m in matches.matches[:3]})
+        # `unique_clips=True` makes `limit=3` mean "three *distinct*
+        # clips" — without it, three matches inside the same clip would
+        # render that clip three times. The default is False because
+        # match-by-match is occasionally what you want; the notebook
+        # opts in because surveying distinct clips is the common case.
+        # Pre-download the same three clips so widget construction
+        # doesn't block on HF.
+        first_three_clips = matches.clips()[:3]
         ds.download_clips(first_three_clips)
 
-        matches.visualize(limit=3)
+        matches.visualize(limit=3, unique_clips=True)
         """),
         md("""
         ## 6. `families=[...]` — render only selected annotation families
@@ -1115,8 +1118,12 @@ def build_visualize() -> None:
         """),
         code("""
         # Compose with `matches.visualize` — every mini-player in the
-        # carousel renders the same family subset.
-        matches.visualize(limit=3, families=["action", "condition"])
+        # carousel renders the same family subset. `unique_clips=True`
+        # keeps "limit=3" honest as three distinct clips even when
+        # multiple matches happen to land in the same clip.
+        matches.visualize(
+            limit=3, families=["action", "condition"], unique_clips=True
+        )
         """),
     ]
     save(cells, NOTEBOOKS_DIR / "06_visualize.ipynb")

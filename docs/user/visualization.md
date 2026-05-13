@@ -151,6 +151,33 @@ These shape the figure without dropping content.
 | `show_inline_labels` | `bool` | `True` | When `False`, suppress the in-bar text labels. Hover tooltips still fire. Useful for screenshots / dense clips. |
 | `height` | `int` | `None` (adaptive) | Pin the total figure height in pixels. Default scales with the deepest sub-lane stack. |
 
+### Carousel-only: `unique_clips` — one player per clip vs one per match
+
+Type: `bool` · Default: `False` · Surface: `matches.visualize` /
+`build_matchset_carousel`
+
+By default the carousel renders **one player per match** in the
+`MatchSet`. Three matches that all live in the same clip will produce
+three players over that clip. Pass `unique_clips=True` to flip to
+**one player per distinct clip**: matches sharing a `clip_id` are
+unioned and rendered once, with the playback window covering
+`[min(t0)-pad, max(t1)+pad]` and the highlight band spanning the union.
+The label switches to `clip_id · N matches · [t0, t1]s` whenever a clip
+has more than one match.
+
+```python
+# Three *distinct* clips — even when one of them has many matches.
+matches.visualize(limit=3, unique_clips=True)
+```
+
+`limit` counts whatever the carousel is rendering: matches when
+`unique_clips=False`, clips when `unique_clips=True`. The truncation
+notice ("Showing 3 of 12 clips" vs ".. of 12 matches") follows the same
+rule.
+
+Use the default when you're hunting individual matches; flip the knob
+when you're surveying which clips show the behaviour.
+
 ## Where this comes from in code
 
 | File | Surface |

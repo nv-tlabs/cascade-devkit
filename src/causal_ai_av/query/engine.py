@@ -139,11 +139,15 @@ class MatchSet:
     def visualize(self, **kwargs: Any) -> Any:
         """Build a carousel of `ClipPlayer` widgets — one per match.
 
-        See `causal_ai_av.viz.carousel.build_matchset_carousel` for the
+        Pass `unique_clips=True` to flip the carousel into one player
+        per distinct clip (matches in the same clip get unioned and
+        rendered once). See
+        `causal_ai_av.viz.carousel.build_matchset_carousel` for the
         full keyword reference (`layout`, `cols`, `limit`, `pad`, `fps`,
-        `arrows`). The return type is intentionally `Any` — the viz
-        extra (`ipywidgets`, `plotly`) is optional, and an annotated
-        return would force importing it at module top here.
+        `arrows`, `families`, `unique_clips`). The return type is
+        intentionally `Any` — the viz extra (`ipywidgets`, `plotly`)
+        is optional, and an annotated return would force importing it
+        at module top here.
 
         Raises:
             RuntimeError: if this `MatchSet` has no dataset
