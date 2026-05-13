@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 fix(viz): emit Ego parent band — `families=["action"]` (and any single-family filter) now keeps the "Ego" header above the surviving ego sub-row instead of orphaning a context-free leaf label (#<PR>)
 - 2026-05-13 feat(viz): `unique_clips=True` on `matches.visualize()` — dedup carousel by clip_id, union intervals, "N matches" label; notebook 06 opts in (#63)
 - 2026-05-13 docs(install): Prerequisites (Ubuntu/Debian) subsection — `make`, Node, ffmpeg, uv with apt one-liner + devcontainer pointer (#62)
 - 2026-05-13 chore(gitignore): exclude .claude/worktrees/ — stop leftover agent worktrees from polluting `make lint` (#61)

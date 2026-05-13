@@ -99,7 +99,12 @@ _BAND_ORDER_BY_CATEGORY: dict[str, tuple[str, ...]] = {
     ),
     "Objects": ("parent", "containment", "state"),
     "Agents": ("parent", "containment", "pose", "influence", "action", "property"),
-    "Ego": ("containment", "influence", "action", "property"),
+    # Ego is a singleton — no `_track_index`, no per-entity name — but it
+    # still emits a `parent` band so the families filter retains an "Ego"
+    # header above whichever sub-rows survive (without the parent band,
+    # `families=["action"]` would render the ego action sub-row labelled
+    # "actions" with no indication that it belongs to Ego).
+    "Ego": ("parent", "containment", "influence", "action", "property"),
 }
 
 # Recognized family-leaf names accepted by the `families=[...]` filter
@@ -345,7 +350,7 @@ def _band_label_text(key: BandKey) -> str:
     """Plain text for a band's y-tick label (no color wrapper).
 
       - Parent row:                            "<Entity Track Name>"
-        (e.g. "Env Track 1", "Agent Track 2")
+        (e.g. "Env Track 1", "Agent Track 2", "Ego")
       - Sub-row, family head (sub_row_idx == 0):   "<leaf>"
         (e.g. "conditions", "actions", "containment")
       - Sub-row, trailing (sub_row_idx > 0):        ""  (no label)
@@ -353,15 +358,17 @@ def _band_label_text(key: BandKey) -> str:
         (kept — a single Light can host multiple signal heads, so
         the sh tag is the only disambiguator within the block)
       - Lights per-SH trailing sub-row:              ""
-      - Ego: singleton — no entity tag, just the leaf.
+      - Ego: singleton — its parent row reads just "Ego" (no
+        per-track ordinal), sub-rows are the bare leaf names.
     """
     category, entity_idx, family, sub_row_idx, sh_idx = key
     if family == "parent":
-        # The parent bar labels its own row. For Ego, no per-entity tag
-        # (Ego doesn't emit a `parent` band — it's excluded from
-        # `_BAND_ORDER_BY_CATEGORY["Ego"]`).
+        # The parent bar labels its own row. Ego is a singleton, so it
+        # reads as just "Ego" — no `_ENTITY_TRACK_PREFIX` lookup and no
+        # `entity_idx + 1` ordinal. Every other category uses the
+        # "Prefix N" convention.
         if category == "Ego":
-            return ""
+            return "Ego"
         track_prefix = _ENTITY_TRACK_PREFIX.get(category, f"{category} Track")
         return f"{track_prefix} {entity_idx + 1}"
     if sub_row_idx > 0:
