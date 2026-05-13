@@ -13,7 +13,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 
 <!-- Add new entries above this line -->
 - 2026-05-13 fix(spec): Condition.type accepts a bare string (coerced to single-element list) (#38)
-- 2026-05-12 feat(viz): family sub-rows in timeline + proportional label suppression (#37)
+- 2026-05-13 feat(viz): family sub-rows + per-entity bands + per-family colors + proportional label suppression (#37)
 - 2026-05-12 chore(annotator): rename "Relevancy" section heading to "Relevance" (#36)
 - 2026-05-12 fix(annotator): tighten timeline toolbar so "Because of" hint fits in narrow viewports (#35)
 - 2026-05-12 fix(annotator): timeline zoom toolbar no longer wraps to two lines on narrow viewports (#34)
