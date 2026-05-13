@@ -48,7 +48,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from causal_ai_av.viz.colors import family_color
+from causal_ai_av.viz.colors import entity_color, family_color
 from causal_ai_av.viz.segments import Segment, annotation_to_segments, assign_lanes
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
@@ -331,43 +331,40 @@ def _segment_band_key(seg: Segment) -> BandKey | None:
 def _band_label(key: BandKey) -> str:
     """Y-axis tick text for a band.
 
-    Mirrors the annotator's labeling rule (`Timeline.tsx:233-272`):
-    only the FIRST sub-row of each family within an entity block
-    carries the leaf label; subsequent sub-rows render with a blank
-    label so the visual grouping reads cleanly.
+    Short-form labels: the per-entity background band (painted by
+    `_entity_block_shapes`) carries the visual grouping cue, so the
+    tick text only has to identify the row WITHIN the block. No
+    category prefix, no entity prefix on sub-rows.
 
-      - Parent row:                     "<Cat> · <Entity Track Name>"
-        (no leaf — the bar IS the row)
-      - Sub-row, family head (sub_row_idx == 0):
-        "<Cat> · <Entity Track Name> · <leaf>"
-      - Sub-row, trailing (sub_row_idx > 0):    ""
-      - Lights per-SH family head:
-        "<Cat> · <Entity Track Name> · sh<i> · <leaf>"
-      - Lights per-SH trailing sub-row:         ""
-      - Ego is a singleton — no per-entity tag in the label.
+      - Parent row:                            "<Entity Track Name>"
+        (e.g. "Env Track 1", "Agent Track 2")
+      - Sub-row, family head (sub_row_idx == 0):   "<leaf>"
+        (e.g. "conditions", "actions", "containment")
+      - Sub-row, trailing (sub_row_idx > 0):        ""
+      - Lights per-SH family head:             "sh<i> · <leaf>"
+        (kept — a single Light can host multiple signal heads, so
+        the sh tag is the only disambiguator within the block)
+      - Lights per-SH trailing sub-row:              ""
+      - Ego: singleton — no entity tag, just the leaf.
     """
     category, entity_idx, family, sub_row_idx, sh_idx = key
     if family == "parent":
-        # The parent bar labels its own row. For Ego, no per-entity tag.
+        # The parent bar labels its own row. For Ego, no per-entity tag
+        # (Ego doesn't emit a `parent` band — it's excluded from
+        # `_BAND_ORDER_BY_CATEGORY["Ego"]`).
         if category == "Ego":
-            # In practice Ego doesn't emit a `parent` band — it's
-            # explicitly excluded from `_BAND_ORDER_BY_CATEGORY["Ego"]`.
-            return category
+            return ""
         track_prefix = _ENTITY_TRACK_PREFIX.get(category, f"{category} Track")
-        return f"{category} · {track_prefix} {entity_idx + 1}"
+        return f"{track_prefix} {entity_idx + 1}"
     # Trailing sub-rows render with a blank label so the annotator's
     # visual grouping reads cleanly (only the first sub-row carries
     # the family name).
     if sub_row_idx > 0:
         return ""
     leaf = _FAMILY_LABEL.get(family, family)
-    if category == "Ego":
-        return f"{category} · {leaf}"
-    track_prefix = _ENTITY_TRACK_PREFIX.get(category, f"{category} Track")
-    track_name = f"{track_prefix} {entity_idx + 1}"
     if sh_idx is not None:
-        return f"{category} · {track_name} · sh{sh_idx} · {leaf}"
-    return f"{category} · {track_name} · {leaf}"
+        return f"sh{sh_idx} · {leaf}"
+    return leaf
 
 
 def _populated_bands(segments: list[Segment]) -> list[BandKey]:
@@ -590,6 +587,97 @@ def _segments_by_entity_id(
     return by_id
 
 
+# Per-entity background band tints. Each block uses the category's base
+# color from `entity_color()` at very low opacity — quiet enough not to
+# compete with the per-family bar fills (which paint at opacity 0.85)
+# but visible enough on `plotly_dark` to group rows belonging to one
+# entity. Within a category, alternating opacities make adjacent
+# entities (e.g. Agent Track 1 vs Agent Track 2) visually separable
+# without doubling up on category hue.
+_ENTITY_BLOCK_TINT_EVEN: float = 0.05
+_ENTITY_BLOCK_TINT_ODD: float = 0.10
+
+# Map category label → `entity_color()` kind. Mirrors the private
+# `_CATEGORY_KIND` table in `colors.py` so the entity-block tinter
+# can resolve a category's base hue without reaching into a
+# sibling module's privates.
+_CATEGORY_KIND: dict[str, str] = {
+    "Environments": "env",
+    "Traffic Lights": "light",
+    "Objects": "object",
+    "Agents": "agent",
+    "Ego": "ego",
+}
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert `"#RRGGBB"` to `"rgba(r, g, b, a)"` for translucent fills.
+
+    Plotly accepts both hex and rgba in `fillcolor`; using rgba lets us
+    tune opacity without baking pre-darkened hex variants into the
+    palette table.
+    """
+    h = hex_color.lstrip("#")
+    r = int(h[0:2], 16)
+    g = int(h[2:4], 16)
+    b = int(h[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+def _entity_blocks(
+    band_keys: list[BandKey],
+) -> list[tuple[str, int, int, int]]:
+    """Return `[(category, entity_idx, first_row, last_row), ...]` for
+    each contiguous run of bands sharing the same `(category,
+    entity_idx)`. `band_keys` is expected in painter order (from
+    `_populated_bands`), so the rows for a given entity are always
+    contiguous.
+
+    Ego collapses to a single block at entity_idx 0.
+    """
+    blocks: list[tuple[str, int, int, int]] = []
+    if not band_keys:
+        return blocks
+    current_cat: str | None = None
+    current_idx: int = -1
+    start_row: int = 0
+    for row, key in enumerate(band_keys):
+        cat, entity_idx, _family, _sub_row, _sh = key
+        if cat != current_cat or entity_idx != current_idx:
+            if current_cat is not None:
+                blocks.append((current_cat, current_idx, start_row, row - 1))
+            current_cat = cat
+            current_idx = entity_idx
+            start_row = row
+    assert current_cat is not None  # band_keys non-empty guarded above
+    blocks.append((current_cat, current_idx, start_row, len(band_keys) - 1))
+    return blocks
+
+
+def _entity_block_fill(category: str, entity_idx: int) -> str:
+    """Translucent fillcolor for a `(category, entity_idx)` block.
+
+    Picks the category's base color from `entity_color()` and renders
+    at `_ENTITY_BLOCK_TINT_EVEN` / `_ENTITY_BLOCK_TINT_ODD` based on
+    the entity's parity within its category. The alternating opacity
+    keeps adjacent entities visually distinct without picking different
+    hues per entity (the category hue already carries category
+    identity).
+    """
+    kind = _CATEGORY_KIND.get(category)
+    if kind is None:
+        # Unknown category — should be unreachable because the painter
+        # filters to `_CATEGORIES`, but keep the painter robust.
+        return _hex_to_rgba("#ffffff", _ENTITY_BLOCK_TINT_EVEN)
+    base_hex = entity_color(kind)
+    alpha = (
+        _ENTITY_BLOCK_TINT_EVEN
+        if entity_idx % 2 == 0
+        else _ENTITY_BLOCK_TINT_ODD
+    )
+    return _hex_to_rgba(base_hex, alpha)
+
+
 @dataclass(frozen=True)
 class PaintResult:
     """What `_paint_timeline_onto` reports back to the caller.
@@ -771,10 +859,39 @@ def _paint_timeline_onto(
     band_row: dict[BandKey, int] = {key: i for i, key in enumerate(band_keys)}
 
     # ---------------------------------------------------------------
-    # 1. Optional highlight band — drawn first so it sits *under* the
-    #    segment rectangles in z-order. Plotly draws shapes in their
-    #    list order; the renderer adds them to layout.shapes so the
-    #    highlight band reads as a background.
+    # 1pre. Per-entity background bands. One translucent rect per
+    #     `(category, entity_idx)` block, spanning all of that block's
+    #     band rows. Painted FIRST (so it sits below the highlight
+    #     band, the segment rectangles, and the arrows) with
+    #     `layer: "below"`. Carries the visual grouping cue that lets
+    #     the y-tick labels drop their category + entity prefix on
+    #     sub-rows (see `_band_label`).
+    # ---------------------------------------------------------------
+    x0_block = 0.0
+    x1_block = duration if duration > 0 else 1.0
+    for category, entity_idx, first_row, last_row in _entity_blocks(band_keys):
+        shapes.append(
+            {
+                "type": "rect",
+                "x0": x0_block,
+                "x1": x1_block,
+                "y0": first_row - 0.5,
+                "y1": last_row + 0.5,
+                "xref": xref,
+                "yref": yref,
+                "fillcolor": _entity_block_fill(category, entity_idx),
+                "opacity": 1.0,
+                "line": {"width": 0},
+                "layer": "below",
+                "name": f"entity_block:{category}:{entity_idx}",
+            }
+        )
+
+    # ---------------------------------------------------------------
+    # 1. Optional highlight band — drawn AFTER the entity blocks so it
+    #    sits *on top of* them visually (the highlight should be
+    #    recognizable as such, not absorbed by the row tint). Still
+    #    `layer: "below"` so the segment rectangles remain on top.
     # ---------------------------------------------------------------
     if highlight is not None:
         h0, h1 = float(highlight[0]), float(highlight[1])

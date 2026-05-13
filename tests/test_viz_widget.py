@@ -344,29 +344,35 @@ def test_repr_mimebundle_has_html_and_widget_view_keys() -> None:
 def test_filter_kwargs_forwarded_to_timeline_subplot() -> None:
     """`ClipPlayer(seq, entity_kinds=["agent"])` paints only Agent-band
     segment shapes on the timeline subplot. The y-axis collapses to
-    just `Agents · *` bands."""
+    just Agents bands.
+
+    With short-form tick labels (PR-39), the canonical signal for
+    "this row belongs to Agents" is the per-entity background block
+    shape (`entity_block:Agents:<idx>`). Anchor on those to find
+    the y-range every Agents band occupies on the timeline subplot.
+    """
     seq = _seq_with_fake_video()
     player = ClipPlayer(seq, entity_kinds=["agent"])
-    # The timeline subplot's y-axis is `yaxis2`. Read its tick labels
-    # to find which band rows belong to Agents bands.
-    yticks = list(player._fig.layout.yaxis2.ticktext or ())
-    tickvals = list(player._fig.layout.yaxis2.tickvals or ())
-    agent_rows = {
-        float(v) for v, t in zip(tickvals, yticks, strict=False)
-        if t.startswith("Agents · ")
-    }
-    assert agent_rows, (
-        f"expected at least one Agents band tick, got {yticks!r}"
+    bottom_shapes = _bottom_subplot_shapes(player._fig)
+    agent_block_ranges = [
+        (float(s["y0"]), float(s["y1"]))
+        for s in bottom_shapes
+        if (s.get("name") or "").startswith("entity_block:Agents:")
+    ]
+    assert agent_block_ranges, (
+        f"expected at least one Agents entity_block on the bottom subplot; "
+        f"got {[s.get('name') for s in bottom_shapes]!r}"
     )
+    lo = min(y0 for y0, _ in agent_block_ranges)
+    hi = max(y1 for _, y1 in agent_block_ranges)
     seg_shapes = [
-        s
-        for s in _bottom_subplot_shapes(player._fig)
+        s for s in bottom_shapes
         if s.get("name", "").startswith("segment:")
     ]
     assert seg_shapes, "expected at least one Agents-band segment shape"
     for s in seg_shapes:
         mid = (float(s["y0"]) + float(s["y1"])) / 2.0
-        assert any(abs(mid - r) <= 0.4 + 1e-9 for r in agent_rows), (
+        assert lo <= mid <= hi, (
             f"non-Agent shape leaked through filter: {s}"
         )
 
