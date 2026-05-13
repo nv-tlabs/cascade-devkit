@@ -97,8 +97,6 @@ one bar per agent action, ego action, environment, condition, and
 traffic-light state, plus five families of causal arrow
 (`because_of`, `link_to`, `containedIn`, `influencedBy`,
 `action_target`) and a yellow highlight band over any match interval.
-**v0 ships the timeline + frame + arrows + highlight; on-frame bbox
-and keypoint overlays land in v1.**
 
 The viz API requires the optional `[viz]` extra and runs in
 JupyterLab, VS Code / Cursor notebooks, and similar Jupyter-protocol
@@ -143,6 +141,25 @@ fig.write_image("/tmp/timeline.png")          # needs the `kaleido` extra
 `seq.visualize(t=2.5, static=True)` is the shorthand for
 `viz.render_frame(seq, 2.5)` — handy when you start interactive and
 want a single still without switching modules.
+
+### Filtering the timeline
+
+Five filter kwargs narrow what shows up — `arrows`, `entity_kinds`,
+`agent_ids`, `track_groups`, `families`. They work on every entry point
+and AND together:
+
+```python
+# Just agent actions, hide the Ego row, drop because_of arrows.
+seq.visualize(
+    track_groups=["Agents"],
+    families=["action"],
+    arrows={"because_of": False},
+)
+```
+
+Full reference (every value each filter accepts, parent-retention
+semantics for `families`, composition rules) in
+[`docs/user/visualization.md`](docs/user/visualization.md).
 
 ## Examples and notebooks
 
@@ -244,6 +261,7 @@ tools/
 docs/
   user/
     query_language.md  # DSL specification (grammar + semantics)
+    visualization.md   # viz filter reference
     annotator.md       # annotator UI guide
 
 examples/      # runnable Python scripts

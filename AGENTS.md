@@ -67,6 +67,7 @@ If you are new to the repo, read in this order:
 | `examples/` | Runnable Python scripts; see README "Examples and notebooks" |
 | `notebooks/` | Jupyter notebooks (built from `scripts/build_notebooks.py`) |
 | `scripts/` | One-off Python utilities (notebook builder, vocabulary scan) |
+| `docs/user/` | User-facing reference docs (`query_language.md`, `visualization.md`, `annotator.md`) |
 | `docs/dev/` | Living dev docs (`contrib.md`, `architecture.md`, `changelog.md`) |
 | `meta/` | **Gitignored.** Working research and planning notes. |
 
