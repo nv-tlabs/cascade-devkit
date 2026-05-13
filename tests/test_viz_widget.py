@@ -191,12 +191,15 @@ def test_clipplayer_constructs_without_raising() -> None:
     seq = _seq_with_fake_video()
     player = ClipPlayer(seq)
     assert isinstance(player._fig, go.FigureWidget)
-    # The video Image trace is added before `_paint_timeline_onto`, so
-    # it sits at `data[0]`; the hover-overlay scatter traces emitted by
-    # the painter follow. `_apply_t` writes to `data[0]` and relies on
-    # that invariant, so pin both.
-    assert len(player._fig.data) >= 1
-    assert player._fig.data[0].type == "image"
+    # Since PR-44 the video frame lives at `layout.images[0]` (was
+    # `data[0]` — a `go.Image` trace bound to the top subplot). The
+    # layout-image approach lets the video reach into the y-tick-label
+    # margin (paper xref allows negative paper-x). `_apply_t` mutates
+    # the layout image's `source` per tick.
+    assert player._fig.layout.images, "expected video as layout.images[0]"
+    assert player._fig.layout.images[0].source, (
+        "layout.images[0].source must be a JPEG data URI"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -533,19 +536,18 @@ def _decode_jpeg_data_uri_to_array(data_uri: str):
 
 
 def test_frame_transport_is_base64_jpeg() -> None:
-    """`go.Image` ships a base64 data URI (`source=`) rather than the
-    raw pixel array (`z=`). Pins the Play-perf fix: the prior `z=`
-    path serialized a 32MB JSON list-of-lists per tick over Comm,
-    which dominated Play latency.
+    """The layout-image carries a base64 JPEG data URI via its
+    `source` attribute. PR-44 moved the video from a `go.Image`
+    TRACE at `data[0]` to a `go.layout.Image` at
+    `layout.images[0]`; PR-33's JPEG transport is otherwise
+    untouched (encoding still happens once per tick into a base64
+    data URI, keeping the per-tick Comm payload at ~1.8MB).
     """
     seq = _seq_with_fake_video()
     player = ClipPlayer(seq)
-    src = player._fig.data[0].source
+    src = player._fig.layout.images[0].source
     assert isinstance(src, str)
     assert src.startswith("data:image/jpeg;base64,"), src[:40]
-    # The legacy `z=` channel must be unused — otherwise both paths
-    # ship and the Comm savings evaporate.
-    assert player._fig.data[0].z is None
 
 
 class _NoisyFakeVideoReader:
@@ -591,8 +593,8 @@ def test_frame_quality_kwarg_changes_payload_size() -> None:
     seq._cameras[seq.annotation_camera] = _NoisyFakeVideoReader()  # type: ignore[index]
     low = ClipPlayer(seq, frame_quality=20)
     high = ClipPlayer(seq, frame_quality=90)
-    low_len = len(low._fig.data[0].source)
-    high_len = len(high._fig.data[0].source)
+    low_len = len(low._fig.layout.images[0].source)
+    high_len = len(high._fig.layout.images[0].source)
     assert high_len >= 2 * low_len, (
         f"frame_quality=90 should produce a much larger payload than "
         f"frame_quality=20: got high={high_len} low={low_len}"
@@ -612,7 +614,7 @@ def test_frame_max_dim_kwarg_downscales() -> None:
         height=720, width=1280
     )
     player = ClipPlayer(seq, frame_max_dim=320)
-    arr = _decode_jpeg_data_uri_to_array(player._fig.data[0].source)
+    arr = _decode_jpeg_data_uri_to_array(player._fig.layout.images[0].source)
     h, w = arr.shape[:2]
     assert max(h, w) == 320, (
         f"expected max(H, W) == 320 after frame_max_dim cap, got {(h, w)}"
@@ -654,33 +656,34 @@ def test_clipplayer_playhead_spans_full_band_range() -> None:
     assert float(playhead.y1) == expected_n_bands - 0.5
 
 
-def test_play_tick_updates_source_not_z() -> None:
-    """A Play tick swaps the trace's `source` data URI, not the legacy
-    `z=` array. Pins both halves of the transport fix: `source` must
-    change to a new JPEG, and `z` must stay `None`. Also re-asserts
-    the surgical playhead invariant from PR #30.
+def test_play_tick_updates_layout_image_source() -> None:
+    """A Play tick swaps the layout-image's `source` data URI on
+    `layout.images[0]`. Pins the JPEG transport (data URI prefix +
+    mutation per tick) AND the surgical playhead invariant from
+    PR #30. PR-44 moved the video from `data[0]` (trace) to
+    `layout.images[0]` (layout-level image with paper-coord
+    positioning).
     """
     seq = _seq_with_fake_video()
     player = ClipPlayer(seq)
 
     # Capture the construction-time data URI + playhead handle so we
     # can detect mutation.
-    before_source = player._fig.data[0].source
+    before_source = player._fig.layout.images[0].source
     before_playhead_x = float(player._fig.layout.shapes[player._playhead_index].x0)
 
     # Synthesize a Play tick that drives the slider to t=1.5s; the
     # slider observer calls `_apply_t`.
     player._on_play_change({"new": 1_500})
 
-    after_source = player._fig.data[0].source
+    after_source = player._fig.layout.images[0].source
     after_playhead_x = float(player._fig.layout.shapes[player._playhead_index].x0)
 
     assert isinstance(after_source, str)
     assert after_source.startswith("data:image/jpeg;base64,")
     assert after_source != before_source, (
-        "`_apply_t` did not update `data[0].source` on tick"
+        "`_apply_t` did not update `layout.images[0].source` on tick"
     )
-    assert player._fig.data[0].z is None
     # Surgical-playhead invariant: the shape's x coordinates moved with
     # the tick, no full layout rebuild.
     assert after_playhead_x != before_playhead_x
