@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 feat(viz): per-entity background row bands + short-form sub-row tick labels (#39)
 - 2026-05-13 fix(spec): Condition.type accepts a bare string (coerced to single-element list) (#38)
 - 2026-05-13 feat(viz): family sub-rows + per-entity bands + per-family colors + proportional label suppression (#37)
 - 2026-05-12 chore(annotator): rename "Relevancy" section heading to "Relevance" (#36)
