@@ -1768,6 +1768,39 @@ def test_tick_label_color_matches_category_for_parent_and_sub_rows() -> None:
     )
 
 
+def test_parent_tick_labels_are_bold_sub_rows_are_not() -> None:
+    """Parent row labels ("Env Track 1", "Agent Track 1", ...) wrap
+    their visible text in `<b>...</b>` so each entity block's section
+    head reads at a glance. Sub-row labels (family heads like
+    "containment", "actions") stay regular weight so the parent/sub
+    hierarchy is visually obvious. The trailing nbsp pad column is
+    NOT bolded — bold lives strictly on the visible text, never on
+    the alignment column.
+    """
+    fig = render_timeline(_seq(_make_full_bundle()))
+    raw = _yticks_raw(fig)
+    yticks = [_label_text(t) for t in raw]
+
+    parent_labels = {"Env Track 1", "Agent Track 1"}
+    seen_parents: set[str] = set()
+    for text, html in zip(yticks, raw):
+        if not text:
+            continue
+        if text in parent_labels:
+            seen_parents.add(text)
+            assert f"<b>{text}</b>" in html, (
+                f"parent tick {text!r} missing <b> wrap; got {html!r}"
+            )
+        else:
+            assert "<b>" not in html, (
+                f"sub-row tick {text!r} should not be bold; got {html!r}"
+            )
+    assert seen_parents == parent_labels, (
+        f"missing parent labels in y-axis: expected {parent_labels}, "
+        f"saw {seen_parents}"
+    )
+
+
 def test_entity_block_skipped_when_category_filtered_out() -> None:
     """`track_groups=["Ego"]` produces only an Ego entity block — no
     Agent or Environment blocks appear."""

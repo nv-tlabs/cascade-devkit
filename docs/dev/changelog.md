@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 feat(viz): bold parent tick labels + drop "what's coming in v1" forward-talk from notebook 6 (#47)
 - 2026-05-13 fix(viz): carousel uses short entity label (`Agent(id, type)`) instead of full Pydantic repr (#46)
 - 2026-05-13 fix(viz): monospace tickfont + image sizing="stretch" + pinned default fig width — actually deliver #44's three asks (#45)
 - 2026-05-13 feat(viz): widget video extends into label margin + aspect-fit pixel height + autosize horizontally (#44)
