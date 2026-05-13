@@ -23,7 +23,9 @@ from annotator.server.video import (
     VideoNotFound,
     VideoResolver,
     VideoToolsMissing,
+    _parse_frame_rate,
     _transcode_to_h264,
+    probe_video_meta,
 )
 
 
@@ -316,3 +318,158 @@ def test_video_resolver_raises_tools_missing(
     resolver = VideoResolver(mode="local", video_dir=video_dir)
     with pytest.raises(VideoToolsMissing):
         resolver.resolve("c")
+
+
+# -----------------------------------------------------------------------------
+# probe_video_meta — fps / duration extraction
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("30/1", 30.0),
+        ("30000/1001", 30000.0 / 1001.0),  # NTSC 29.97
+        ("60", 60.0),
+        ("0/0", None),
+        ("/", None),
+        ("", None),
+        (None, None),
+        ("not a number", None),
+        ("30/abc", None),
+        ("0/1", None),  # zero rate is not a usable fps
+    ],
+)
+def test_parse_frame_rate_handles_ffprobe_strings(
+    raw: str | None, expected: float | None
+) -> None:
+    """`avg_frame_rate` comes back as a rational string from ffprobe.
+    Confirm the parser handles every realistic input (clean integer
+    rates, NTSC fractions) and degrades gracefully on garbage."""
+    result = _parse_frame_rate(raw)
+    if expected is None:
+        assert result is None
+    else:
+        assert result is not None
+        assert abs(result - expected) < 1e-9
+
+
+def _fake_meta_probe(
+    stdout: str,
+) -> Any:
+    """Build a fake `subprocess.run` that returns `stdout` from a single
+    ffprobe call. Used by the probe_video_meta tests below."""
+
+    def _run(cmd: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        assert cmd[0] == "ffprobe"
+        return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
+
+    return _run
+
+
+def test_probe_video_meta_returns_fps_and_duration_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Happy path: ffprobe returns a v:0 stream with `avg_frame_rate`
+    and a container `format.duration`. Both end up in the tuple."""
+    payload = json.dumps({
+        "streams": [{"avg_frame_rate": "30/1"}],
+        "format": {"duration": "12.345"},
+    })
+    monkeypatch.setattr(
+        "annotator.server.video.subprocess.run", _fake_meta_probe(payload)
+    )
+    out = probe_video_meta(tmp_path / "clip.mp4")
+    assert out is not None
+    fps, duration = out
+    assert fps == 30.0
+    assert duration == pytest.approx(12.345)
+
+
+def test_probe_video_meta_handles_ntsc_fractional_rate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NTSC clips report `30000/1001` rather than `29.97`. Confirm the
+    rational parser feeds the right value into the tuple."""
+    payload = json.dumps({
+        "streams": [{"avg_frame_rate": "30000/1001"}],
+        "format": {"duration": "9.9"},
+    })
+    monkeypatch.setattr(
+        "annotator.server.video.subprocess.run", _fake_meta_probe(payload)
+    )
+    out = probe_video_meta(tmp_path / "ntsc.mp4")
+    assert out is not None
+    fps, _ = out
+    assert fps == pytest.approx(30000.0 / 1001.0)
+
+
+def test_probe_video_meta_returns_none_on_no_streams(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A container ffprobe can read but where v:0 produces no streams
+    must collapse to `None` so the caller falls back to schema defaults."""
+    payload = json.dumps({"streams": [], "format": {"duration": "5.0"}})
+    monkeypatch.setattr(
+        "annotator.server.video.subprocess.run", _fake_meta_probe(payload)
+    )
+    assert probe_video_meta(tmp_path / "no_video.mp4") is None
+
+
+def test_probe_video_meta_returns_none_on_unparseable_rate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`avg_frame_rate` of `0/0` (ffprobe's "unknown" sentinel) must
+    collapse to `None` rather than emitting a zero-fps bundle."""
+    payload = json.dumps({
+        "streams": [{"avg_frame_rate": "0/0"}],
+        "format": {"duration": "5.0"},
+    })
+    monkeypatch.setattr(
+        "annotator.server.video.subprocess.run", _fake_meta_probe(payload)
+    )
+    assert probe_video_meta(tmp_path / "unknown_fps.mp4") is None
+
+
+def test_probe_video_meta_returns_none_on_missing_duration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Some containers (matroska without seek index) report no
+    `format.duration`. The probe must collapse to `None` rather than
+    fabricating a bogus duration."""
+    payload = json.dumps({
+        "streams": [{"avg_frame_rate": "30/1"}],
+        "format": {},
+    })
+    monkeypatch.setattr(
+        "annotator.server.video.subprocess.run", _fake_meta_probe(payload)
+    )
+    assert probe_video_meta(tmp_path / "no_duration.mp4") is None
+
+
+def test_probe_video_meta_returns_none_when_ffprobe_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ffprobe missing / file unreadable / non-zero exit — every
+    `subprocess` failure mode collapses to `None`. The caller cannot
+    raise on probe failure (fresh-bundle creation must succeed even
+    for unreadable videos)."""
+
+    def _failing(cmd: list[str], **_kwargs: Any) -> Any:
+        raise subprocess.CalledProcessError(returncode=1, cmd=cmd)
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", _failing)
+    assert probe_video_meta(tmp_path / "unreadable.mp4") is None
+
+
+def test_probe_video_meta_returns_none_on_malformed_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ffprobe returning non-JSON (e.g. stderr leak, partial output)
+    must not crash — collapse to `None` and log a warning."""
+
+    def _bad_json(cmd: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, stdout="not json {", stderr="")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", _bad_json)
+    assert probe_video_meta(tmp_path / "garbled.mp4") is None
