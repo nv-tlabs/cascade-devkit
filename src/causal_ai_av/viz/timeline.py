@@ -415,13 +415,18 @@ def _band_label_html(key: BandKey, pad_to: int) -> str:
         # when the deficit is odd — imperceptible at typical label
         # lengths.
         pad_count = deficit // 2
+        # Parent rows are the section heads for each entity block
+        # ("Env Track 1", "Agent Track 2", ...) — bold them so the
+        # block boundary reads at a glance. Sub-rows stay regular
+        # weight so the hierarchy is visually obvious.
+        inner = f"<b>{text}</b>{_LABEL_PAD * pad_count}"
     else:
         # Left-aligning: full deficit pushes the visible text to
         # the same left column as every other sub-row.
         pad_count = deficit
-    padded_text = text + _LABEL_PAD * pad_count
+        inner = f"{text}{_LABEL_PAD * pad_count}"
     color = _category_label_color(category)
-    return f'<span style="color:{color}">{padded_text}</span>'
+    return f'<span style="color:{color}">{inner}</span>'
 
 
 # Back-compat alias. Older call sites (and tests) may import
@@ -434,6 +439,8 @@ def _band_label(key: BandKey) -> str:
         return ""
     category = key[0]
     color = _category_label_color(category)
+    if key[2] == "parent":
+        return f'<span style="color:{color}"><b>{text}</b></span>'
     return f'<span style="color:{color}">{text}</span>'
 
 

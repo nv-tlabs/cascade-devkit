@@ -990,7 +990,6 @@ def build_visualize() -> None:
         4. `viz.render_timeline(seq)` — static Plotly timeline figure.
         5. `matches.visualize()` — fan out a query result into a
            carousel of mini-players, one per match.
-        6. Where v0 stops, and what's coming in v1.
 
         > Requires the optional `viz` extra (`uv sync --extra viz`)
         > and the `hf` extra (`uv sync --extra hf`) for the video
@@ -1095,20 +1094,6 @@ def build_visualize() -> None:
         matches.visualize(limit=3)
         """),
         md("""
-        ## 6. What v0 ships — and what's coming in v1
-
-        The v0 viz surface paints: the decoded video frame, the
-        annotation timeline strip, five causal-arrow families
-        (`because_of`, `link_to`, `containedIn`, `influencedBy`,
-        `action_target`), the playhead, and a yellow highlight band
-        over any match / context interval.
-
-        **Deferred to v1:** on-frame bounding-box and keypoint
-        overlays. The annotator's `<canvas>` rasterizer is the
-        intended visual target; the v1 PR will port its
-        `annotationToSegments` keypoint-interpolation code to
-        Python and wire it into the frame composite.
-
         ## Where to next
 
         - `05_video_inspection.ipynb` — query + match + decode in
