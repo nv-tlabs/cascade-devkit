@@ -3,7 +3,7 @@
 """Headless visualization — single frame + timeline figure.
 
 The interactive `seq.visualize()` widget lives in a Jupyter cell; this
-example exercises the same `causal_ai_av.viz` surface from a plain
+example exercises the same `cascade_av.viz` surface from a plain
 Python script, no notebook required. Useful for batch report
 generation, doc figures, and CI smoke tests.
 
@@ -20,7 +20,7 @@ Pipeline:
 5. Save both artifacts under `examples/_out/visualize/`.
 
     # full pipeline — pulls one clip from HuggingFace, ~few hundred MB
-    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+    CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \\
         uv run --extra viz python examples/07_visualize.py
 
 The Plotly figure is saved as HTML by default. Pass
@@ -33,8 +33,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from causal_ai_av import viz
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av import viz
+from cascade_av.dataset import CascadeDataset
 
 
 # Output directory mirrors the example's number so multiple examples
@@ -44,17 +44,17 @@ OUT_DIR = Path(__file__).resolve().parent / "_out" / "visualize"
 
 def main() -> None:
     try:
-        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+        dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
     except KeyError:
         raise SystemExit(
-            "set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations"
+            "set CASCADE_AV_DATASET_ROOT to the directory of JSON annotations"
         )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     # Auto-confirm chunk-granularity downloads — fine for a scripted
     # example. See `examples/06_sensor_data.py` for the heads-up about
     # chunk sizes.
-    ds = CausalAVDataset(dataset_root, confirm_download_threshold_gb=1000.0)
+    ds = CascadeDataset(dataset_root, confirm_download_threshold_gb=1000.0)
 
     # 1. Find a match worth looking at. `while` tightens each match's
     # interval to the intersection — exactly the moment both held —

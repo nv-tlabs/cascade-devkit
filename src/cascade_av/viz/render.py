@@ -16,14 +16,14 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PIL import Image
 
-# Re-export `render_timeline` so `from causal_ai_av.viz import render_timeline`
-# (and the equivalent `from causal_ai_av.viz.render import render_timeline`)
+# Re-export `render_timeline` so `from cascade_av.viz import render_timeline`
+# (and the equivalent `from cascade_av.viz.render import render_timeline`)
 # both work. The actual figure-building logic lives in `viz.timeline`; this
 # module stays focused on raster-frame rendering.
-from causal_ai_av.viz.timeline import render_timeline
+from cascade_av.viz.timeline import render_timeline
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
-    from causal_ai_av.dataset import Sequence
+    from cascade_av.dataset import Sequence
 
 
 def render_frame(
@@ -56,7 +56,7 @@ def render_frame(
         raise RuntimeError(
             "render_frame requires a video-rooted Sequence; "
             "seq.video raised. Construct the Sequence via "
-            "CausalAVDataset.get_sequence on a parent dataset that owns "
+            "CascadeDataset.get_sequence on a parent dataset that owns "
             "the clip's MP4."
         ) from exc
 

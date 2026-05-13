@@ -5,7 +5,7 @@
 Each section runs one query and prints the clip count, so you can see
 what each operator does on the real corpus.
 
-    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+    CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \\
         uv run python examples/02_query_operators.py
 """
 
@@ -14,25 +14,25 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
 
 def section(title: str) -> None:
     print(f"\n# {title}")
 
 
-def show(ds: CausalAVDataset, query: str) -> None:
+def show(ds: CascadeDataset, query: str) -> None:
     n = ds.count(query)
     print(f"  {n:>4}  {query}")
 
 
 def main() -> None:
     try:
-        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+        dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
     except KeyError:
-        raise SystemExit("set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations")
+        raise SystemExit("set CASCADE_AV_DATASET_ROOT to the directory of JSON annotations")
 
-    ds = CausalAVDataset(dataset_root)
+    ds = CascadeDataset(dataset_root)
 
     section("Attribute predicate (entity.attribute = value)")
     show(ds, "agent.type = ped")

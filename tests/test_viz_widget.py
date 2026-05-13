@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for `causal_ai_av.viz.widget.ClipPlayer`.
+"""Tests for `cascade_av.viz.widget.ClipPlayer`.
 
 No real video decode — `seq.video.decode_images_from_timestamps` is
 replaced with a stub that returns a fixed-shape uint8 numpy array.
@@ -15,8 +15,8 @@ from typing import Any
 import plotly.graph_objects as go
 import pytest
 
-from causal_ai_av.dataset import Sequence
-from causal_ai_av.spec import (
+from cascade_av.dataset import Sequence
+from cascade_av.spec import (
     Agent,
     AgentAction,
     AgentProperty,
@@ -31,7 +31,7 @@ from causal_ai_av.spec import (
     SilAvAnnotation,
     VideoMeta,
 )
-from causal_ai_av.viz import ClipPlayer, render_timeline
+from cascade_av.viz import ClipPlayer, render_timeline
 
 
 # ---------------------------------------------------------------------------
@@ -462,7 +462,7 @@ def test_adaptive_height_grows_with_lanes() -> None:
     other (sparse) bands stay at 1 lane each. The total lane count
     still scales linearly with N.
     """
-    from causal_ai_av.viz.timeline import _PX_PER_LANE
+    from cascade_av.viz.timeline import _PX_PER_LANE
 
     # Baseline: 1 agent parent + 1 agent action = 2 bands × 1 lane =
     # 2 lanes. Clamps to the 240px floor.

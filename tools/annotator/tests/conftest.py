@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from causal_ai_av.io import load_file
+from cascade_av.io import load_file
 
 CORPUS = Path("/home/horde/01_json_annotations")
 

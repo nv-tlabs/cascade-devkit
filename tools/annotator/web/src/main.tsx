@@ -9,7 +9,7 @@ import App from './App'
 // Read the stored theme preference and apply the resolved theme to
 // <html data-theme> BEFORE React mounts, so the first paint matches the
 // user's preference (no flash-of-unstyled-content).
-const THEME_STORAGE_KEY = 'causal-av-annotator.theme'
+const THEME_STORAGE_KEY = 'cascade-annotator.theme'
 type StoredTheme = 'system' | 'light' | 'dark'
 
 function readStoredTheme(): StoredTheme {

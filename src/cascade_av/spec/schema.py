@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Canonical Pydantic v2 schema for the AV Causal annotation format
+"""Canonical Pydantic v2 schema for the CASCADE annotation format
 (schema_version "2.0.0").
 
 The on-disk corpus is ground truth. Vocabulary-typed fields (action types,

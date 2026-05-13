@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for `CausalAVDataset.download_clips` — argument plumbing only.
+"""Tests for `CascadeDataset.download_clips` — argument plumbing only.
 
 Network calls are stubbed: we replace the parent's
 `download_clip_features` with a recorder and assert what we pass it.
@@ -12,14 +12,14 @@ from pathlib import Path
 
 import pytest
 
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
 CORPUS = Path("/home/horde/01_json_annotations")
 
 
 @pytest.fixture
 def patched_parent(monkeypatch: pytest.MonkeyPatch) -> None:
-    from causal_ai_av import dataset as ds_mod
+    from cascade_av import dataset as ds_mod
 
     class _StubParent:
         def __init__(self, *a, **kw):
@@ -28,7 +28,7 @@ def patched_parent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ds_mod, "PhysicalAIAVDatasetInterface", _StubParent)
 
 
-def _record_download(ds: CausalAVDataset, monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+def _record_download(ds: CascadeDataset, monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     calls: list[dict] = []
 
     def fake(clip_ids, features=None, **kwargs):
@@ -41,7 +41,7 @@ def _record_download(ds: CausalAVDataset, monkeypatch: pytest.MonkeyPatch) -> li
 def test_download_clips_defaults_to_all_clips_and_canonical_camera(
     patched_parent: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     calls = _record_download(ds, monkeypatch)
 
     ds.download_clips()
@@ -56,7 +56,7 @@ def test_download_clips_defaults_to_all_clips_and_canonical_camera(
 def test_download_clips_takes_explicit_list(
     patched_parent: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     calls = _record_download(ds, monkeypatch)
     chosen = ds.list_sequences()[:3]
 
@@ -69,7 +69,7 @@ def test_download_clips_takes_explicit_list(
 def test_download_clips_rejects_unknown_clip(
     patched_parent: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     _record_download(ds, monkeypatch)
 
     with pytest.raises(KeyError, match="not in dataset"):

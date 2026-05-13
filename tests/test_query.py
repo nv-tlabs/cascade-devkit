@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for `causal_ai_av.query`."""
+"""Tests for `cascade_av.query`."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from causal_ai_av.io import load_file
-from causal_ai_av.query import (
+from cascade_av.io import load_file
+from cascade_av.query import (
     IdIndex,
     Interval,
     action_interval,
@@ -25,7 +25,7 @@ from causal_ai_av.query import (
     parse_timestamp,
     parse_timestamp_or,
 )
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.spec import AnnotationBundle
 
 # ---------------------------------------------------------------------------
 # time

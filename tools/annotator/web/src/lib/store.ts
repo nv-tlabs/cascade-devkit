@@ -15,7 +15,7 @@ const MAX_UNDO = 10
 // `main.tsx`, which hydrates them synchronously before React mounts to avoid
 // FOUC. See `src/main.tsx`.
 export type Theme = 'system' | 'light' | 'dark'
-const THEME_STORAGE_KEY = 'causal-av-annotator.theme'
+const THEME_STORAGE_KEY = 'cascade-annotator.theme'
 
 function resolveEffective(theme: Theme): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'dark'

@@ -1,6 +1,6 @@
-# causal-av-annotator
+# cascade-annotator
 
-Local annotation tool for the AV Causal Dataset. A slim FastAPI server
+Local annotation tool for the CASCADE dataset. A slim FastAPI server
 hosts a vendored React/Vite frontend; you point it at a directory of
 annotation JSONs and/or videos and edit them in the browser. No auth,
 no database, no admin layer.
@@ -46,7 +46,7 @@ cd tools/annotator/web && npm install && npm run build
 ## Launch
 
 ```bash
-uv run causal-av-annotate /path/to/annotations
+uv run cascade-annotate /path/to/annotations
 ```
 
 Then open `http://127.0.0.1:8765/`.
@@ -56,19 +56,19 @@ Common variants:
 ```bash
 # Start from a directory of videos (no JSONs yet) — unlabelled clips
 # appear in the sidebar. The first save creates <dir>/<clip_id>.json.
-uv run causal-av-annotate /path/to/videos
+uv run cascade-annotate /path/to/videos
 
 # Local video source (HF dataset not installed):
-uv run causal-av-annotate \
+uv run cascade-annotate \
     --video-source local --video-dir /path/to/videos \
     /path/to/annotations
 
 # HF dataset (requires the [hf] extra):
 uv sync --extra hf
-uv run causal-av-annotate --video-source hf /path/to/annotations
+uv run cascade-annotate --video-source hf /path/to/annotations
 
 # Browse without write access:
-uv run causal-av-annotate --read-only /path/to/annotations
+uv run cascade-annotate --read-only /path/to/annotations
 ```
 
 Options:
@@ -81,7 +81,7 @@ Options:
 - `--video-dir DIR` — when `--video-source local`, the directory
   containing video files (`.mp4`, `.mkv`, `.mov`, `.avi`).
 - `--hf-source PATH` — optional annotations dir/repo passed to
-  `CausalAVDataset` when `--video-source hf`.
+  `CascadeDataset` when `--video-source hf`.
 
 `sources` can be one or more directories or files. Directories are
 recursed for `*.json` and known video extensions. Video-only clips
@@ -121,7 +121,7 @@ Saves are **explicit** — there is no autosave.
 Point the CLI at a directory of videos with no JSONs:
 
 ```bash
-uv run causal-av-annotate /path/to/videos
+uv run cascade-annotate /path/to/videos
 ```
 
 - Each video becomes an "unlabelled" clip in the sidebar.

@@ -14,7 +14,7 @@
 - `api`       — thin wrappers (`find_on_bundle`, `find_on_dataset`, …)
 """
 
-from causal_ai_av.query.constants import (
+from cascade_av.query.constants import (
     ActionKind,
     AgentKind,
     EnvKind,
@@ -22,7 +22,7 @@ from causal_ai_av.query.constants import (
     Position,
     resolve_alias,
 )
-from causal_ai_av.query.dsl import (
+from cascade_av.query.dsl import (
     And,
     AttrPredicate,
     BecauseOf,
@@ -36,40 +36,40 @@ from causal_ai_av.query.dsl import (
     Within,
     parse,
 )
-from causal_ai_av.query.api import (
+from cascade_av.query.api import (
     count_on_dataset,
     find_on_bundle,
     find_on_dataset,
     group_by_on_dataset,
 )
-from causal_ai_av.query.context import (
+from cascade_av.query.context import (
     AgentInWindow,
     ContextWindow,
     LightStateInWindow,
     context_at,
 )
-from causal_ai_av.query.engine import Match, MatchSet, evaluate
-from causal_ai_av.query.index import IdIndex, Subject
-from causal_ai_av.query.spatial import (
+from cascade_av.query.engine import Match, MatchSet, evaluate
+from cascade_av.query.index import IdIndex, Subject
+from cascade_av.query.spatial import (
     agent_visibility_interval,
     agents_in_position,
     agents_visible_at,
     ego_relative_pose_at,
 )
-from causal_ai_av.query.temporal import (
+from cascade_av.query.temporal import (
     action_interval,
     actions_at,
     filter_active_at,
     filter_active_in_range,
     overlapping_actions,
 )
-from causal_ai_av.query.time import (
+from cascade_av.query.time import (
     Interval,
     format_timestamp,
     parse_timestamp,
     parse_timestamp_or,
 )
-from causal_ai_av.query.triplets import CausalTriplet, extract_causal_triplets, iter_triplets
+from cascade_av.query.triplets import CausalTriplet, extract_causal_triplets, iter_triplets
 
 __all__ = [
     "Interval",

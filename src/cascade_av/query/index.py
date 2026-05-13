@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.spec import AnnotationBundle
 
 EGO_ID = "Ego"
 

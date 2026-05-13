@@ -8,7 +8,7 @@ Design decisions, system shape, and rationale for `av-causal-dataset-tools`.
 
 ## Overview
 
-`causal_ai_av` is a Python DevKit plus a local annotation tool, layered on
+`cascade_av` is a Python DevKit plus a local annotation tool, layered on
 NVIDIA's *Physical AI AV Dataset*. The library reads per-clip annotation
 JSONs (schema `2.0.0`) into a typed Pydantic tree, joins them to the parent
 dataset's egomotion and video, and exposes a small DSL for querying the
@@ -16,14 +16,14 @@ corpus by entity, attribute, time, and cause. A visualization surface turns
 matches into static figures or interactive widgets in notebooks.
 
 The data flow, in one sentence: **on-disk JSON → `spec` Pydantic models →
-`io` loaders → `CausalAVDataset` / `Sequence` → `query` DSL / engine →
+`io` loaders → `CascadeDataset` / `Sequence` → `query` DSL / engine →
 `MatchSet` → `viz` figures or widgets.**
 
 Two boundaries matter:
 
-- **`src/causal_ai_av/` is the library.** It never imports from `tools/`.
+- **`src/cascade_av/` is the library.** It never imports from `tools/`.
 - **`tools/annotator/` is a separate uv workspace member** with its own
-  Python entry point (`causal-av-annotate`) and a Vite + React frontend.
+  Python entry point (`cascade-annotate`) and a Vite + React frontend.
   It depends on the DevKit's schema; the DevKit does not depend on it.
 
 The visualization layer is gated behind the optional `[viz]` extra so the
@@ -39,7 +39,7 @@ and how it talks to its neighbours.
 
 ### `src/`
 
-Single Python package: `causal_ai_av`. Sub-packages mirror the data flow.
+Single Python package: `cascade_av`. Sub-packages mirror the data flow.
 
 - **`spec/`** — Pydantic v2 models for the annotation format, schema
   version `2.0.0`. `AnnotationBundle` is the single entry point; every
@@ -56,10 +56,10 @@ Single Python package: `causal_ai_av`. Sub-packages mirror the data flow.
   directory of `*.json` on disk (atomic write via `os.replace`,
   filename parser, per-clip grouping). `io/hf.py` loads from a
   HuggingFace dataset repo and is gated behind the `[hf]` extra.
-- **`dataset.py`** — `CausalAVDataset` (a thin subclass of
+- **`dataset.py`** — `CascadeDataset` (a thin subclass of
   `physical_ai_av.PhysicalAIAVDatasetInterface`) and `Sequence` (one
   clip's bundle joined with egomotion + video features). If the
-  `[hf]` extra is missing, `CausalAVDataset` and `Sequence` import as
+  `[hf]` extra is missing, `CascadeDataset` and `Sequence` import as
   `None` at the package root so non-corpus code paths still work.
 - **`query/`** — the DSL and evaluator. Layered:
   - `time.py` — `Interval` and timestamp parsing.
@@ -105,13 +105,13 @@ self-contained tool with its own README and (when applicable) its own
 `pyproject.toml`, `package.json`, and tests. Currently:
 
 - `tools/annotator/` — local FastAPI + React annotation tool, a uv
-  workspace member exposing the `causal-av-annotate` console script.
-  Its Python backend depends on `causal_ai_av.spec` for schema
-  validation and on `causal_ai_av.io` for atomic file writes; the
+  workspace member exposing the `cascade-annotate` console script.
+  Its Python backend depends on `cascade_av.spec` for schema
+  validation and on `cascade_av.io` for atomic file writes; the
   React frontend is its own Vite + React 19 + Tailwind v4 app under
   `tools/annotator/web/`.
 
-The DevKit (`src/causal_ai_av/`) does not depend on anything in
+The DevKit (`src/cascade_av/`) does not depend on anything in
 `tools/`; the arrows point inward.
 
 ### `scripts/`
@@ -125,7 +125,7 @@ just `uv run python scripts/<name>.py`. Currently:
   scripts/build_notebooks.py`.
 - `scan_corpus_vocabulary.py` — scans the corpus and prints every
   distinct value for query-relevant fields. Drives the alias tables in
-  `src/causal_ai_av/query/constants.py`. Re-run when the corpus
+  `src/cascade_av/query/constants.py`. Re-run when the corpus
   vocabulary changes.
 
 ### `notebooks/`
@@ -134,7 +134,7 @@ Six numbered notebooks (`01_quickstart` through `06_visualize`) that
 double as runnable tutorials and end-to-end examples. They are
 **generated artifacts**: edit the Python source in
 `scripts/build_notebooks.py`, not the `.ipynb` directly. Every notebook
-reads the corpus from `CAUSAL_AV_DATASET_ROOT`; without it, only the
+reads the corpus from `CASCADE_AV_DATASET_ROOT`; without it, only the
 schema-only cells run.
 
 ### `tests/`
@@ -149,7 +149,7 @@ Pytest suite at the repo root, sibling to `src/`. Layout:
   fails, the schema is wrong, not the file.
 - `test_io.py` — local-disk load/save round-trips, including the
   atomic-write + `.bak` invariant.
-- `test_dataset.py` — `CausalAVDataset` / `Sequence` against the
+- `test_dataset.py` — `CascadeDataset` / `Sequence` against the
   corpus, including egomotion-missing fallback.
 - `test_query*.py` (`test_query`, `test_query_dsl`,
   `test_query_context`) — DSL parse, evaluate, entity-clause coupling,
@@ -159,7 +159,7 @@ Pytest suite at the repo root, sibling to `src/`. Layout:
 - `test_download_clips.py` — the HF download path; gated by the
   `[hf]` extra.
 
-Tests that need the corpus expect `CAUSAL_AV_DATASET_ROOT`. Unit tests
+Tests that need the corpus expect `CASCADE_AV_DATASET_ROOT`. Unit tests
 do not require it; they use fixtures from `conftest.py`. The annotator
 also has its own test suite under `tools/annotator/tests/` (mocks
 `subprocess.run` / `shutil.which`, never invokes real `ffmpeg`).
@@ -194,12 +194,12 @@ bottom of this file.
     then rename. Rejected — touching the doc surface (AGENTS.md,
     README, Makefile, pyproject workspace) twice is more churn than
     moving once now while the repo is young.
-  - Place tools under `src/causal_ai_av/tools/` as Python sub-packages.
+  - Place tools under `src/cascade_av/tools/` as Python sub-packages.
     Rejected — `tools/annotator/` is a separate uv workspace member
     with its own `pyproject.toml` and JS frontend; bundling it inside
     the library package would conflate library code with tools.
 - **Consequences:** `tools/` is the entry point for new utilities.
-  Library code in `src/causal_ai_av/` never imports from `tools/`;
+  Library code in `src/cascade_av/` never imports from `tools/`;
   tools may depend on the library via the workspace.
 
 ## ADR template

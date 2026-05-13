@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""I/O for AV Causal annotation files.
+"""I/O for CASCADE annotation files.
 
 `local` — load/save annotation JSONs from a directory on disk.
 `hf` — load annotations from a HuggingFace dataset repo (requires the
-       optional `hf` extra: `pip install causal_ai_av[hf]`).
+       optional `hf` extra: `pip install cascade_av[hf]`).
 """
 
-from causal_ai_av.io.local import (
+from cascade_av.io.local import (
     group_by_clip_id,
     iter_dir,
     load_dir,

@@ -1,6 +1,6 @@
 # Visualization — filter reference
 
-`causal_ai_av.viz` renders a clip as a decoded camera frame paired with
+`cascade_av.viz` renders a clip as a decoded camera frame paired with
 its annotation timeline. This doc covers the **filtering** surface —
 the kwargs you pass to narrow what shows up in the timeline. For the
 high-level overview (entry points, install, what gets painted) start
@@ -182,10 +182,10 @@ when you're surveying which clips show the behaviour.
 
 | File | Surface |
 |---|---|
-| `src/causal_ai_av/viz/timeline.py` | `render_timeline`, `_paint_timeline_onto` (the load-bearing painter; all four filters resolve here) |
-| `src/causal_ai_av/viz/widget.py` | `ClipPlayer` — forwards every filter to `_paint_timeline_onto` |
-| `src/causal_ai_av/viz/carousel.py` | `build_matchset_carousel` — forwards `families` + `arrows` to each per-match `ClipPlayer` |
-| `src/causal_ai_av/dataset.py` | `Sequence.visualize` — high-level dispatcher; forwards `families` + `arrows` |
+| `src/cascade_av/viz/timeline.py` | `render_timeline`, `_paint_timeline_onto` (the load-bearing painter; all four filters resolve here) |
+| `src/cascade_av/viz/widget.py` | `ClipPlayer` — forwards every filter to `_paint_timeline_onto` |
+| `src/cascade_av/viz/carousel.py` | `build_matchset_carousel` — forwards `families` + `arrows` to each per-match `ClipPlayer` |
+| `src/cascade_av/dataset.py` | `Sequence.visualize` — high-level dispatcher; forwards `families` + `arrows` |
 
 The walkthrough notebook at [`notebooks/06_visualize.ipynb`](../../notebooks/06_visualize.ipynb)
 demos each entry point against a real clip, with section 6 dedicated

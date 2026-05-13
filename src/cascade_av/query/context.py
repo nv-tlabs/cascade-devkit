@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from causal_ai_av.query.spatial import agent_visibility_interval
-from causal_ai_av.query.temporal import filter_active_in_range
-from causal_ai_av.query.time import Interval
-from causal_ai_av.spec import (
+from cascade_av.query.spatial import agent_visibility_interval
+from cascade_av.query.temporal import filter_active_in_range
+from cascade_av.query.time import Interval
+from cascade_av.spec import (
     Agent,
     AgentAction,
     AnnotationBundle,

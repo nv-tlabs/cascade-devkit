@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Smoke tests for `CausalAVDataset` and `Sequence`.
+"""Smoke tests for `CascadeDataset` and `Sequence`.
 
 Per the user's constraint, this is intentionally a thin suite (~5 tests). We
 exercise the public surface that is unlikely to change before the annotator
@@ -18,10 +18,10 @@ from pathlib import Path
 
 import pytest
 
-from causal_ai_av.dataset import CausalAVDataset, Sequence
-from causal_ai_av.io import load_file
-from causal_ai_av.spec import AnnotationBundle
-from causal_ai_av.state import SequenceState, SequenceStateRange
+from cascade_av.dataset import CascadeDataset, Sequence
+from cascade_av.io import load_file
+from cascade_av.spec import AnnotationBundle
+from cascade_av.state import SequenceState, SequenceStateRange
 from tests.conftest import FakeVideoReader  # noqa: E402 — used by the visualize smoke test
 
 CORPUS = Path("/home/horde/01_json_annotations")
@@ -41,23 +41,23 @@ def patched_parent(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_no_arg_constructor_raises_not_implemented() -> None:
     with pytest.raises(NotImplementedError):
-        CausalAVDataset()
+        CascadeDataset()
 
 
 def test_non_dir_path_raises_file_not_found(tmp_path: Path) -> None:
     bogus = tmp_path / "does_not_exist"
     with pytest.raises(FileNotFoundError):
-        CausalAVDataset(bogus)
+        CascadeDataset(bogus)
 
 
 def test_local_dir_construction(patched_parent: None) -> None:
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     assert len(ds.list_sequences()) > 0
     assert ds.annotation_camera == "camera_front_wide_120fov"
 
 
 def test_sequence_from_annotation_round_trip(patched_parent: None) -> None:
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     clip_id = ds.list_sequences()[0]
     # `get_sequence` would trigger `parent.get_clip_feature("egomotion")` —
     # which we've stubbed out. Instead, exercise the annotation-only path via
@@ -72,7 +72,7 @@ def test_sequence_from_annotation_round_trip(patched_parent: None) -> None:
 def test_flat_corpus_yields_none_batch(patched_parent: None) -> None:
     """When an annotation lives directly under the user-supplied root, its
     `batch` should be `None` — not the root directory's basename."""
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     batches = [batch for _, batch, _ in ds._by_clip.values()]
     assert any(b is None for b in batches)
 
@@ -93,13 +93,13 @@ def test_state_at_instant_and_range() -> None:
 
 def test_visualize_smoke_returns_clipplayer() -> None:
     """The placeholder dict-shape return was replaced in PR-6 by a
-    polymorphic dispatcher into ``causal_ai_av.viz``. The detailed
+    polymorphic dispatcher into ``cascade_av.viz``. The detailed
     dispatch matrix (scalar / tuple / match / context / static + the
     error paths) lives in ``tests/test_sequence_visualize.py``; this
     smoke test only pins that the call now produces a ``ClipPlayer``
     via the lazy ``viz`` import.
     """
-    from causal_ai_av.viz import ClipPlayer
+    from cascade_av.viz import ClipPlayer
 
     path = max(CORPUS.glob("*.json"), key=lambda p: p.stat().st_size)
     seq = Sequence.from_annotation(load_file(path))
@@ -148,7 +148,7 @@ def test_sequence_init_swallows_egomotion_filenotfound(
         PhysicalAIAVDatasetInterface, "get_clip_feature", _raise_missing
     )
 
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     clip_id = ds.list_sequences()[0]
     # Must not raise — the fix.
     seq = ds.get_sequence(clip_id)
@@ -171,7 +171,7 @@ def test_egomotion_interpolator_raises_runtime_when_uncached(
         PhysicalAIAVDatasetInterface, "get_clip_feature", _raise_missing
     )
 
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     clip_id = ds.list_sequences()[0]
     seq = ds.get_sequence(clip_id)
     with pytest.raises(RuntimeError, match=r"egomotion data not loaded"):
@@ -205,7 +205,7 @@ def test_egomotion_interpolator_retries_after_cache_populated(
 
     monkeypatch.setattr(PhysicalAIAVDatasetInterface, "get_clip_feature", _stub)
 
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     clip_id = ds.list_sequences()[0]
     seq = ds.get_sequence(clip_id)
     assert seq._egomotion_interpolator is None  # eager load swallowed
@@ -224,7 +224,7 @@ def test_viz_path_works_when_egomotion_missing(
     never touch egomotion."""
     from physical_ai_av import PhysicalAIAVDatasetInterface
 
-    from causal_ai_av.viz import ClipPlayer
+    from cascade_av.viz import ClipPlayer
 
     def _raise_missing(self, clip_id: str, feature: str):  # type: ignore[no-untyped-def]
         raise FileNotFoundError("not in cache")
@@ -233,7 +233,7 @@ def test_viz_path_works_when_egomotion_missing(
         PhysicalAIAVDatasetInterface, "get_clip_feature", _raise_missing
     )
 
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     clip_id = ds.list_sequences()[0]
     seq = ds.get_sequence(clip_id)
     assert seq._egomotion_interpolator is None
@@ -267,7 +267,7 @@ def test_egomotion_happy_path_caches_eager_load(
 
     monkeypatch.setattr(PhysicalAIAVDatasetInterface, "get_clip_feature", _stub)
 
-    ds = CausalAVDataset(CORPUS)
+    ds = CascadeDataset(CORPUS)
     clip_id = ds.list_sequences()[0]
     seq = ds.get_sequence(clip_id)
     assert seq._egomotion_interpolator is sentinel

@@ -48,14 +48,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from causal_ai_av.viz.colors import entity_color, family_color
-from causal_ai_av.viz.segments import Segment, annotation_to_segments, assign_lanes
+from cascade_av.viz.colors import entity_color, family_color
+from cascade_av.viz.segments import Segment, annotation_to_segments, assign_lanes
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     import plotly.graph_objects as go
 
-    from causal_ai_av.dataset import Sequence
-    from causal_ai_av.spec import AnnotationBundle
+    from cascade_av.dataset import Sequence
+    from cascade_av.spec import AnnotationBundle
 
 
 # Five categories, top → bottom. Order is the annotator's reading order
@@ -1666,7 +1666,7 @@ def render_timeline(
     the same `_paint_timeline_onto` helper.
 
     Args:
-        seq: a `Sequence` (typically from `CausalAVDataset.get_sequence`
+        seq: a `Sequence` (typically from `CascadeDataset.get_sequence`
             or `Sequence.from_annotation`). Only `seq.annotation` and
             `seq.duration_s` are read — no video / parent dataset
             access, so this is safe in any environment.

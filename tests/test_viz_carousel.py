@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the `MatchSet.visualize()` carousel (PR-5).
 
-Covers the public surface of `causal_ai_av.viz.carousel.
+Covers the public surface of `cascade_av.viz.carousel.
 build_matchset_carousel` plus the thin `MatchSet.visualize()` delegator
 on the query engine side. No real video decode — every `Sequence`
 gets a `FakeVideoReader` from `tests/conftest.py`.
@@ -16,15 +16,15 @@ from typing import Any
 import ipywidgets
 import pytest
 
-from causal_ai_av.dataset import Sequence
-from causal_ai_av.query.engine import Match, MatchSet
-from causal_ai_av.query.time import Interval
-from causal_ai_av.spec import (
+from cascade_av.dataset import Sequence
+from cascade_av.query.engine import Match, MatchSet
+from cascade_av.query.time import Interval
+from cascade_av.spec import (
     AnnotationBundle,
     SilAvAnnotation,
     VideoMeta,
 )
-from causal_ai_av.viz import ClipPlayer, build_matchset_carousel
+from cascade_av.viz import ClipPlayer, build_matchset_carousel
 from tests.conftest import FakeVideoReader
 
 
@@ -61,10 +61,10 @@ def _seq_with_fake_video(
 
 
 class _FakeDataset:
-    """Stand-in for `CausalAVDataset` — just answers `get_sequence`.
+    """Stand-in for `CascadeDataset` — just answers `get_sequence`.
 
     The carousel only needs `.get_sequence(clip_id)`; the rest of the
-    `CausalAVDataset` surface is irrelevant here. Holding the Sequence
+    `CascadeDataset` surface is irrelevant here. Holding the Sequence
     by clip_id ensures the same instance is returned on repeat lookups
     (matches `MatchSet.sequences()`'s dedup behavior).
     """
@@ -323,7 +323,7 @@ def test_families_kwarg_forwarded_to_each_clip_player(
             self.widget = ipywidgets.VBox([])  # minimum interface
 
     monkeypatch.setattr(
-        "causal_ai_av.viz.carousel.ClipPlayer", _SpyClipPlayer
+        "cascade_av.viz.carousel.ClipPlayer", _SpyClipPlayer
     )
 
     seq_a = _seq_with_fake_video("clip_a")
@@ -356,7 +356,7 @@ def test_matchset_visualize_delegates_with_kwargs(
         return sentinel
 
     monkeypatch.setattr(
-        "causal_ai_av.viz.carousel.build_matchset_carousel", _fake_builder
+        "cascade_av.viz.carousel.build_matchset_carousel", _fake_builder
     )
 
     matches = [Match("clip_a", "agent_0", Interval(1.0, 2.0))]
@@ -516,7 +516,7 @@ def test_match_label_uses_short_entity_summary_not_pydantic_repr() -> None:
     and floods the Jupyter cell with thousands of lines per match
     on a 3-match carousel).
     """
-    from causal_ai_av.spec import Agent
+    from cascade_av.spec import Agent
 
     seq = _seq_with_fake_video("clip_a", duration_s=10.0)
     ds = _FakeDataset({"clip_a": seq})
@@ -553,9 +553,9 @@ def test_match_label_uses_short_entity_summary_not_pydantic_repr() -> None:
 def test_short_entity_label_per_type() -> None:
     """Spot-check the short-label format across the common entity
     types the carousel might receive."""
-    from causal_ai_av.spec import Agent, AgentAction, Condition, Environment
+    from cascade_av.spec import Agent, AgentAction, Condition, Environment
 
-    from causal_ai_av.viz.carousel import _short_entity_label
+    from cascade_av.viz.carousel import _short_entity_label
 
     a = Agent(
         id="Agent3",
@@ -631,7 +631,7 @@ def test_unique_clips_dedups_by_clip_id(
             self.widget = ipywidgets.VBox([])
 
     monkeypatch.setattr(
-        "causal_ai_av.viz.carousel.ClipPlayer", _SpyClipPlayer
+        "cascade_av.viz.carousel.ClipPlayer", _SpyClipPlayer
     )
 
     out = build_matchset_carousel(ms, unique_clips=True)
@@ -664,7 +664,7 @@ def test_unique_clips_unions_intervals(
             self.widget = ipywidgets.VBox([])
 
     monkeypatch.setattr(
-        "causal_ai_av.viz.carousel.ClipPlayer", _SpyClipPlayer
+        "cascade_av.viz.carousel.ClipPlayer", _SpyClipPlayer
     )
 
     build_matchset_carousel(ms, pad=0.5, unique_clips=True)

@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for `causal_ai_av.io`."""
+"""Tests for `cascade_av.io`."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from causal_ai_av.io import (
+from cascade_av.io import (
     group_by_clip_id,
     iter_dir,
     load_dir,
@@ -70,14 +70,14 @@ def test_group_by_clip_id_partitions_input() -> None:
 
 def test_hf_adapter_importable() -> None:
     """Smoke check that the optional HF adapter resolves with the `[hf]` extra."""
-    from causal_ai_av.io.hf import CausalAnnotationsHfRepo  # noqa: F401
+    from cascade_av.io.hf import CausalAnnotationsHfRepo  # noqa: F401
 
 
 def test_condition_type_accepts_bare_string() -> None:
     """Some corpora write `conditions[].type` as a bare string ("Construction
     Zone") rather than the canonical list shape. The schema coerces it so
     downstream consumers always see a list."""
-    from causal_ai_av.spec.schema import Condition
+    from cascade_av.spec.schema import Condition
 
     c_str = Condition.model_validate({"id": "c1", "type": "Construction Zone"})
     assert c_str.type == ["Construction Zone"]

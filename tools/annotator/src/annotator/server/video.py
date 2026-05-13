@@ -10,15 +10,15 @@ Three source modes (set by the CLI via `--video-source`):
 
   - ``local``: a directory of `<clip_id>.<ext>` files supplied by the user.
   - ``hf``: the HuggingFace Physical AI AV dataset (requires the `[hf]`
-    optional dependency: `pip install causal_ai_av[hf]`).
+    optional dependency: `pip install cascade_av[hf]`).
   - ``auto``: try ``hf`` first, fall back to ``local`` if the `[hf]` extra
     is not installed.
 
 The resolver is intentionally lazy — the dataset is only touched on the
 first request, not at startup, so CLI launches stay fast when video is
 never browsed. The transcode cache lives in
-``$XDG_CACHE_HOME/causal-av-annotator/transcoded/`` (or
-``~/.cache/causal-av-annotator/transcoded/`` when XDG is unset).
+``$XDG_CACHE_HOME/cascade-annotator/transcoded/`` (or
+``~/.cache/cascade-annotator/transcoded/`` when XDG is unset).
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ class TranscodeError(RuntimeError):
 def _default_cache_dir() -> Path:
     xdg = os.environ.get("XDG_CACHE_HOME")
     base = Path(xdg) if xdg else Path.home() / ".cache"
-    return base / "causal-av-annotator" / "transcoded"
+    return base / "cascade-annotator" / "transcoded"
 
 
 def _require_tools() -> None:
@@ -224,14 +224,14 @@ class VideoResolver:
         if mode == "local":
             return False
         try:
-            import causal_ai_av.dataset  # noqa: F401
+            import cascade_av.dataset  # noqa: F401
             return True
         except ImportError:
             if mode == "hf":
                 # Explicit hf mode + missing extra → fail loudly at startup.
                 raise ImportError(
                     "--video-source=hf requires the `[hf]` extra: "
-                    "`pip install causal_ai_av[hf]` or "
+                    "`pip install cascade_av[hf]` or "
                     "`uv sync --extra hf`."
                 ) from None
             return False
@@ -267,9 +267,9 @@ class VideoResolver:
         try:
             import zipfile
 
-            from causal_ai_av.dataset import (
+            from cascade_av.dataset import (
                 DEFAULT_ANNOTATION_CAMERA,
-                CausalAVDataset,
+                CascadeDataset,
             )
         except ImportError as exc:
             raise VideoNotFound(
@@ -286,7 +286,7 @@ class VideoResolver:
                 from physical_ai_av import PhysicalAIAVDatasetInterface
                 self._hf_dataset = PhysicalAIAVDatasetInterface()
             else:
-                self._hf_dataset = CausalAVDataset(self.hf_source)
+                self._hf_dataset = CascadeDataset(self.hf_source)
 
         ds = self._hf_dataset
         try:

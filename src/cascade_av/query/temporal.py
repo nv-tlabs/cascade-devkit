@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import Iterable, TypeVar
 
-from causal_ai_av.query.time import Interval
-from causal_ai_av.spec import AgentAction, AnnotationBundle, EgoAction
+from cascade_av.query.time import Interval
+from cascade_av.spec import AgentAction, AnnotationBundle, EgoAction
 
 _T = TypeVar("_T")
 

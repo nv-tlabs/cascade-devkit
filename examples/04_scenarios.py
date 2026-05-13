@@ -6,7 +6,7 @@ Encodes ~20 representative driving scenarios as named DSL queries.
 Runs them all against the corpus and prints the candidate-clip count
 for each.
 
-    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+    CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \\
         uv run python examples/04_scenarios.py
 
 The queries here are *necessary-condition* filters — they reject
@@ -20,7 +20,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
 
 @dataclass(frozen=True)
@@ -180,15 +180,15 @@ SCENARIOS: list[Scenario] = [
 
 def main() -> None:
     try:
-        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+        dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
     except KeyError:
         raise SystemExit(
-            "CAUSAL_AV_DATASET_ROOT is not set. Point it at a directory of "
+            "CASCADE_AV_DATASET_ROOT is not set. Point it at a directory of "
             "annotation JSON bundles. See the 'Getting the data' section of "
             "the repo's README.md for how to obtain them."
         )
 
-    ds = CausalAVDataset(dataset_root)
+    ds = CascadeDataset(dataset_root)
 
     header = f"{'#id':>10}  {'count':>5}  scenario"
     print(header)

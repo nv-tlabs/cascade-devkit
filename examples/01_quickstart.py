@@ -4,7 +4,7 @@
 
 Load the local corpus, run one query, print the count.
 
-    CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
+    CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \\
         uv run python examples/01_quickstart.py
 
 If you do not yet have the annotation JSONs, see the "Getting the
@@ -16,20 +16,20 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
 
 def main() -> None:
     try:
-        dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
+        dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
     except KeyError:
         raise SystemExit(
-            "CAUSAL_AV_DATASET_ROOT is not set. Point it at a directory of "
+            "CASCADE_AV_DATASET_ROOT is not set. Point it at a directory of "
             "annotation JSON bundles. See the 'Getting the data' section of "
             "the repo's README.md for how to obtain them."
         )
 
-    ds = CausalAVDataset(dataset_root)
+    ds = CascadeDataset(dataset_root)
 
     # A query is a plain string in the query DSL.
     n = ds.count("agent.type = ped")

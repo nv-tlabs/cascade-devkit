@@ -10,8 +10,8 @@ metric positions live in `bounding_boxes` (image-normalized 2-D).
 
 from __future__ import annotations
 
-from causal_ai_av.query.time import Interval
-from causal_ai_av.spec import Agent, AnnotationBundle, EgoRelativePose
+from cascade_av.query.time import Interval
+from cascade_av.spec import Agent, AnnotationBundle, EgoRelativePose
 
 
 def agent_visibility_interval(agent: Agent) -> Interval | None:

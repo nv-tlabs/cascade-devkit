@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Local-filesystem I/O for AV Causal annotation JSON files.
+"""Local-filesystem I/O for CASCADE annotation JSON files.
 
 Filename convention in the reference corpus: `<annotation_uuid>__<clip_id>.json`.
 """
@@ -13,7 +13,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Literal
 
-from causal_ai_av.spec import AnnotationBundle
+from cascade_av.spec import AnnotationBundle
 
 
 def load_file(path: str | Path) -> AnnotationBundle:

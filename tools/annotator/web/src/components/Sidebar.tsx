@@ -63,7 +63,7 @@ export function Sidebar() {
   return (
     <aside className="flex flex-col h-full bg-surface-raised border-r border-border-default overflow-x-hidden overflow-y-hidden">
       <header className="shrink-0 px-5 py-4 border-b border-border-default">
-        <h1 className="text-text-primary font-semibold text-sm">causal-av-annotator</h1>
+        <h1 className="text-text-primary font-semibold text-sm">cascade-annotator</h1>
         <p className="text-xs font-medium text-text-muted mt-0.5">{clips.length} clip{clips.length === 1 ? '' : 's'}</p>
       </header>
 

@@ -1,6 +1,6 @@
 ---
 name: run-tests
-description: Run the pytest suite via `make test`, interpret the output, and diagnose common failure modes (missing CAUSAL_AV_DATASET_ROOT, ffmpeg missing, ruff not installed, workspace not synced).
+description: Run the pytest suite via `make test`, interpret the output, and diagnose common failure modes (missing CASCADE_AV_DATASET_ROOT, ffmpeg missing, ruff not installed, workspace not synced).
 ---
 
 # Run the test suite
@@ -30,13 +30,13 @@ description: Run the pytest suite via `make test`, interpret the output, and dia
   so real `ffmpeg` is never invoked. If you see this, a recent
   change broke the mocking pattern. See
   `tools/annotator/AGENTS.md` § Server-side rules.
-- **`CAUSAL_AV_DATASET_ROOT not set`** — only matters for tests that
+- **`CASCADE_AV_DATASET_ROOT not set`** — only matters for tests that
   iterate the real corpus. Unit tests skip these. Set with
-  `export CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations` before
+  `export CASCADE_AV_DATASET_ROOT=/path/to/json_annotations` before
   invoking `make test`.
 - **`UserWarning: N clip_id(s) had multiple annotation files`** —
   expected on the current corpus; not a failure. Suppress in
-  output by setting `CAUSAL_AV_VERBOSE=0`.
+  output by setting `CASCADE_AV_VERBOSE=0`.
 
 ## When debugging a failing test
 

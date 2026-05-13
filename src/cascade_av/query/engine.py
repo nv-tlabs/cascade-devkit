@@ -16,8 +16,8 @@ import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterator, Sequence
 
-from causal_ai_av.query.constants import ALIAS_FAMILIES, resolve_alias
-from causal_ai_av.query.dsl import (
+from cascade_av.query.constants import ALIAS_FAMILIES, resolve_alias
+from cascade_av.query.dsl import (
     And,
     AttrPredicate,
     BecauseOf,
@@ -29,21 +29,21 @@ from causal_ai_av.query.dsl import (
     While,
     Within,
 )
-from causal_ai_av.query.entities import (
+from cascade_av.query.entities import (
     ENTITIES,
     EntityDescriptor,
     action_type_matches,
 )
-from causal_ai_av.query.index import IdIndex
-from causal_ai_av.query.time import Interval
-from causal_ai_av.spec import AgentAction, AnnotationBundle, EgoAction
+from cascade_av.query.index import IdIndex
+from cascade_av.query.time import Interval
+from cascade_av.spec import AgentAction, AnnotationBundle, EgoAction
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     # Imported lazily for the `sequences()` return annotation; a runtime
     # import here would create a cycle (`dataset.py` already imports from
-    # `causal_ai_av.query`). The runtime resolution happens dynamically
+    # `cascade_av.query`). The runtime resolution happens dynamically
     # inside `MatchSet.sequences` via `self.dataset.get_sequence(...)`.
-    from causal_ai_av.dataset import Sequence as _DatasetSequence
+    from cascade_av.dataset import Sequence as _DatasetSequence
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ class MatchSet:
     # Weakref back to the dataset (or other producer) that built this
     # MatchSet. Populated by the user-facing entry points
     # (`find_on_dataset`, `find_on_bundle` when called with `dataset=…`,
-    # `Sequence.find`, `CausalAVDataset.find`); left None for intermediate
+    # `Sequence.find`, `CascadeDataset.find`); left None for intermediate
     # MatchSets created during boolean composition inside `evaluate`. Use
     # the `dataset` property to resolve; it raises if the referent has
     # been garbage-collected and returns None if never set.
@@ -142,7 +142,7 @@ class MatchSet:
         Pass `unique_clips=True` to flip the carousel into one player
         per distinct clip (matches in the same clip get unioned and
         rendered once). See
-        `causal_ai_av.viz.carousel.build_matchset_carousel` for the
+        `cascade_av.viz.carousel.build_matchset_carousel` for the
         full keyword reference (`layout`, `cols`, `limit`, `pad`, `fps`,
         `arrows`, `families`, `unique_clips`). The return type is
         intentionally `Any` — the viz extra (`ipywidgets`, `plotly`)
@@ -157,11 +157,11 @@ class MatchSet:
                 to a video reader.
         """
         # Lazy import: `viz` pulls `dataset`, and `dataset` already
-        # imports from `causal_ai_av.query`. A top-level import here
+        # imports from `cascade_av.query`. A top-level import here
         # would close the cycle. The viz extra is also optional — keep
-        # the import inside the call so plain `from causal_ai_av.query
+        # the import inside the call so plain `from cascade_av.query
         # import MatchSet` doesn't require ipywidgets / plotly.
-        from causal_ai_av.viz.carousel import build_matchset_carousel  # noqa: PLC0415
+        from cascade_av.viz.carousel import build_matchset_carousel  # noqa: PLC0415
 
         return build_matchset_carousel(self, **kwargs)
 

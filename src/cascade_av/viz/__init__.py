@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""`causal_ai_av.viz` — the DevKit's visualization surface.
+"""`cascade_av.viz` — the DevKit's visualization surface.
 
 Public exports:
 
@@ -18,11 +18,11 @@ Still on the roadmap: the `Sequence.visualize()` wiring (PR-6) and
 on-frame overlays (deferred to v1).
 """
 
-from causal_ai_av.viz.carousel import build_matchset_carousel
-from causal_ai_av.viz.colors import entity_color, family_color
-from causal_ai_av.viz.render import render_frame, render_timeline
-from causal_ai_av.viz.segments import Segment, annotation_to_segments
-from causal_ai_av.viz.widget import ClipPlayer
+from cascade_av.viz.carousel import build_matchset_carousel
+from cascade_av.viz.colors import entity_color, family_color
+from cascade_av.viz.render import render_frame, render_timeline
+from cascade_av.viz.segments import Segment, annotation_to_segments
+from cascade_av.viz.widget import ClipPlayer
 
 __all__ = [
     "ClipPlayer",

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for `causal_ai_av.viz.timeline.render_timeline`.
+"""Tests for `cascade_av.viz.timeline.render_timeline`.
 
 Bundles are built from scratch — no corpus dependency. We poke at the
 returned Plotly Figure's `layout.shapes` since the timeline is built
@@ -15,8 +15,8 @@ from typing import Callable
 import plotly.graph_objects as go
 import pytest
 
-from causal_ai_av.dataset import Sequence
-from causal_ai_av.spec import (
+from cascade_av.dataset import Sequence
+from cascade_av.spec import (
     Agent,
     AgentAction,
     AgentProperty,
@@ -31,7 +31,7 @@ from causal_ai_av.spec import (
     SilAvAnnotation,
     VideoMeta,
 )
-from causal_ai_av.viz import render_timeline
+from cascade_av.viz import render_timeline
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ def _make_all_categories_bundle() -> AnnotationBundle:
     category-agnostic (e.g., parent-row bolding works for ALL parent
     rows, not just Env / Agent).
     """
-    from causal_ai_av.spec import (
+    from cascade_av.spec import (
         LightStates,
         ObjectStateEntry,
         SignalHead,
@@ -286,8 +286,8 @@ def test_arrow_palette_disjoint_from_entity_palette() -> None:
     Lights row when both are red. Pinned here so future palette tweaks
     cannot silently re-introduce the collision.
     """
-    from causal_ai_av.viz.colors import entity_color
-    from causal_ai_av.viz.timeline import _ARROW_COLORS
+    from cascade_av.viz.colors import entity_color
+    from cascade_av.viz.timeline import _ARROW_COLORS
 
     entity_hexes = {
         entity_color(k) for k in ("env", "ego", "object", "agent", "light")
@@ -693,7 +693,7 @@ def test_inline_label_thresholds_match_current_constants() -> None:
     lengths — a 1.0s segment looks fine in a 5s clip and cramped in
     a 20s clip, so the threshold tracks duration.
     """
-    from causal_ai_av.viz.timeline import (
+    from cascade_av.viz.timeline import (
         _INLINE_LABEL_FONT_SIZE,
         _INLINE_LABEL_MAX_CHARS,
         _INLINE_LABEL_MIN_WIDTH_FRAC,
@@ -1468,7 +1468,7 @@ def test_band_tick_text_matches_annotator_terse_style() -> None:
     "conditions"/"actions"/"properties"/"influences"/"states", and
     short "TL control" / "signal head" / "containment" for the
     paren-disambiguated families."""
-    from causal_ai_av.spec import (
+    from cascade_av.spec import (
         LightStates,
         ObjectStateEntry,
         SignalHead,

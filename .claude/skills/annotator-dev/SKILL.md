@@ -36,7 +36,7 @@ frontend. Source under `tools/annotator/`; conventions in
   port. Override via the target's optional `PORT=` variable:
   `make annotator-dev DATA=~/01_json_annotations PORT=20000`
   (equivalent to
-  `uv run causal-av-annotate $DATA --port 20000`).
+  `uv run cascade-annotate $DATA --port 20000`).
 - **Video plays as a black square / 503 on
   `/api/clips/<id>/video`** — `ffmpeg` or `ffprobe` isn't on PATH.
   Install with `sudo apt install -y ffmpeg` (Ubuntu / Horde DGXC).

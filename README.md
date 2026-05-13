@@ -1,15 +1,16 @@
-# causal_ai_av
+# cascade_av
 
-A Python DevKit for the **AV Causal Dataset** — causal and
-spatio-temporal action annotations on top of NVIDIA's *Physical AI
-AV Dataset*. The DevKit parses the annotation JSON into a typed
-Pydantic tree and exposes a small query language for searching the
-corpus by entity, attribute, time, and cause.
+Python DevKit for the **CASCADE dataset** — *Causal Spatio-Temporal
+Analysis of Driving Environments*. Causal and spatio-temporal action
+annotations on top of NVIDIA's *Physical AI AV Dataset*. The DevKit
+parses the annotation JSON into a typed Pydantic tree and exposes a
+small query language for searching the corpus by entity, attribute,
+time, and cause.
 
 ```python
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
-ds = CausalAVDataset("/path/to/json_annotations")
+ds = CascadeDataset("/path/to/json_annotations")
 ds.count("ego.action = decel because_of agent.type = ped")
 # → number of clips where the ego decelerates *because of* a pedestrian
 ```
@@ -88,7 +89,7 @@ uv sync --all-extras --group notebooks     # + notebook tooling (JupyterLab, mat
 The DevKit reads two kinds of artifacts:
 
 1. **Annotation JSON bundles** — the causal/spatio-temporal labels
-   this repo adds. You point `CausalAVDataset` at a local directory of
+   this repo adds. You point `CascadeDataset` at a local directory of
    `*.json` files.
 2. **Sensor data** (camera videos, LiDAR, radar, egomotion) — the
    underlying *Physical AI AV Dataset* on HuggingFace. Pulled
@@ -103,7 +104,7 @@ local disk.
 Examples and notebooks read the path from an environment variable:
 
 ```bash
-export CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations
+export CASCADE_AV_DATASET_ROOT=/path/to/json_annotations
 ```
 
 A [`.env.example`](.env.example) ships at the repo root — copy it to
@@ -113,9 +114,9 @@ Compose, `dotenv-cli`; plain `uv run` does not).
 ## Quickstart
 
 ```python
-from causal_ai_av.dataset import CausalAVDataset
+from cascade_av.dataset import CascadeDataset
 
-ds = CausalAVDataset("/path/to/json_annotations")
+ds = CascadeDataset("/path/to/json_annotations")
 print(f"{len(ds)} clips")
 
 # Count clips matching a query
@@ -141,7 +142,7 @@ ego.action = decel because_of agent.type = ped
 
 ## Visualization
 
-`causal_ai_av.viz` renders any subset of a clip — a single instant, a
+`cascade_av.viz` renders any subset of a clip — a single instant, a
 time range, or a `MatchSet` — as a decoded camera frame paired with
 the clip's annotation timeline. The timeline carries one bar per
 agent action, ego action, environment, condition, and traffic-light
@@ -183,7 +184,7 @@ For reports, doc figures, or headless pipelines, two functions return
 plain values you can pickle, save, or post-process:
 
 ```python
-from causal_ai_av import viz
+from cascade_av import viz
 
 frame = viz.render_frame(seq, t=3.0)          # -> PIL.Image (RGB)
 fig   = viz.render_timeline(seq,              # -> plotly.graph_objects.Figure
@@ -232,7 +233,7 @@ Runnable Python scripts under `examples/`:
 Run any of them with:
 
 ```bash
-CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \
+CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \
     uv run python examples/01_quickstart.py
 ```
 
@@ -244,7 +245,7 @@ through the interactive viz API (clip player + timeline + match
 carousel). Launch JupyterLab with:
 
 ```bash
-CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \
+CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \
     uv run --all-extras --group notebooks jupyter lab notebooks/
 ```
 
@@ -302,10 +303,10 @@ camera and decode a frame from it.
 ## Project layout
 
 ```
-src/causal_ai_av/
+src/cascade_av/
   spec/        # Pydantic schema for the annotation JSON
   io.py        # parse JSON → AnnotationBundle
-  dataset.py   # CausalAVDataset / Sequence — corpus and per-clip API
+  dataset.py   # CascadeDataset / Sequence — corpus and per-clip API
   query/       # DSL lexer + parser + evaluator + query helpers
   viz/         # render_frame / render_timeline / ClipPlayer (optional [viz] extra)
 
@@ -341,7 +342,7 @@ If you want the explicit steps without `make`:
 ```bash
 uv sync --extra annotator
 cd tools/annotator/web && npm install && npm run build
-uv run causal-av-annotate /path/to/json_annotations
+uv run cascade-annotate /path/to/json_annotations
 ```
 
 Lock-by-default, explicit Save (with `.bak` on first save), HEVC→H.264

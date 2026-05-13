@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 [project]
-name = "causal_ai_av"
+name = "cascade_av"
 version = "0.1.0"
-description = "DevKit for the AV Causal Dataset — causal and spatio-temporal action annotations on top of the Physical AI AV Dataset."
+description = "DevKit for the CASCADE dataset — causal and spatio-temporal action annotations on top of the Physical AI AV Dataset."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
@@ -16,7 +16,7 @@ hf = [
     "physical-ai-av>=0.2.2",
 ]
 annotator = [
-    "causal-av-annotator",
+    "cascade-annotator",
 ]
 viz = [
     "pillow>=10.0",
@@ -33,7 +33,7 @@ build-backend = "uv_build"
 members = ["tools/annotator"]
 
 [tool.uv.sources]
-causal-av-annotator = { workspace = true }
+cascade-annotator = { workspace = true }
 
 [dependency-groups]
 dev = [
