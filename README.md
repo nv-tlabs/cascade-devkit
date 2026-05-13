@@ -38,6 +38,41 @@ This project uses [uv](https://docs.astral.sh/uv/) for environment and
 dependency management. Clone the repo first; the package is not on
 PyPI.
 
+### Prerequisites (Ubuntu / Debian)
+
+You need four things on PATH before `make install` works:
+
+| Tool | Why |
+|------|-----|
+| **Python ≥ 3.11** | DevKit baseline. Ships with Ubuntu 22.04+ and Debian Bookworm; older releases need [deadsnakes](https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa) or `pyenv`. |
+| **`make`** | All documented install / test / run targets are make recipes. |
+| **Node ≥ 18 (LTS) + npm** | Only used by the annotator frontend (Vite bundle). |
+| **`ffmpeg` + `ffprobe`** | Only used by the annotator (HEVC → H.264 transcode + codec detection). See [`tools/annotator/README.md`](tools/annotator/README.md) for which features degrade if missing. |
+
+Plus `uv` itself — installed separately because it manages your Python
+environments and is not a Python package.
+
+One-liner on a fresh Ubuntu 22.04+ / Debian Bookworm:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y make build-essential ffmpeg
+
+# Node 20 LTS via NodeSource
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# uv via the official installer
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Container alternative.** A [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
+ships with the repo and installs all of the above automatically — open
+the folder in VS Code Dev Containers, GitHub Codespaces, or any
+compatible host. No host-side setup needed beyond the IDE.
+
+### Install the project
+
 ```bash
 # One-shot — Python deps (all extras) + the annotator's npm deps.
 make install
@@ -47,8 +82,6 @@ uv sync                                    # core install
 uv sync --extra hf                         # + parent-dataset integration (video loading)
 uv sync --all-extras --group notebooks     # + notebook tooling (JupyterLab, matplotlib, pandas)
 ```
-
-Requires Python ≥ 3.11.
 
 ## Getting the data
 
