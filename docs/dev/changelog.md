@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 feat(viz): widget video extends into label margin + aspect-fit pixel height + autosize horizontally (#44)
 - 2026-05-13 feat(viz): widen tick-label pad column so parent centering visibly distinct from sub-row left-alignment (#43)
 - 2026-05-13 feat(viz): center parent tick labels + left-align sub-rows + tighten widget video↔timeline gap (#42)
 - 2026-05-13 feat(viz): light theme (`plotly_white`) + left-aligned y-tick labels via nbsp padding (#41)

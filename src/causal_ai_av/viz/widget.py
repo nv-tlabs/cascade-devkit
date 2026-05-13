@@ -62,12 +62,28 @@ _VERTICAL_SPACING = 0.015
 # uses it as the smoke-test bar in `meta/10_visualization_api_plan.md`.
 _DEFAULT_FPS = 8.0
 
-# Pixel budget for the video subplot in the adaptive-height path.
-# 480px keeps a 1080p frame legible at the default Jupyter cell width;
-# users who want a giant video pane can override via the `height`
-# kwarg (which pins the *total* height; the timeline's share scales
-# down to compensate).
+# Fallback pixel budget for the video pane when the source frame's
+# aspect ratio can't be measured (zero-byte frame, decode failure,
+# pre-PR-44 unit tests stubbing _decode_frame to return something
+# pathological). Real frames drive video_px via
+# `_aspect_fit_video_px` so the figure height tracks the source
+# resolution and no letterboxing creeps in.
 _VIDEO_PX = 480
+
+# Layout-image paper-x extents for the video pane. Negative left
+# edge so the box reaches into the y-tick-label margin (matching
+# the entity-block bands in the timeline at `paper-x=[-0.18, 1.0]`).
+# Right edge sits at the plot right edge. `sizing="contain"` on
+# the layout image preserves the source aspect inside the box.
+_VIDEO_PAPER_X_LEFT: float = -0.18
+_VIDEO_PAPER_X_RIGHT: float = 1.0
+
+# Assumed Jupyter cell width in pixels, used only to size the video
+# pane's height when aspect-fitting. The widget itself autosizes
+# horizontally at render time — the assumed width is just a target
+# for the pixel-height math so the contained image fills the box
+# without letterboxing at typical cell widths.
+_ASSUMED_CELL_WIDTH_PX: int = 1000
 
 # Chrome (margins + ipywidgets row) that the figure layout needs to
 # leave room for. Adding it to the video + timeline pixels gives the
@@ -270,27 +286,22 @@ class ClipPlayer:
 
         # Initial frame at t_start. We decode through the sequence's
         # video reader; tests substitute a fake reader that returns a
-        # known fake array. The frame is JPEG-encoded into a data URI
-        # rather than passed as a raw `z=` array — see
-        # `_encode_frame_jpeg` for the rationale (avoids ~32MB of JSON
-        # per tick over the Jupyter Comm channel).
+        # known fake array. Use the initial frame's resolution to
+        # compute the source aspect ratio — drives the layout image's
+        # paper-y extent so we avoid the letterboxing-inside-subplot
+        # that the old `go.Image` trace approach produced.
         initial_frame = self._decode_frame(self._t)
-        base.add_trace(
-            go.Image(
-                source=_encode_frame_jpeg(
-                    initial_frame,
-                    quality=self._frame_quality,
-                    max_dim=self._frame_max_dim,
-                ),
-                name="frame",
-            ),
-            row=1,
-            col=1,
-        )
+        src_h, src_w = initial_frame.shape[:2]
+        self._video_aspect = float(src_w) / float(src_h) if src_h > 0 else 16.0 / 9.0
 
         # Convert to a FigureWidget *before* painting the timeline so
         # the playhead-line shape can be added through the same
-        # `update_layout` path on a live widget.
+        # `update_layout` path on a live widget. The top subplot's
+        # axes are hidden — the video lives at the figure level as a
+        # `layout.images[0]` entry positioned in paper coords (so it
+        # can reach into the y-tick-label margin AND fill the figure
+        # width without being clipped to the subplot's `xaxis.domain`,
+        # which Plotly hard-clamps to [0, 1]).
         fig = go.FigureWidget(base)
 
         # Hide the image axes ticks — the video frame doesn't have
@@ -303,6 +314,11 @@ class ClipPlayer:
             # as one clustered viewer (matches the annotator's stack).
             margin={"l": 80, "r": 20, "t": 6, "b": 30},
             showlegend=False,
+            # Autosize horizontally so the widget fills the Jupyter
+            # cell rather than defaulting to Plotly's fixed ~700px.
+            # Total height stays pinned (set below) so the lane-band
+            # readability survives.
+            autosize=True,
             xaxis={"showticklabels": False, "showgrid": False, "zeroline": False},
             yaxis={"showticklabels": False, "showgrid": False, "zeroline": False},
         )
@@ -327,13 +343,18 @@ class ClipPlayer:
             show_inline_labels=show_inline_labels,
         )
 
-        # Adaptive height: frame_px on top, lane-count × _PX_PER_LANE
-        # on the bottom (with a floor so a sparse clip still gets
-        # breathing room), plus chrome for margins / slider. Callers
-        # can pass `height=N` to pin a total value — we then keep the
-        # timeline at its computed pixel share and let the video pane
-        # absorb the rest, preserving the lane-band readability the
-        # whole adaptive path is about.
+        # Adaptive height: video_px is derived from the source aspect
+        # at a target box width (the layout-image's paper-x extent
+        # times an assumed plot pixel width). Eliminates the
+        # letterboxing-inside-subplot that the old fixed _VIDEO_PX
+        # path produced — the video pane is now sized exactly to fit
+        # the source aspect, so there's no internal padding between
+        # the video bottom edge and the timeline.
+        #
+        # Callers can pass `height=N` to pin a total value — we then
+        # keep the timeline at its computed pixel share and let the
+        # video pane absorb the rest, preserving the lane-band
+        # readability the whole adaptive path is about.
         timeline_px = _timeline_px_for(paint)
         if height is not None:
             total_height = int(height)
@@ -342,7 +363,7 @@ class ClipPlayer:
                 total_height - timeline_px - _CHROME_PX,
             )
         else:
-            video_px = _VIDEO_PX
+            video_px = self._aspect_fit_video_px()
             total_height = video_px + timeline_px + _CHROME_PX
 
         # `make_subplots` writes y-domain fractions onto the two
@@ -355,15 +376,47 @@ class ClipPlayer:
         subplot_total = video_px + timeline_px
         usable = 1.0 - _VERTICAL_SPACING
         timeline_domain_top = (timeline_px / subplot_total) * usable
+        video_domain_bottom = timeline_domain_top + _VERTICAL_SPACING
         fig.update_layout(
             height=total_height,
             yaxis={
                 "showticklabels": False,
                 "showgrid": False,
                 "zeroline": False,
-                "domain": [timeline_domain_top + _VERTICAL_SPACING, 1.0],
+                "visible": False,  # hide axes — video lives at layout level
+                "domain": [video_domain_bottom, 1.0],
             },
             yaxis2={"domain": [0.0, timeline_domain_top]},
+        )
+
+        # Attach the video as a layout-level image. Paper xref means
+        # we can put the box's left edge at `x=-0.18` (reaching into
+        # the y-tick-label margin) and the right edge at `x=1.0` so
+        # the box spans labels + bars + chrome. `sizing="contain"`
+        # preserves the source aspect ratio inside the box; combined
+        # with the aspect-derived video_px above, the contained image
+        # fills the box almost edge-to-edge.
+        fig.update_layout(
+            images=[
+                {
+                    "source": _encode_frame_jpeg(
+                        initial_frame,
+                        quality=self._frame_quality,
+                        max_dim=self._frame_max_dim,
+                    ),
+                    "xref": "paper",
+                    "yref": "paper",
+                    "x": _VIDEO_PAPER_X_LEFT,
+                    "y": 1.0,
+                    "sizex": _VIDEO_PAPER_X_RIGHT - _VIDEO_PAPER_X_LEFT,
+                    "sizey": 1.0 - video_domain_bottom,
+                    "xanchor": "left",
+                    "yanchor": "top",
+                    "sizing": "contain",
+                    "layer": "above",
+                    "name": "frame",
+                }
+            ]
         )
 
         # ------------------------------------------------------------
@@ -434,8 +487,19 @@ class ClipPlayer:
 
         # Container with the slider above the Play button, both above
         # the figure. ipywidgets boxes flow top → bottom by default.
-        self._controls = ipywidgets.HBox([self._play, self._slider])
-        self._container = ipywidgets.VBox([self._fig, self._controls])
+        # Fill the Jupyter cell horizontally. Without an explicit
+        # `width="100%"` on the VBox / HBox, ipywidgets sizes each
+        # child to its preferred fit (Plotly's default ~700px),
+        # leaving the cell mostly empty. Paired with the
+        # `fig.layout.autosize=True` setting above, the figure now
+        # tracks the container width.
+        full_width = ipywidgets.Layout(width="100%")
+        self._controls = ipywidgets.HBox(
+            [self._play, self._slider], layout=full_width
+        )
+        self._container = ipywidgets.VBox(
+            [self._fig, self._controls], layout=full_width
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -561,8 +625,32 @@ class ClipPlayer:
         finally:
             self._suspend_link = False
 
+    def _aspect_fit_video_px(self) -> int:
+        """Pixel height of the video pane derived from the source
+        aspect ratio and the layout image's paper-x extent.
+
+        The layout image occupies paper-x =
+        `[_VIDEO_PAPER_X_LEFT, _VIDEO_PAPER_X_RIGHT]` which equals
+        ~1.18 plot widths. At an assumed Jupyter cell width of
+        `_ASSUMED_CELL_WIDTH_PX`, that translates to a target box
+        width in pixels; dividing by the source aspect gives the
+        height in pixels needed to fit the source without
+        letterboxing inside the box.
+
+        Real cell widths vary — the assumed width is a target for the
+        pixel-height math, so the result is "approximately right" at
+        the typical cell width but degrades smoothly at narrower or
+        wider widths (small letterboxes appear, but never the giant
+        gap the old fixed-`_VIDEO_PX = 480` path produced).
+        """
+        plot_w_px = _ASSUMED_CELL_WIDTH_PX - 80 - 20  # margins
+        box_w_paper = _VIDEO_PAPER_X_RIGHT - _VIDEO_PAPER_X_LEFT
+        box_w_px = plot_w_px * box_w_paper
+        aspect = self._video_aspect or (16.0 / 9.0)
+        return max(_PX_PER_LANE, int(round(box_w_px / aspect)))
+
     def _apply_t(self, t: float) -> None:
-        """Decode the frame at `t`, swap the Image trace + playhead atomically.
+        """Decode the frame at `t`, swap the layout image + playhead atomically.
 
         The playhead shape is mutated **in place** via direct
         attribute writes on `fig.layout.shapes[playhead_index]`
@@ -574,6 +662,12 @@ class ClipPlayer:
         once the duplicate-decode bug was fixed. Surgical writes
         measured ~7x faster on a 40-shape figure (403ms → 58ms
         over 100 iterations).
+
+        Since PR-44 the video frame lives at
+        `layout.images[0].source` (was `data[0].source`). The
+        per-tick update target moved, but PR-33's JPEG transport
+        is otherwise untouched — encoding still happens once per
+        tick into a base64 data URI.
         """
         frame = self._decode_frame(t)
         self._t = t
@@ -582,7 +676,7 @@ class ClipPlayer:
             # per-tick payload to ~1.8MB instead of ~32MB on a 1080p
             # frame, which is the dominant Play-latency cost over the
             # Jupyter Comm channel.
-            self._fig.data[0].source = _encode_frame_jpeg(
+            self._fig.layout.images[0].source = _encode_frame_jpeg(
                 frame,
                 quality=self._frame_quality,
                 max_dim=self._frame_max_dim,
