@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from causal_ai_av.spec import (
     Agent,
@@ -58,6 +58,25 @@ from causal_ai_av.spec import (
     TrafficLight,
     TrafficObject,
 )
+
+# Family taxonomy — one of the eleven values below. Mirrors the
+# annotator's family bands in `Timeline.tsx`: a top-level `parent` bar
+# per entity, plus per-family sub-rows (`containment`, `pose`, …). The
+# painter groups segments by `(group, family, sh_index)` to lay out
+# distinct labeled bands instead of mixing every sub-row into one row.
+SegmentFamily = Literal[
+    "parent",
+    "action",
+    "property",
+    "containment",
+    "influence",
+    "pose",
+    "condition",
+    "state",
+    "signal_head",
+    "env_control",
+    "physical_containment",
+]
 
 # Local M:S.D parser matching the TS `parseTs` semantics — returns 0.0 on
 # empty / malformed input rather than None. The DevKit's
@@ -102,6 +121,11 @@ class Segment:
         meta: provenance dict — entity kind, source indices, source object.
             Callers should treat the keys as advisory; only the six fields
             above are load-bearing.
+        family: which annotator sub-row this segment paints onto — one of
+            the eleven `SegmentFamily` values. Drives the family-band
+            layout in `_paint_timeline_onto`. Defaults to `"parent"` so
+            historical `Segment(...)` constructions in tests keep working
+            without an explicit family.
     """
 
     id: str
@@ -112,6 +136,7 @@ class Segment:
     illegal: bool = False
     because_of: tuple[str, ...] = ()
     meta: dict[str, Any] | None = field(default=None)
+    family: SegmentFamily = "parent"
 
 
 # -----------------------------------------------------------------------------
@@ -275,6 +300,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 t0=_parse_ts(env.start_timestamp),
                 t1=_parse_ts(env.end_timestamp),
                 meta={"_envIndex": ei, "_objKind": "environment"},
+                family="parent",
             )
         )
 
@@ -294,6 +320,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                     "_isCondSubtrack": True,
                     "_cond_track_index": cond.cond_track_index or 0,
                 },
+                family="condition",
             )
         )
 
@@ -310,6 +337,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 illegal=bool(act.illegal_flag),
                 because_of=tuple(act.because_of),
                 meta={"_egoActIndex": i, "_isEgoActionSubtrack": True},
+                family="action",
             )
         )
     # --- Ego containment ---
@@ -327,6 +355,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                     "_isEgoContSubtrack": True,
                     "_cont_track_index": cont.cont_track_index or 0,
                 },
+                family="containment",
             )
         )
     # --- Ego influences ---
@@ -343,6 +372,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                     "_isEgoInfluenceSubtrack": True,
                     "_influence_track_index": infl.influence_track_index or 0,
                 },
+                family="influence",
             )
         )
     # --- Ego properties ---
@@ -359,6 +389,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                     "_isEgoPropertySubtrack": True,
                     "_prop_track_index": prop.prop_track_index or 0,
                 },
+                family="property",
             )
         )
 
@@ -380,6 +411,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 t0=_parse_ts(obj.visibility_start_timestamp),
                 t1=_parse_ts(obj.visibility_end_timestamp),
                 meta={"_objIndex": oi, "_objKind": "traffic_object"},
+                family="parent",
             )
         )
         # State subtracks
@@ -397,6 +429,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_stateIndex": si,
                         "_isObjStateSubtrack": True,
                     },
+                    family="state",
                 )
             )
         # Object containment
@@ -415,6 +448,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_isObjContSubtrack": True,
                         "_cont_track_index": cont.cont_track_index or 0,
                     },
+                    family="containment",
                 )
             )
 
@@ -431,9 +465,13 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 t0=_parse_ts(light.visibility_start_timestamp),
                 t1=_parse_ts(light.visibility_end_timestamp),
                 meta={"_lightIndex": li, "_objKind": "traffic_light"},
+                family="parent",
             )
         )
-        # Physical containment (omit_lane=True in TS)
+        # Physical containment (omit_lane=True in TS) — labeled
+        # "TL control" in the annotator's y-axis. Lives at the light's
+        # top level, not nested under any signal head, so `_sh_index`
+        # is omitted from meta.
         for ci, cont in enumerate(light.containment):
             segs.append(
                 Segment(
@@ -449,9 +487,14 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_isLightPhysContSubtrack": True,
                         "_cont_track_index": cont.cont_track_index or 0,
                     },
+                    family="physical_containment",
                 )
             )
-        # Signal heads
+        # Signal heads. The annotator paints a per-head stripe:
+        # the SH bar, the env_controlled "containment" rows under it,
+        # and the state rows. We tag each per-head segment with
+        # `_sh_index = hi` so the painter can lay out one band per head
+        # per family.
         sh: SignalHead
         for hi, sh in enumerate(light.signal_heads):
             segs.append(
@@ -464,8 +507,10 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                     meta={
                         "_lightIndex": li,
                         "_headIndex": hi,
+                        "_sh_index": hi,
                         "_isSignalHeadSubtrack": True,
                     },
+                    family="signal_head",
                 )
             )
             for si, st in enumerate(sh.state_sequence):
@@ -480,9 +525,11 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         meta={
                             "_lightIndex": li,
                             "_headIndex": hi,
+                            "_sh_index": hi,
                             "_stateIndex": si,
                             "_isLightStateSubtrack": True,
                         },
+                        family="state",
                     )
                 )
             for ci, cont in enumerate(sh.env_controlled):
@@ -497,9 +544,11 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         meta={
                             "_lightIndex": li,
                             "_headIndex": hi,
+                            "_sh_index": hi,
                             "_contIndex": ci,
                             "_isLightContSubtrack": True,
                         },
+                        family="env_control",
                     )
                 )
 
@@ -533,6 +582,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 t0=vis_t0,
                 t1=vis_t1,
                 meta={"_agentIndex": ai, "_objKind": "agent"},
+                family="parent",
             )
         )
         # Action subtracks
@@ -556,6 +606,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "agent_type": agent.type,
                         "agent_prefix": prefix,
                     },
+                    family="action",
                 )
             )
         # Property subtracks
@@ -574,6 +625,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_segType": "property",
                         "_prop_track_index": prop.prop_track_index or 0,
                     },
+                    family="property",
                 )
             )
         # Pose subtracks
@@ -594,6 +646,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_isAgentPoseSubtrack": True,
                         "_segType": "pose",
                     },
+                    family="pose",
                 )
             )
         # Containment subtracks
@@ -612,6 +665,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_isAgentContSubtrack": True,
                         "_cont_track_index": cont.cont_track_index or 0,
                     },
+                    family="containment",
                 )
             )
         # Influence subtracks
@@ -629,6 +683,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_isAgentInfluenceSubtrack": True,
                         "_influence_track_index": infl.influence_track_index or 0,
                     },
+                    family="influence",
                 )
             )
 
@@ -732,4 +787,4 @@ def assign_lanes(segments: list[Segment]) -> dict[str, int]:
     return lanes
 
 
-__all__ = ["Segment", "annotation_to_segments", "assign_lanes"]
+__all__ = ["Segment", "SegmentFamily", "annotation_to_segments", "assign_lanes"]

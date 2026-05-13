@@ -168,6 +168,10 @@ class ClipPlayer:
             their longer side equals ``frame_max_dim`` before JPEG
             encoding — a power knob for very large frames or slow
             transports. ``None`` (default) keeps the source resolution.
+        show_inline_labels: forwarded to ``_paint_timeline_onto``; when
+            False, suppress every inline label annotation on the
+            timeline subplot. Hover tooltips still fire. Defaults to
+            True (historical behaviour).
 
     Display protocol:
         - In Jupyter / JupyterLab the widget renders inline through
@@ -205,6 +209,7 @@ class ClipPlayer:
         height: int | None = None,
         frame_quality: int = _DEFAULT_FRAME_QUALITY,
         frame_max_dim: int | None = None,
+        show_inline_labels: bool = True,
     ) -> None:
         # Defer the optional-extra imports so importing this module
         # without `[viz]` doesn't blow up at module load — only at
@@ -297,9 +302,11 @@ class ClipPlayer:
         )
 
         # Paint the timeline onto the second subplot (x2 / y2). The
-        # painter returns per-group lane counts so we can size the
-        # bottom subplot proportionally to the deepest stack.
-        group_lane_count = _paint_timeline_onto(
+        # painter returns a `PaintResult` describing the band stack —
+        # band keys in y-order, per-band lane counts, the y-coord
+        # range, and the total lane count — so we can size the bottom
+        # subplot proportionally to the deepest stack across bands.
+        paint = _paint_timeline_onto(
             fig,
             sequence,
             xref="x2",
@@ -311,6 +318,7 @@ class ClipPlayer:
             entity_kinds=entity_kinds,
             agent_ids=agent_ids,
             track_groups=track_groups,
+            show_inline_labels=show_inline_labels,
         )
 
         # Adaptive height: frame_px on top, lane-count × _PX_PER_LANE
@@ -320,7 +328,7 @@ class ClipPlayer:
         # timeline at its computed pixel share and let the video pane
         # absorb the rest, preserving the lane-band readability the
         # whole adaptive path is about.
-        timeline_px = _timeline_px_for(group_lane_count)
+        timeline_px = _timeline_px_for(paint)
         if height is not None:
             total_height = int(height)
             video_px = max(
@@ -355,15 +363,17 @@ class ClipPlayer:
         # ------------------------------------------------------------
         # 2. Playhead — a vertical line on the bottom subplot's axes.
         #    Appended after the timeline shapes so it sits on top.
+        #    The y-range comes from the painter's `PaintResult` (rather
+        #    than the legacy 5-row integer grid) so the playhead spans
+        #    the full populated band stack, however many bands that is.
         # ------------------------------------------------------------
-        from causal_ai_av.viz.timeline import _TRACK_GROUPS
-
+        y_min, y_max = paint.y_range
         playhead = {
             "type": "line",
             "x0": self._t,
             "x1": self._t,
-            "y0": -0.5,
-            "y1": len(_TRACK_GROUPS) - 0.5,
+            "y0": y_min,
+            "y1": y_max,
             "xref": "x2",
             "yref": "y2",
             "line": {"color": "#fbbf24", "width": 2, "dash": "dash"},
