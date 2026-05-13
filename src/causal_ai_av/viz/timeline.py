@@ -102,6 +102,19 @@ _BAND_ORDER_BY_CATEGORY: dict[str, tuple[str, ...]] = {
     "Ego": ("containment", "influence", "action", "property"),
 }
 
+# Recognized family-leaf names accepted by the `families=[...]` filter
+# kwarg. Derived from `_BAND_ORDER_BY_CATEGORY` with `"parent"` removed
+# — parent rows are NOT named in the whitelist; they auto-render for
+# entities whose sub-rows survive the filter. The set is built at
+# import time so the recognized list never drifts from the band-order
+# truth table.
+_RECOGNIZED_FAMILIES: frozenset[str] = frozenset(
+    f
+    for families in _BAND_ORDER_BY_CATEGORY.values()
+    for f in families
+    if f != "parent"
+)
+
 # Families that, in Traffic Lights, repeat per signal head and need an
 # `sh_idx` discriminator. The painter walks signal heads in ascending
 # index and emits one block per head.
@@ -867,7 +880,11 @@ def _paint_timeline_onto(
             non-parent segment, so the family filter never produces
             orphan headers. Entities with zero surviving sub-rows
             drop completely (their parent disappears too).
-            `None` = all families.
+            `None` = all families. Unrecognized leaf names raise
+            `ValueError` listing the recognized set — silent
+            empty-timeline output on a typo (e.g. plural
+            `"actions"` instead of `"action"`) is worse than a
+            clear error.
         show_inline_labels: when False, suppress every inline label
             annotation; hover tooltips still fire. Defaults to True
             (the historical behaviour). Callers wanting a maximally
@@ -927,6 +944,27 @@ def _paint_timeline_onto(
     # Parents are never named here — they survive automatically for
     # any entity whose sub-rows pass the filter (see two-pass logic
     # below). `None` = no family filter.
+    #
+    # The y-tick labels show families in pluralized form ("actions",
+    # "conditions", ...) but the kwarg takes the singular leaf name
+    # ("action", "condition", ...). It's an easy mistake to copy the
+    # visible label back into the kwarg, so unrecognized leaves raise
+    # `ValueError` with the recognized list — silent empty-timeline
+    # output is worse than a clear error.
+    if families is not None:
+        unknown = set(families) - _RECOGNIZED_FAMILIES
+        if unknown:
+            if "parent" in unknown:
+                raise ValueError(
+                    "'parent' is not a valid families filter entry — "
+                    "parent rows auto-render for entities whose "
+                    "sub-rows survive the filter. Recognized families: "
+                    f"{sorted(_RECOGNIZED_FAMILIES)!r}"
+                )
+            raise ValueError(
+                f"unknown family leaves: {sorted(unknown)!r}. "
+                f"Recognized: {sorted(_RECOGNIZED_FAMILIES)!r}"
+            )
     allowed_families: set[str] | None = (
         None if families is None else set(families)
     )
@@ -1646,7 +1684,9 @@ def render_timeline(
             `"influence"`, `"action"`, `"property"`). Parent entity
             headers auto-render for any entity whose sub-rows survive
             — entities with zero surviving sub-rows drop completely.
-            `None` = all families.
+            `None` = all families. Unrecognized leaves (e.g. the
+            plural form `"actions"` accidentally copied from a tick
+            label) raise `ValueError`.
         height: optional explicit pixel height. `None` (default) means
             adaptive — the height tracks the deepest sub-lane stack so
             a busy clip gets a taller timeline while a sparse one

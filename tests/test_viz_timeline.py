@@ -10,8 +10,10 @@ entirely from shapes (no traces) per the PR-2 design.
 from __future__ import annotations
 
 import re
+from typing import Callable
 
 import plotly.graph_objects as go
+import pytest
 
 from causal_ai_av.dataset import Sequence
 from causal_ai_av.spec import (
@@ -129,6 +131,87 @@ def _make_full_bundle() -> AnnotationBundle:
     return AnnotationBundle(
         schema_version="2.0.0",
         video=VideoMeta(clip_id="test_clip", duration_s=10.0),
+        annotation=ann,
+    )
+
+
+def _make_all_categories_bundle() -> AnnotationBundle:
+    """Like `_make_full_bundle` but with every category populated —
+    Environments, Traffic Lights, Objects, Agents, and Ego all have
+    at least one entity. Used by tests that assert behavior is
+    category-agnostic (e.g., parent-row bolding works for ALL parent
+    rows, not just Env / Agent).
+    """
+    from causal_ai_av.spec import (
+        LightStates,
+        ObjectStateEntry,
+        SignalHead,
+        TrafficLight,
+        TrafficObject,
+    )
+
+    env = Environment(
+        id="env_0", type="fst:Road",
+        start_timestamp="0:0.0", end_timestamp="0:10.0",
+    )
+    cond = Condition(
+        id="cond_0", env_id="env_0", type=["Construction Zone"],
+        start_timestamp="0:1.0", end_timestamp="0:5.0",
+    )
+    obj = TrafficObject(
+        id="obj_0", type="oxd:Cone",
+        visibility_start_timestamp="0:0.0", visibility_end_timestamp="0:5.0",
+        state_sequence=[
+            ObjectStateEntry(
+                id="obj_state_0", motion_state="Stationary",
+                start_timestamp="0:0.0", end_timestamp="0:5.0",
+            )
+        ],
+    )
+    light = TrafficLight(
+        id="light_0",
+        visibility_start_timestamp="0:0.0", visibility_end_timestamp="0:5.0",
+        containment=[
+            Containment(
+                id="light_phys_0", env_id="env_0",
+                start_timestamp="0:0.0", end_timestamp="0:5.0",
+            )
+        ],
+        signal_heads=[
+            SignalHead(
+                id="sh_0",
+                start_timestamp="0:0.0", end_timestamp="0:5.0",
+                state_sequence=[
+                    LightStates(
+                        id="ls_0", type="Steady", color="red",
+                        start_timestamp="0:0.0", end_timestamp="0:3.0",
+                    )
+                ],
+            ),
+        ],
+    )
+    ego = EgoVehicle(
+        actions=[EgoAction(
+            id="ego_act_0", type="oxd:Decelerate",
+            start_timestamp="0:2.0", end_timestamp="0:4.0",
+        )],
+    )
+    agent = Agent(
+        id="agent_0", type="oxd:Car",
+        visibility_start_timestamp="0:0.5", visibility_end_timestamp="0:5.5",
+        actions=[AgentAction(
+            id="agent_0_act_0", action_type="Yield",
+            start_timestamp="0:1.5", end_timestamp="0:3.0",
+        )],
+    )
+    ann = SilAvAnnotation(
+        environments=[env], conditions=[cond],
+        traffic_objects=[obj], traffic_lights=[light],
+        ego_vehicle=ego, agents=[agent],
+    )
+    return AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="all_cats", duration_s=10.0),
         annotation=ann,
     )
 
@@ -1768,36 +1851,64 @@ def test_tick_label_color_matches_category_for_parent_and_sub_rows() -> None:
     )
 
 
-def test_parent_tick_labels_are_bold_sub_rows_are_not() -> None:
-    """Parent row labels ("Env Track 1", "Agent Track 1", ...) wrap
-    their visible text in `<b>...</b>` so each entity block's section
-    head reads at a glance. Sub-row labels (family heads like
-    "containment", "actions") stay regular weight so the parent/sub
-    hierarchy is visually obvious. The trailing nbsp pad column is
-    NOT bolded — bold lives strictly on the visible text, never on
-    the alignment column.
+@pytest.mark.parametrize(
+    "bundle_factory,expected_parent_labels",
+    [
+        pytest.param(
+            _make_full_bundle,
+            {"Env Track 1", "Agent Track 1"},
+            id="env_agent_ego",
+        ),
+        pytest.param(
+            _make_all_categories_bundle,
+            {"Env Track 1", "Light Track 1", "Object Track 1", "Agent Track 1"},
+            id="all_categories",
+        ),
+    ],
+)
+def test_parent_tick_labels_are_bold_sub_rows_are_not(
+    bundle_factory: Callable[[], AnnotationBundle],
+    expected_parent_labels: set[str],
+) -> None:
+    """Parent row labels (Env / Light / Object / Agent track headers)
+    wrap their visible text in `<b>...</b>` so each entity block's
+    section head reads at a glance. Sub-row labels (family heads like
+    "containment", "actions", "TL control") stay regular weight so the
+    parent/sub hierarchy is visually obvious. The trailing nbsp pad
+    column is NOT bolded — bold lives strictly on the visible text,
+    never on the alignment column.
+
+    Parametrized over both the Env/Agent-only fixture AND the
+    all-categories fixture so Object and Traffic Light parent rows
+    are exercised too — the bold branch in `_band_label_html` is
+    `family == "parent"` (category-agnostic), so coverage across all
+    five categories guards against future regressions that might
+    special-case categories inside the parent branch.
     """
-    fig = render_timeline(_seq(_make_full_bundle()))
+    fig = render_timeline(_seq(bundle_factory()))
     raw = _yticks_raw(fig)
     yticks = [_label_text(t) for t in raw]
 
-    parent_labels = {"Env Track 1", "Agent Track 1"}
     seen_parents: set[str] = set()
     for text, html in zip(yticks, raw):
         if not text:
             continue
-        if text in parent_labels:
+        if text in expected_parent_labels:
             seen_parents.add(text)
             assert f"<b>{text}</b>" in html, (
                 f"parent tick {text!r} missing <b> wrap; got {html!r}"
             )
         else:
-            assert "<b>" not in html, (
+            # Sub-row labels stay regular weight — neither <b> nor </b>
+            # may appear (the closing tag is asserted too so a future
+            # regression that opens a bold span without closing it
+            # still trips the test).
+            assert "<b>" not in html and "</b>" not in html, (
                 f"sub-row tick {text!r} should not be bold; got {html!r}"
             )
-    assert seen_parents == parent_labels, (
-        f"missing parent labels in y-axis: expected {parent_labels}, "
-        f"saw {seen_parents}"
+    assert seen_parents == expected_parent_labels, (
+        f"missing parent labels in y-axis: expected "
+        f"{expected_parent_labels}, saw {seen_parents}"
     )
 
 
@@ -1861,22 +1972,87 @@ def test_families_filter_drops_parent_for_entity_with_no_surviving_subrows() -> 
 
 
 def test_families_filter_drops_arrows_whose_endpoints_were_filtered() -> None:
-    """The `families` whitelist propagates to arrows through the
-    existing endpoint-id check — any arrow whose source or target
-    segment was filtered out is dropped. `families=["action"]` keeps
-    the action segments but drops the condition/containment/influence/
-    property segments those arrows might point at, so arrow count
-    shrinks vs the unfiltered baseline."""
-    full = render_timeline(_seq(_make_full_bundle()))
-    filtered = render_timeline(
+    """Exact-survival semantics for the arrow filter: an arrow paints
+    in the filtered figure iff BOTH its source-segment id AND its
+    target-segment id appear in the set of segment shapes that
+    survived the family filter.
+
+    Replaces the historical `len(filtered) < len(full)` assertion —
+    that only caught "the filter does something" and would not catch a
+    regression that over-filters arrows (dropping arrows whose
+    endpoints both survived). The arrow shape's `name` field encodes
+    the source / target ids — we parse it back to verify endpoint
+    survival rather than re-running the filter predicate in test land.
+    """
+    full_fig = render_timeline(_seq(_make_full_bundle()))
+    filtered_fig = render_timeline(
         _seq(_make_full_bundle()), families=["action"]
     )
-    full_arrows = [s for s in _shapes(full) if s.get("type") == "path"]
-    filtered_arrows = [s for s in _shapes(filtered) if s.get("type") == "path"]
-    assert len(filtered_arrows) < len(full_arrows), (
-        f"family filter should drop at least one arrow whose endpoint "
-        f"was filtered out; full={len(full_arrows)} "
-        f"filtered={len(filtered_arrows)}"
+
+    def _arrow_endpoints(shape: dict) -> tuple[str, str, str] | None:
+        """Parse `"arrow:{family}:{src_id}->{tgt_id}"` → `(family, src, tgt)`,
+        or `None` if the shape isn't an arrow."""
+        name = shape.get("name") or ""
+        if not name.startswith("arrow:"):
+            return None
+        _, family, edge = name.split(":", 2)
+        if "->" not in edge:
+            return None
+        src, tgt = edge.split("->", 1)
+        return family, src, tgt
+
+    def _segment_ids(fig: go.Figure) -> set[str]:
+        """Pull out the ids of segment shapes that survived rendering —
+        the canonical source of truth for "what got filtered in."""
+        return {
+            (s.get("name") or "")[len("segment:"):]
+            for s in _shapes(fig)
+            if (s.get("name") or "").startswith("segment:")
+        }
+
+    filtered_seg_ids = _segment_ids(filtered_fig)
+    full_arrows: set[tuple[str, str, str]] = {
+        ep for s in _shapes(full_fig)
+        if (ep := _arrow_endpoints(s)) is not None
+    }
+    filtered_arrows: set[tuple[str, str, str]] = {
+        ep for s in _shapes(filtered_fig)
+        if (ep := _arrow_endpoints(s)) is not None
+    }
+
+    # Direction 1: every surviving arrow has BOTH endpoints in the
+    # post-filter segment set. Catches under-filtering (an arrow
+    # somehow leaks through despite an endpoint being dropped).
+    for family, src, tgt in filtered_arrows:
+        assert src in filtered_seg_ids, (
+            f"arrow {family}:{src}->{tgt} survived but src segment "
+            f"{src!r} was filtered out"
+        )
+        assert tgt in filtered_seg_ids, (
+            f"arrow {family}:{src}->{tgt} survived but tgt segment "
+            f"{tgt!r} was filtered out"
+        )
+
+    # Direction 2: every full-figure arrow whose endpoints BOTH survive
+    # the segment filter must still appear in the filtered figure.
+    # Catches over-filtering (an arrow gets dropped even though both
+    # its endpoints survived).
+    for family, src, tgt in full_arrows:
+        if src in filtered_seg_ids and tgt in filtered_seg_ids:
+            assert (family, src, tgt) in filtered_arrows, (
+                f"arrow {family}:{src}->{tgt} dropped even though "
+                f"both endpoints survived the filter"
+            )
+
+    # Sanity: the filter must actually drop at least one arrow,
+    # otherwise we're not exercising the filter behavior. (If this
+    # ever fails, the fixture probably needs an arrow that crosses
+    # a filtered family boundary.)
+    assert filtered_arrows < full_arrows, (
+        f"filtered arrows should be a strict subset of full arrows — "
+        f"the fixture should include at least one arrow with a "
+        f"non-`action` endpoint. full={full_arrows} "
+        f"filtered={filtered_arrows}"
     )
 
 
@@ -1916,6 +2092,76 @@ def test_families_filter_composes_with_track_groups() -> None:
     assert block_names == {"entity_block:Agents:0"}, (
         f"expected only the Agents block, got {block_names}"
     )
+
+
+@pytest.mark.parametrize(
+    "bad_kwarg",
+    [
+        pytest.param(["actions"], id="plural_form"),  # the common typo
+        pytest.param(["containments"], id="plural_containment"),
+        pytest.param(["foo"], id="garbage"),
+        pytest.param(["action", "bogus"], id="mixed_good_and_bad"),
+    ],
+)
+def test_families_filter_raises_on_unrecognized_leaf(
+    bad_kwarg: list[str],
+) -> None:
+    """Unrecognized family leaves (most commonly the plural form
+    copied from a tick label) raise `ValueError` listing the
+    recognized 10-leaf set. Silent empty-timeline output on a typo
+    is worse than a clear error.
+    """
+    with pytest.raises(ValueError) as exc_info:
+        render_timeline(_seq(_make_full_bundle()), families=bad_kwarg)
+    msg = str(exc_info.value)
+    assert "unknown family leaves" in msg, (
+        f"error message should name the failure mode; got {msg!r}"
+    )
+    # The recognized list should be mentioned so the user can correct
+    # their typo without consulting docs.
+    assert "Recognized" in msg, (
+        f"error should list the recognized family leaves; got {msg!r}"
+    )
+
+
+def test_families_filter_raises_with_clarifying_message_on_parent() -> None:
+    """`families=["parent"]` is a recognized-shape mistake — the user
+    saw parent rows in the rendered timeline and tried to whitelist
+    them. The error message clarifies that parent rows auto-render
+    based on sub-row survival rather than being directly whitelisted.
+    """
+    with pytest.raises(ValueError) as exc_info:
+        render_timeline(_seq(_make_full_bundle()), families=["parent"])
+    msg = str(exc_info.value)
+    assert "'parent' is not a valid families filter" in msg, (
+        f"error should call out the 'parent' case specifically; "
+        f"got {msg!r}"
+    )
+    assert "auto-render" in msg, (
+        f"error should explain WHY parent isn't a valid entry; "
+        f"got {msg!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "leaf",
+    [
+        "condition", "containment", "physical_containment",
+        "signal_head", "env_control", "state", "pose",
+        "influence", "action", "property",
+    ],
+)
+def test_families_filter_accepts_every_recognized_leaf(leaf: str) -> None:
+    """Every leaf in the docstring-listed set of 10 must be accepted
+    by `families=[...]` without raising. Guards against drift between
+    the validator's recognized set and the documented leaf names —
+    a future band-order change must update both in lockstep.
+    """
+    # `_make_all_categories_bundle()` populates every category so each
+    # leaf has at least one segment to filter against. The call must
+    # complete without raising — we don't assert anything about the
+    # resulting figure shape, just that the kwarg is accepted.
+    render_timeline(_seq(_make_all_categories_bundle()), families=[leaf])
 
 
 def test_entity_block_spans_label_margin_via_paper_xref() -> None:
