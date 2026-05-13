@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-13 fix: unify timestamp parser + drop stale TYPE_CHECKING + tighten annotator types (#59)
 - 2026-05-13 docs(user): journey fixes + vocabulary alignment + concept reference (#58)
 - 2026-05-13 docs(dev): unblock architecture.md + fix contrib table + relocate uv-run advice (#57)
 - 2026-05-13 fix(viz): validate `families=[...]` kwarg + parametrize parent-bold test across all categories + tighten arrow drop-through test (closes #51, #52, #53) (#56)

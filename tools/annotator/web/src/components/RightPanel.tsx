@@ -887,8 +887,16 @@ export function RightPanel() {
   const canHaveIllegal = sel && !selMeta._isEgoPropertySubtrack && !selMeta._isAgentPropertySubtrack && (sel.trackId === 'ego_act' || selMeta._isEgoContSubtrack || selMeta._isAgentContSubtrack || selMeta._isObjContSubtrack || (sel.trackId.startsWith('agent_') && selMeta._segType === 'action'))
   const canHaveBecause = sel && !selMeta._isEgoContSubtrack && !selMeta._isAgentContSubtrack && !selMeta._isEgoInfluenceSubtrack && !selMeta._isAgentInfluenceSubtrack && !selMeta._isEgoPropertySubtrack && !selMeta._isAgentPropertySubtrack && (sel.trackId === 'ego_act' || (sel.trackId.startsWith('agent_') && selMeta._segType === 'action'))
   // ---- Render property editors per entity type ----
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function renderProperties(): any {
+  // Returns a React subtree (Fragment, element, or `null`) for the
+  // currently-selected entity. The function dispatches on the selected
+  // segment's `meta` flags to pick the right editor — each branch
+  // ultimately returns a Fragment of typed inputs or `null` when nothing
+  // is selected. `ReactNode` is the right contract here: it covers every
+  // return path (JSX element, fragment, `null`) without forcing the
+  // function into a discriminated union that the call site (one
+  // `{renderProperties()}` slot in the parent JSX) can't usefully
+  // narrow on.
+  function renderProperties(): React.ReactNode {
     // Ego main bar (not in annotationToSegments, handled specially)
     if (selectedPath === 'ego_main' && ann) {
       const egoDur = bundle?.video?.duration_s || 10

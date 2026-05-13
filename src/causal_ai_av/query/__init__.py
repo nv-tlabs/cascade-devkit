@@ -63,12 +63,18 @@ from causal_ai_av.query.temporal import (
     filter_active_in_range,
     overlapping_actions,
 )
-from causal_ai_av.query.time import Interval, format_timestamp, parse_timestamp
+from causal_ai_av.query.time import (
+    Interval,
+    format_timestamp,
+    parse_timestamp,
+    parse_timestamp_or,
+)
 from causal_ai_av.query.triplets import CausalTriplet, extract_causal_triplets, iter_triplets
 
 __all__ = [
     "Interval",
     "parse_timestamp",
+    "parse_timestamp_or",
     "format_timestamp",
     "IdIndex",
     "Subject",

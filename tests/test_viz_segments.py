@@ -137,6 +137,16 @@ def test_parse_ts_matches_ts_parseTs() -> None:
     assert _parse_ts("garbage") == 0.0
 
 
+def test_parse_ts_is_anchored_like_query_parser() -> None:
+    # Locked: the historical `re.search` divergence (segments accepted
+    # leading/trailing garbage, query rejected it) is gone. Both
+    # `_parse_ts` and `parse_timestamp` now share the same anchored regex
+    # via the shared `parse_timestamp_or` helper.
+    assert _parse_ts("foo 1:30.0") == 0.0
+    assert _parse_ts("1:30.0 bar") == 0.0
+    assert _parse_ts(" 1:30.0") == 0.0
+
+
 # ---------------------------------------------------------------------------
 # annotation_to_segments — coverage of the ported families
 # ---------------------------------------------------------------------------
