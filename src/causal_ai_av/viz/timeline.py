@@ -48,7 +48,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from causal_ai_av.viz.colors import entity_color
+from causal_ai_av.viz.colors import family_color
 from causal_ai_av.viz.segments import Segment, annotation_to_segments, assign_lanes
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
@@ -58,36 +58,38 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
     from causal_ai_av.spec import AnnotationBundle
 
 
-# Five track-group rows, top → bottom. Order is the annotator's reading
-# order (environments at the top, ego at the bottom). The y-axis is
-# now built band-by-band (one band per populated (group, family, sh_index)
-# triple) — `_TRACK_GROUPS` keeps the *group* reading order. See
-# `_BAND_ORDER_BY_GROUP` for the family ordering inside each group.
-_TRACK_GROUPS: tuple[str, ...] = ("Env", "Lights", "Objects", "Agents", "Ego")
-_GROUP_ROW: dict[str, int] = {name: i for i, name in enumerate(_TRACK_GROUPS)}
+# Five categories, top → bottom. Order is the annotator's reading order
+# (environments at the top, ego at the bottom). The y-axis is built
+# band-by-band; one band per populated
+# `(category, entity_idx, family, sub_row_idx, sh_idx)` tuple. See
+# `_BAND_ORDER_BY_CATEGORY` for the family ordering inside each
+# category. Category labels match the annotator's display strings.
+_CATEGORIES: tuple[str, ...] = (
+    "Environments",
+    "Traffic Lights",
+    "Objects",
+    "Agents",
+    "Ego",
+)
 
-# Per-group family ordering. The annotator paints distinct labeled bands
-# in this order within each group; we mirror it here so the y-axis tick
-# layout reads the same way. For Lights, signal_head / state /
-# env_control bands are repeated per signal head — that repetition is
-# resolved dynamically in `_band_keys_for_segments` from the segments'
-# `_sh_index` meta. For other groups the third tuple slot is always
-# `None`.
+# Per-category family ordering. Mirrors the annotator's row layout in
+# `Timeline.tsx:230-275`. For Traffic Lights, signal_head / env_control
+# / state are repeated per signal head — the per-head families are
+# pulled out of this list into `_PER_SH_FAMILIES`.
 #
 # Sources (`tools/annotator/web/src/components/Timeline.tsx:230-275`):
-#   - Env:      parent → condition
-#   - Lights:   parent → physical_containment → (per sh: signal_head →
-#               env_control → state)
-#   - Objects:  parent → containment → state
-#   - Agents:   parent → containment → pose → influence → action →
-#               property   (pose lives between containment and influence,
-#               matching the annotator at line 245-254)
-#   - Ego:      containment → influence → action → property   (no parent
-#               bar; `ego_act` is one synthetic track id with no parent
-#               entity to flag visibility for)
-_BAND_ORDER_BY_GROUP: dict[str, tuple[str, ...]] = {
-    "Env": ("parent", "condition"),
-    "Lights": (
+#   - Environments:   parent → condition
+#   - Traffic Lights: parent → physical_containment → (per sh:
+#                     signal_head → env_control → state)
+#   - Objects:        parent → containment → state
+#   - Agents:         parent → containment → pose → influence →
+#                     action → property
+#   - Ego:            containment → influence → action → property
+#                     (singleton — no parent bar; track id is the
+#                     synthetic "ego_act")
+_BAND_ORDER_BY_CATEGORY: dict[str, tuple[str, ...]] = {
+    "Environments": ("parent", "condition"),
+    "Traffic Lights": (
         "parent",
         "physical_containment",
         # per-signal-head bands handled separately
@@ -100,15 +102,68 @@ _BAND_ORDER_BY_GROUP: dict[str, tuple[str, ...]] = {
     "Ego": ("containment", "influence", "action", "property"),
 }
 
-# Families that, in the Lights group, are repeated per signal head and
-# need an `sh_index` discriminator. The painter walks signal heads in
-# ascending index and emits one band per (family, sh_index) per head.
-_PER_SH_FAMILIES_LIGHTS: tuple[str, ...] = ("signal_head", "env_control", "state")
+# Families that, in Traffic Lights, repeat per signal head and need an
+# `sh_idx` discriminator. The painter walks signal heads in ascending
+# index and emits one block per head.
+_PER_SH_FAMILIES: tuple[str, ...] = ("signal_head", "env_control", "state")
 
-# `BandKey` — `(group, family, sh_index | None)`. `sh_index` is the
-# 0-based signal head index for Lights' per-head bands; `None` for all
-# other bands.
-BandKey = tuple[str, str, "int | None"]
+# Families whose sub-row count is data-driven (each segment carries a
+# `_X_track_index` field in `meta`; the number of sub-rows is
+# `max(_X_track_index) + 1`). Other families paint as a single 1-row
+# band. Maps family → meta key.
+_FAMILY_SUB_ROW_META_KEY: dict[str, str] = {
+    "condition": "_cond_track_index",
+    "containment": "_cont_track_index",
+    "influence": "_influence_track_index",
+    "property": "_prop_track_index",
+    "physical_containment": "_cont_track_index",
+}
+
+# Per-family tick-label leaf text. Mirrors the annotator's terse
+# row-label text (`Timeline.tsx:230-275`): conditions/influences/
+# actions/properties/states pluralized; TL control / signal head
+# substituted; env_control labeled "containment" under each signal
+# head (the annotator's actual on-screen leaf).
+_FAMILY_LABEL: dict[str, str] = {
+    "condition": "conditions",
+    "influence": "influences",
+    "action": "actions",
+    "property": "properties",
+    "state": "states",
+    "physical_containment": "TL control",
+    "signal_head": "signal head",
+    "env_control": "containment",
+}
+
+# Display name for each category's per-entity track row. Mirrors the
+# annotator's `buildTrackList` (`timeline-utils.ts:354-372`). Ego is a
+# singleton with no per-entity tag; absent from this map.
+_ENTITY_TRACK_PREFIX: dict[str, str] = {
+    "Environments": "Env Track",
+    "Traffic Lights": "Light Track",
+    "Objects": "Object Track",
+    "Agents": "Agent Track",
+}
+
+# `BandKey` — `(category, entity_idx, family, sub_row_idx, sh_idx)`.
+#
+#   - category:     one of `_CATEGORIES`.
+#   - entity_idx:   0-based entity ordinal within the category, parsed
+#                   from each segment's `track_id` (e.g.
+#                   `"agent_0"` → 0). Ego always uses ordinal 0.
+#   - family:       one of the eleven `SegmentFamily` literals.
+#   - sub_row_idx:  0-based sub-row index *within this family for this
+#                   entity*. Data-driven from each segment's
+#                   `_X_track_index` meta key (see
+#                   `_FAMILY_SUB_ROW_META_KEY`). Families without a
+#                   sub-row meta key always use 0.
+#   - sh_idx:       Lights' per-signal-head discriminator; None
+#                   elsewhere.
+#
+# The tuple is sorted lexicographically by the painter so the on-
+# screen reading is category → entity → family → sub_row → SH —
+# matching the annotator's nested visual hierarchy.
+BandKey = tuple[str, int, str, int, "int | None"]
 
 # Arrow-family colors. See module docstring for the choice rationale.
 # Invariant: values here must be disjoint from `entity_color()`'s row
@@ -127,16 +182,16 @@ _ARROW_COLORS: dict[str, str] = {
 _DEFAULT_ARROWS: dict[str, bool] = {name: True for name in _ARROW_COLORS}
 
 
-def _track_id_to_group(track_id: str) -> str | None:
-    """Map a `Segment.track_id` to one of the five group labels.
+def _track_id_to_category(track_id: str) -> str | None:
+    """Map a `Segment.track_id` to one of the five category labels.
 
     Returns `None` for unknown prefixes — those segments get dropped from
     the figure rather than crashing.
     """
     if track_id.startswith("env_"):
-        return "Env"
+        return "Environments"
     if track_id.startswith("light_"):
-        return "Lights"
+        return "Traffic Lights"
     if track_id.startswith("obj_"):
         return "Objects"
     if track_id.startswith("agent_"):
@@ -146,18 +201,42 @@ def _track_id_to_group(track_id: str) -> str | None:
     return None
 
 
+# Back-compat alias for legacy call sites and tests. New code should
+# prefer `_track_id_to_category`.
+_track_id_to_group = _track_id_to_category
+
+
+def _track_id_to_entity_idx(track_id: str) -> int:
+    """Parse the trailing 0-based entity ordinal from a `Segment.track_id`.
+
+    `"agent_0"` → 0, `"agent_3"` → 3, `"env_2"` → 2, `"ego_act"` → 0.
+    Defaults to 0 on malformed input so a missing `_track_index` field
+    on an upstream entity still groups onto a single block rather than
+    crashing the figure.
+    """
+    if track_id == "ego_act":
+        return 0
+    if "_" not in track_id:
+        return 0
+    tail = track_id.rsplit("_", 1)[1]
+    try:
+        return int(tail)
+    except ValueError:
+        return 0
+
+
 def _segment_kind(track_id: str) -> str | None:
     """Map a track id to the `entity_color()` palette key."""
-    group = _track_id_to_group(track_id)
-    if group is None:
+    category = _track_id_to_category(track_id)
+    if category is None:
         return None
     return {
-        "Env": "env",
-        "Lights": "light",
+        "Environments": "env",
+        "Traffic Lights": "light",
         "Objects": "object",
         "Agents": "agent",
         "Ego": "ego",
-    }[group]
+    }[category]
 
 
 def _segment_center_x(seg: Segment) -> float:
@@ -195,93 +274,193 @@ def _segment_top_y(band_row: int, lane: int = 0, lane_count: int = 1) -> float:
     return y1
 
 
+def _family_sub_row_idx(seg: Segment) -> int:
+    """Extract the sub-row index this segment occupies within its
+    family band.
+
+    Walks `_FAMILY_SUB_ROW_META_KEY` to find the matching `_X_track_
+    index` meta field. Defaults to 0 if the field is missing or
+    non-int — keeps the painter stable when upstream entities don't
+    populate the field (well-formed annotations always do).
+    """
+    meta_key = _FAMILY_SUB_ROW_META_KEY.get(seg.family)
+    if meta_key is None or not seg.meta:
+        return 0
+    value = seg.meta.get(meta_key)
+    if isinstance(value, int) and value >= 0:
+        return value
+    return 0
+
+
+def _family_sh_idx(seg: Segment) -> int | None:
+    """Return the signal-head ordinal for Lights per-head families;
+    `None` for any other (category, family) combination.
+    """
+    if seg.family not in _PER_SH_FAMILIES:
+        return None
+    if not seg.meta:
+        return 0
+    value = seg.meta.get("_sh_index")
+    return value if isinstance(value, int) else 0
+
+
 def _segment_band_key(seg: Segment) -> BandKey | None:
-    """Map a segment to its `(group, family, sh_index | None)` band.
+    """Map a segment to its
+    `(category, entity_idx, family, sub_row_idx, sh_idx)` band.
 
     Returns `None` for segments whose `track_id` doesn't resolve to a
-    known group — they get dropped from the figure rather than crashing.
+    known category — they get dropped from the figure rather than
+    crashing.
     """
-    group = _track_id_to_group(seg.track_id)
-    if group is None:
+    category = _track_id_to_category(seg.track_id)
+    if category is None:
         return None
+    entity_idx = _track_id_to_entity_idx(seg.track_id)
     family = seg.family
-    if group == "Lights" and family in _PER_SH_FAMILIES_LIGHTS:
-        sh_idx = (seg.meta or {}).get("_sh_index")
-        if isinstance(sh_idx, int):
-            return (group, family, sh_idx)
-        # Defensive — annotation_to_segments always sets _sh_index on
-        # per-head light segments. If absent, group under index 0.
-        return (group, family, 0)
-    return (group, family, None)
+    sub_row_idx = _family_sub_row_idx(seg)
+    sh_idx = _family_sh_idx(seg)
+    return (category, entity_idx, family, sub_row_idx, sh_idx)
 
 
 def _band_label(key: BandKey) -> str:
     """Y-axis tick text for a band.
 
-    Format:
-      - `"Group · family"` for top-level bands.
-      - `"Lights · sh<i> · family"` for per-signal-head bands.
-      - The Lights `env_control` family renders as
-        `"Lights · sh<i> · env_control (containment)"` to mirror the
-        annotator's actual on-screen label ("containment", with the
-        family name in parens for disambiguation).
+    Mirrors the annotator's labeling rule (`Timeline.tsx:233-272`):
+    only the FIRST sub-row of each family within an entity block
+    carries the leaf label; subsequent sub-rows render with a blank
+    label so the visual grouping reads cleanly.
+
+      - Parent row:                     "<Cat> · <Entity Track Name>"
+        (no leaf — the bar IS the row)
+      - Sub-row, family head (sub_row_idx == 0):
+        "<Cat> · <Entity Track Name> · <leaf>"
+      - Sub-row, trailing (sub_row_idx > 0):    ""
+      - Lights per-SH family head:
+        "<Cat> · <Entity Track Name> · sh<i> · <leaf>"
+      - Lights per-SH trailing sub-row:         ""
+      - Ego is a singleton — no per-entity tag in the label.
     """
-    group, family, sh_idx = key
+    category, entity_idx, family, sub_row_idx, sh_idx = key
+    if family == "parent":
+        # The parent bar labels its own row. For Ego, no per-entity tag.
+        if category == "Ego":
+            # In practice Ego doesn't emit a `parent` band — it's
+            # explicitly excluded from `_BAND_ORDER_BY_CATEGORY["Ego"]`.
+            return category
+        track_prefix = _ENTITY_TRACK_PREFIX.get(category, f"{category} Track")
+        return f"{category} · {track_prefix} {entity_idx + 1}"
+    # Trailing sub-rows render with a blank label so the annotator's
+    # visual grouping reads cleanly (only the first sub-row carries
+    # the family name).
+    if sub_row_idx > 0:
+        return ""
+    leaf = _FAMILY_LABEL.get(family, family)
+    if category == "Ego":
+        return f"{category} · {leaf}"
+    track_prefix = _ENTITY_TRACK_PREFIX.get(category, f"{category} Track")
+    track_name = f"{track_prefix} {entity_idx + 1}"
     if sh_idx is not None:
-        if family == "env_control":
-            return f"{group} · sh{sh_idx} · env_control (containment)"
-        return f"{group} · sh{sh_idx} · {family}"
-    if group == "Lights" and family == "physical_containment":
-        # The annotator labels this band "TL control" (Timeline.tsx:261).
-        return f"{group} · physical_containment (TL control)"
-    return f"{group} · {family}"
+        return f"{category} · {track_name} · sh{sh_idx} · {leaf}"
+    return f"{category} · {track_name} · {leaf}"
 
 
 def _populated_bands(segments: list[Segment]) -> list[BandKey]:
-    """Return the ordered list of populated `(group, family, sh_idx)` bands.
+    """Return the ordered list of populated bands, top → bottom.
 
-    Empty bands are dropped — they don't reserve y-axis space. The order
-    is the annotator's reading order (Env → Lights → Objects → Agents
-    → Ego), with `_BAND_ORDER_BY_GROUP` driving the family sub-order
-    inside each group. For Lights' per-signal-head bands the order is
-    `signal_head_0 → env_control_0 → state_0 → signal_head_1 → ...`.
+    Y-axis hierarchy: **Category → Entity (track) → Family →
+    Sub-row → (Lights only) SH index**. Each band corresponds to one
+    `(category, entity_idx, family, sub_row_idx, sh_idx)` tuple that
+    has at least one segment; empty tuples drop entirely.
+
+    Sub-row counts are data-driven from each segment's
+    `_X_track_index` meta field — an Agent with three containments
+    at `_cont_track_index = 0, 1, 2` produces three distinct sub-rows
+    in its containment family band. Families without a sub-row meta
+    key always collapse to a single sub-row.
+
+    Reading order:
+      - Categories in `_CATEGORIES` order (Environments → Traffic
+        Lights → Objects → Agents → Ego).
+      - Inside each category, entity ordinals ascending — each ordinal
+        is a separate per-entity block.
+      - Inside each entity block, families in `_BAND_ORDER_BY_
+        CATEGORY[category]` order, each with `0..N-1` sub-rows.
+      - For Lights, per-SH families (signal_head / env_control /
+        state) repeat per signal head AFTER the non-per-head families
+        (parent / physical_containment).
     """
-    # Bucket segments by (group, family, sh_idx). Build up the set of
-    # populated keys; ordering is imposed by the canonical lists below.
+    # Bucket segments by full BandKey, and remember which entity
+    # blocks / SH indices exist so the canonical ordering can prune
+    # empty bands cleanly.
     populated: set[BandKey] = set()
-    sh_indices_per_light: set[int] = set()
+    entities_per_cat: dict[str, set[int]] = {c: set() for c in _CATEGORIES}
+    sh_indices_per_entity: dict[tuple[str, int], set[int]] = {}
     for seg in segments:
         key = _segment_band_key(seg)
         if key is None:
             continue
         populated.add(key)
-        if key[0] == "Lights" and key[2] is not None:
-            sh_indices_per_light.add(key[2])
+        category, entity_idx, _family, _sub_row, sh_idx = key
+        entities_per_cat[category].add(entity_idx)
+        if category == "Traffic Lights" and sh_idx is not None:
+            sh_indices_per_entity.setdefault(
+                (category, entity_idx), set()
+            ).add(sh_idx)
+
+    def _max_sub_row(
+        category: str, entity_idx: int, family: str, sh_idx: int | None
+    ) -> int:
+        """The maximum sub_row_idx seen for this entity/family/SH —
+        determines how many sub-rows the band group has."""
+        n = -1
+        for key in populated:
+            if (
+                key[0] == category
+                and key[1] == entity_idx
+                and key[2] == family
+                and key[4] == sh_idx
+            ):
+                if key[3] > n:
+                    n = key[3]
+        return n
 
     ordered: list[BandKey] = []
-    for group in _TRACK_GROUPS:
-        families = _BAND_ORDER_BY_GROUP.get(group, ())
-        if group == "Lights":
-            # Non-per-head families first (parent, physical_containment),
-            # then per-head bands stride-emitted in head order.
-            for family in families:
-                if family in _PER_SH_FAMILIES_LIGHTS:
-                    continue
-                key = (group, family, None)
-                if key in populated:
-                    ordered.append(key)
-            for sh_idx in sorted(sh_indices_per_light):
-                for family in _PER_SH_FAMILIES_LIGHTS:
-                    if family not in families:
+    for category in _CATEGORIES:
+        families = _BAND_ORDER_BY_CATEGORY.get(category, ())
+        for entity_idx in sorted(entities_per_cat[category]):
+            if category == "Traffic Lights":
+                # Non-per-head families first (parent, phys_cont),
+                # then per-head bands per signal head.
+                for family in families:
+                    if family in _PER_SH_FAMILIES:
                         continue
-                    key = (group, family, sh_idx)
-                    if key in populated:
-                        ordered.append(key)
-        else:
-            for family in families:
-                key = (group, family, None)
-                if key in populated:
-                    ordered.append(key)
+                    n = _max_sub_row(category, entity_idx, family, None)
+                    for sub_row_idx in range(n + 1):
+                        key = (category, entity_idx, family, sub_row_idx, None)
+                        if key in populated:
+                            ordered.append(key)
+                sh_indices = sorted(
+                    sh_indices_per_entity.get((category, entity_idx), set())
+                )
+                for sh_idx in sh_indices:
+                    for family in _PER_SH_FAMILIES:
+                        if family not in families:
+                            continue
+                        n = _max_sub_row(category, entity_idx, family, sh_idx)
+                        for sub_row_idx in range(n + 1):
+                            key = (
+                                category, entity_idx, family,
+                                sub_row_idx, sh_idx,
+                            )
+                            if key in populated:
+                                ordered.append(key)
+            else:
+                for family in families:
+                    n = _max_sub_row(category, entity_idx, family, None)
+                    for sub_row_idx in range(n + 1):
+                        key = (category, entity_idx, family, sub_row_idx, None)
+                        if key in populated:
+                            ordered.append(key)
     return ordered
 
 
@@ -477,11 +656,14 @@ def _paint_timeline_onto(
         agent_ids: optional whitelist of `Agent.id` values. Only
             restricts segments whose kind is `"agent"`; segments of
             other kinds are untouched. `None` = all agents.
-        track_groups: optional whitelist of group rows to render.
-            Recognized values are `"Env"`, `"Lights"`, `"Objects"`,
-            `"Agents"`, `"Ego"`. Rows not in the whitelist drop their
+        track_groups: optional whitelist of category rows to render.
+            Recognized values are the canonical category labels
+            (`"Environments"`, `"Traffic Lights"`, `"Objects"`,
+            `"Agents"`, `"Ego"`); the legacy short names (`"Env"`,
+            `"Lights"`) are accepted as aliases for backward compat
+            with PR-37 callers. Rows not in the whitelist drop their
             tick labels too, so the y-axis collapses to the visible
-            rows. `None` = all five groups.
+            categories. `None` = all five categories.
         show_inline_labels: when False, suppress every inline label
             annotation; hover tooltips still fire. Defaults to True
             (the historical behaviour). Callers wanting a maximally
@@ -522,8 +704,16 @@ def _paint_timeline_onto(
         if entity_kinds is None
         else set(entity_kinds)
     )
+    # `track_groups` accepts both the legacy group names ("Env",
+    # "Lights") and the new category labels ("Environments",
+    # "Traffic Lights") so PR-37 callers keep working.
+    _LEGACY_GROUP_ALIASES: dict[str, str] = {
+        "Env": "Environments",
+        "Lights": "Traffic Lights",
+    }
     allowed_groups: set[str] = (
-        set(_TRACK_GROUPS) if track_groups is None else set(track_groups)
+        set(_CATEGORIES) if track_groups is None
+        else {_LEGACY_GROUP_ALIASES.get(g, g) for g in track_groups}
     )
     allowed_agent_ids: set[str] | None = (
         None if agent_ids is None else set(agent_ids)
@@ -666,9 +856,16 @@ def _paint_timeline_onto(
     # band).
     seg_band: dict[str, BandKey] = {seg.id: key for seg, key, _ in paintable}
 
-    for seg, key, kind in paintable:
+    for seg, key, _kind in paintable:
         lane = seg_lane.get(seg.id, 0)
         y0, y1 = _band_for(key, lane)
+        # Per-family fill: each subtrack family has its own hue (see
+        # `family_color`'s palette table, ported verbatim from the
+        # annotator's `Timeline.tsx:990-1068`). Parent rows fall back
+        # to the entity base color via `family_color`'s `entity_color`
+        # fallback path.
+        category = key[0]
+        fill = family_color(category, seg.family)
         shapes.append(
             {
                 "type": "rect",
@@ -678,7 +875,7 @@ def _paint_timeline_onto(
                 "y1": y1,
                 "xref": xref,
                 "yref": yref,
-                "fillcolor": entity_color(kind),
+                "fillcolor": fill,
                 "opacity": 0.85,
                 "line": {
                     "width": 1.5 if seg.illegal else 0.5,
@@ -729,7 +926,7 @@ def _paint_timeline_onto(
                 xaxis=xa,
                 yaxis=ya,
                 mode="markers",
-                marker={"size": 20, "opacity": 0, "color": entity_color(kind)},
+                marker={"size": 20, "opacity": 0, "color": fill},
                 hoverinfo="text",
                 hovertext=(
                     f"{seg.label}<br>"
@@ -1109,9 +1306,11 @@ def render_timeline(
             `"object"`, `"agent"`, `"ego"`). `None` = all kinds.
         agent_ids: optional `Agent.id` whitelist. Restricts only the
             `"agent"` kind. `None` = all agents.
-        track_groups: optional group-row whitelist (`"Env"`, `"Lights"`,
-            `"Objects"`, `"Agents"`, `"Ego"`). Rows not in the
-            whitelist drop from the y-axis layout. `None` = all groups.
+        track_groups: optional category whitelist (`"Environments"`,
+            `"Traffic Lights"`, `"Objects"`, `"Agents"`, `"Ego"`); the
+            legacy short names `"Env"` and `"Lights"` are accepted as
+            aliases. Rows not in the whitelist drop from the y-axis
+            layout. `None` = all categories.
         height: optional explicit pixel height. `None` (default) means
             adaptive — the height tracks the deepest sub-lane stack so
             a busy clip gets a taller timeline while a sparse one

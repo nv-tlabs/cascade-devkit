@@ -176,34 +176,38 @@ def test_arrow_palette_disjoint_from_entity_palette() -> None:
 
 
 def test_render_timeline_has_segment_shapes_per_group() -> None:
-    """Each populated group contributes at least one segment shape.
+    """Each populated category contributes at least one segment shape.
 
-    With family bands, "group" means "at least one band whose tick
-    label starts with `'Group · '`". The fixture has Env, Agents,
-    and Ego entities (no Lights / Objects) — so the figure paints
-    segments on bands belonging to each of those three groups.
+    With family bands, "category" means "at least one band whose tick
+    label starts with `'<Category> · '`". The fixture has
+    Environments, Agents, and Ego entities (no Traffic Lights /
+    Objects) — so the figure paints segments on bands belonging to
+    each of those three categories.
     """
     fig = render_timeline(_seq(_make_full_bundle()))
     yticks = list(fig.layout.yaxis.ticktext or ())
     tickvals = list(fig.layout.yaxis.tickvals or ())
-    # Build a mapping from band row to group head ("Env", "Agents", ...).
-    row_to_group: dict[float, str] = {
-        float(v): t.split(" · ", 1)[0]
-        for v, t in zip(tickvals, yticks, strict=False)
-    }
+    # Build a mapping from band row to category head ("Environments",
+    # "Agents", ...). Blank tick labels (trailing sub-rows) don't
+    # contribute — they share the previous band's category.
+    row_to_category: dict[float, str] = {}
+    last_category = ""
+    for v, t in zip(tickvals, yticks, strict=False):
+        if t:
+            last_category = t.split(" · ", 1)[0]
+        row_to_category[float(v)] = last_category
 
     seg_shapes = [s for s in _shapes(fig) if s.get("name", "").startswith("segment:")]
     assert seg_shapes, "expected at least one segment shape"
-    groups_with_segments: set[str] = set()
+    categories_with_segments: set[str] = set()
     for s in seg_shapes:
         mid = (float(s["y0"]) + float(s["y1"])) / 2.0
-        for row, group in row_to_group.items():
+        for row, category in row_to_category.items():
             if abs(mid - row) <= 0.4 + 1e-9:
-                groups_with_segments.add(group)
+                categories_with_segments.add(category)
                 break
-    # Env, Agents, Ego — the three populated groups in the fixture.
-    assert {"Env", "Agents", "Ego"}.issubset(groups_with_segments), (
-        f"missing groups, got {groups_with_segments}"
+    assert {"Environments", "Agents", "Ego"}.issubset(categories_with_segments), (
+        f"missing categories, got {categories_with_segments}"
     )
 
 
@@ -217,22 +221,27 @@ def test_render_timeline_layout_is_dark_with_locked_axes() -> None:
     # the override knob, and `test_adaptive_height_grows_with_lanes`
     # pins the lane-count scaling.
     assert fig.layout.height >= 240
-    # y-axis is one tick per populated band (Env, Ego, Agents
-    # families in this fixture). Lights / Objects contribute zero
+    # y-axis is one tick per populated band (Environments, Ego, Agents
+    # families in this fixture). Traffic Lights / Objects contribute zero
     # bands because the fixture has no light / object entities. We
     # assert by reading order and prefix rather than the full label
     # list so the test survives future tick-label rewording.
     yticks = list(fig.layout.yaxis.ticktext or ())
     assert len(yticks) > 0, "expected at least one populated band"
-    # The Env bands come first, then Agents, then Ego (no Lights /
-    # Objects because the fixture has none).
-    groups_seen = [label.split(" · ")[0] for label in yticks]
-    # First band must be Env's parent (the fixture has at least one env).
-    assert groups_seen[0] == "Env"
-    # Lights and Objects don't appear at all — no entities of those
+    # Categories appear in canonical reading order (Environments first,
+    # then Agents, then Ego — no Traffic Lights / Objects since the
+    # fixture has none). Trailing-sub-row labels are blank; filter
+    # them out so we look at category heads only.
+    categories_seen = [
+        label.split(" · ")[0] for label in yticks if label
+    ]
+    # First non-blank band must be Environments (the fixture has at
+    # least one env).
+    assert categories_seen[0] == "Environments"
+    # Traffic Lights and Objects don't appear — no entities of those
     # kinds in the fixture.
-    assert "Lights" not in groups_seen
-    assert "Objects" not in groups_seen
+    assert "Traffic Lights" not in categories_seen
+    assert "Objects" not in categories_seen
     # x-axis range is [0, duration].
     xrange = list(fig.layout.xaxis.range or ())
     assert xrange[0] == 0
@@ -803,42 +812,45 @@ def _yticks(fig: go.Figure) -> list[str]:
 
 
 def test_paint_emits_band_per_populated_family() -> None:
-    """The full-bundle fixture has Env (parent + condition), Ego
-    (containment + influence + action), and Agents (parent +
-    containment + action + property + influence). Every populated
-    family in those groups must show up as a band on the y-axis.
-    Lights / Objects have no entities in the fixture, so they
+    """The full-bundle fixture has Environments (parent + condition),
+    Ego (containment + influence + action), and Agents (parent +
+    containment + influence + action + property). Every populated
+    family in those categories must show up as a band on the y-axis,
+    tagged with the entity's track name (or Ego singleton).
+    Traffic Lights / Objects have no entities in the fixture, so they
     contribute zero bands."""
     fig = render_timeline(_seq(_make_full_bundle()))
     yticks = _yticks(fig)
-    # Spot check: the labels match the expected (group, family) shape.
     expected_present = {
-        "Env · parent",
-        "Env · condition",
-        "Agents · parent",
-        "Agents · containment",
-        "Agents · influence",
-        "Agents · action",
-        "Agents · property",
+        "Environments · Env Track 1",                  # env parent
+        "Environments · Env Track 1 · conditions",     # env condition
+        "Agents · Agent Track 1",                      # agent parent
+        "Agents · Agent Track 1 · containment",
+        "Agents · Agent Track 1 · influences",
+        "Agents · Agent Track 1 · actions",
+        "Agents · Agent Track 1 · properties",
         "Ego · containment",
-        "Ego · influence",
-        "Ego · action",
+        "Ego · influences",
+        "Ego · actions",
     }
     missing = expected_present - set(yticks)
     assert not missing, f"missing expected bands: {missing}; got {yticks}"
 
 
 def test_band_y_axis_labels_have_group_family_format() -> None:
-    """Every tick label matches the `"Group · family[ · ...]"` shape."""
+    """Non-blank tick labels match the `"Category · ..."` shape.
+    Trailing sub-rows render with a blank label so the visual grouping
+    reads cleanly — those are excluded from the format check."""
     fig = render_timeline(_seq(_make_full_bundle()))
     yticks = _yticks(fig)
     assert yticks, "expected at least one band on a non-empty bundle"
-    for label in yticks:
-        assert " · " in label, f"band label missing separator: {label!r}"
+    non_blank = [t for t in yticks if t]
+    assert non_blank, "expected at least one labeled band"
+    for label in non_blank:
         head, *_ = label.split(" · ", 1)
-        # The group head must be one of the canonical group names.
-        assert head in {"Env", "Lights", "Objects", "Agents", "Ego"}, (
-            f"unexpected group head in band label: {label!r}"
+        # The category head must be one of the canonical labels.
+        assert head in {"Environments", "Traffic Lights", "Objects", "Agents", "Ego"}, (
+            f"unexpected category head in band label: {label!r}"
         )
 
 
@@ -859,9 +871,9 @@ def test_empty_bands_dropped() -> None:
     )
     fig = render_timeline(_seq(bundle))
     yticks = _yticks(fig)
-    # Exactly one band — Env · parent — because no other families are
-    # populated.
-    assert yticks == ["Env · parent"], yticks
+    # Exactly one band — the env parent row labeled by its track name —
+    # because no other families are populated.
+    assert yticks == ["Environments · Env Track 1"], yticks
 
 
 def test_overlapping_subtracks_land_on_distinct_lanes_in_band() -> None:
@@ -968,12 +980,19 @@ def test_arrows_target_new_band_y() -> None:
         visibility_end_timestamp="0:3.5",
         actions=[a0_act],
     )
-    a1 = Agent(
-        id="agent_1",
-        type="oxd:Car",
-        visibility_start_timestamp="0:3.5",
-        visibility_end_timestamp="0:6.5",
-        actions=[a1_act],
+    # agent_1 on its own track (track_index=1) so the painter emits a
+    # distinct per-entity block for it — that's the layout the arrow
+    # test exercises. Passing the index via `model_validate` on a
+    # dict with the schema's `_track_index` alias.
+    a1 = Agent.model_validate(
+        {
+            "id": "agent_1",
+            "type": "oxd:Car",
+            "visibility_start_timestamp": "0:3.5",
+            "visibility_end_timestamp": "0:6.5",
+            "actions": [a1_act.model_dump()],
+            "_track_index": 1,
+        }
     )
     bundle = AnnotationBundle(
         schema_version="2.0.0",
@@ -983,10 +1002,14 @@ def test_arrows_target_new_band_y() -> None:
     fig = render_timeline(_seq(bundle))
     yticks_text = _yticks(fig)
     yticks_vals = list(fig.layout.yaxis.tickvals or ())
-    action_idx = yticks_text.index("Agents · action")
-    action_row = float(yticks_vals[action_idx])
-    parent_idx = yticks_text.index("Agents · parent")
-    parent_row = float(yticks_vals[parent_idx])
+    # agent_1's action lives in its own per-entity block (Agent Track
+    # 2); agent_0's parent lives in Agent Track 1's parent row. The
+    # arrow tail anchors at the source band; the head anchors at the
+    # target band.
+    src_idx = yticks_text.index("Agents · Agent Track 2 · actions")
+    src_row = float(yticks_vals[src_idx])
+    tgt_idx = yticks_text.index("Agents · Agent Track 1")
+    tgt_row = float(yticks_vals[tgt_idx])
 
     arrows = _arrow_shapes(fig, "because_of")
     assert arrows, "expected at least one because_of arrow"
@@ -1001,19 +1024,20 @@ def test_arrows_target_new_band_y() -> None:
     assert m, f"could not parse bezier path: {arrow_path!r}"
     y_src = float(m.group(2))
     y_tgt = float(m.group(6))
-    # Source (agent_1 action) anchors near `Agents · action`'s band row.
-    assert abs(y_src - action_row) <= 0.4, (
-        f"arrow source y={y_src} not in Agents·action band "
-        f"[{action_row - 0.4}, {action_row + 0.4}] (row={action_row})"
+    # Source (agent_1 action) anchors near agent_2's actions band row.
+    assert abs(y_src - src_row) <= 0.4 + 1e-6, (
+        f"arrow source y={y_src} not in source band "
+        f"[{src_row - 0.4}, {src_row + 0.4}] (row={src_row})"
     )
-    # Target (agent_0 parent) anchors near `Agents · parent`'s band row.
-    assert abs(y_tgt - parent_row) <= 0.4, (
-        f"arrow target y={y_tgt} not in Agents·parent band "
-        f"[{parent_row - 0.4}, {parent_row + 0.4}] (row={parent_row})"
+    # Target (agent_0 parent) anchors near agent_1's parent band row.
+    assert abs(y_tgt - tgt_row) <= 0.4 + 1e-6, (
+        f"arrow target y={y_tgt} not in target band "
+        f"[{tgt_row - 0.4}, {tgt_row + 0.4}] (row={tgt_row})"
     )
-    # Sanity: the two bands are distinct rows. If the family layout
-    # regressed and collapsed parent + action onto the same row, this
-    # would silently pass (both endpoints fall in the same band).
-    assert abs(parent_row - action_row) >= 1.0, (
-        "parent and action bands collapsed onto the same row — band layout broken"
+    # Sanity: source and target are distinct rows. If the per-entity
+    # layout regressed and collapsed agent_0's and agent_1's blocks
+    # onto the same row, this would silently pass.
+    assert abs(src_row - tgt_row) >= 1.0, (
+        "source and target bands collapsed onto the same row — "
+        "per-entity layout broken"
     )
