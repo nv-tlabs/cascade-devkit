@@ -197,6 +197,14 @@ class Condition(BaseModel):
         serialization_alias="_cond_track_index",
     )
 
+    @field_validator("type", mode="before")
+    @classmethod
+    def _str_to_list(cls, v: object) -> object:
+        # Some corpora (notably the 02json export) write a bare string
+        # like "Construction Zone" instead of ["Construction Zone"].
+        # Wrap it so downstream consumers always see the canonical list.
+        return [v] if isinstance(v, str) else v
+
 
 # -----------------------------------------------------------------------------
 # Traffic objects (signs, cones, debris, barriers, ...)
