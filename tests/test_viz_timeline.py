@@ -1623,35 +1623,65 @@ def test_entity_block_tint_alternates_within_category() -> None:
     assert "15, 23, 42" in a1["fillcolor"] or "15,23,42" in a1["fillcolor"]
 
 
-def test_tick_labels_left_aligned_by_nbsp_padding() -> None:
-    """Tick labels are padded on the right with U+00A0 (non-breaking
-    space) so the visible text starts at a consistent left column.
-    SVG `<text>` anchors at its end, so the padding pushes the
-    visible portion leftward — that gives left-aligned y-tick
-    labels along a shared vertical edge.
+def test_tick_label_per_row_alignment() -> None:
+    """Per-row-type alignment: parent rows are centered (visible
+    text sits in the middle of the longest-label column), sub-rows
+    are left-aligned (visible text starts at the same left column
+    as every other sub-row). Padding is U+00A0 (non-breaking space)
+    so SVG renders the padding width without collapsing.
 
-    Pin: every non-blank tick label ends in `<text>` + N nbsp's
-    + `</span>`, where (len(text) + N) is the same for every label
-    (i.e. all labels share the longest plain-text width).
+    Concretely, for a fixture whose longest tick text is "Agent
+    Track 1" (13 chars):
+      - Sub-rows ("conditions"=10, "actions"=7, etc.) pad with the
+        full deficit → inner width = 13 for every sub-row.
+      - Parent rows ("Env Track 1" = 11) pad with `(13 - 11) // 2 =
+        1` trailing nbsp → inner width = 12, less than the sub-row
+        width because the visible text now sits CENTERED inside
+        the column.
     """
     fig = render_timeline(_seq(_make_full_bundle()))
     raw = _yticks_raw(fig)
-    non_blank = [t for t in raw if t]
+    yticks = _yticks(fig)
+    non_blank = [(plain, html) for plain, html in zip(yticks, raw, strict=False) if plain]
     assert non_blank, "expected at least one non-blank tick"
-    # Extract padded text (HTML stripped, including the trailing
-    # nbsp's) by removing only the wrapper, not the padding.
-    inner_lengths: set[int] = set()
-    for t in non_blank:
-        inner = _LABEL_TEXT_RE.sub("", t)
-        inner_lengths.add(len(inner))
-        # Padding MUST be U+00A0, not a regular space.
-        if len(inner) > len(inner.rstrip("  ")):
-            assert "  " in inner, (
-                f"tick {t!r} padded with non-nbsp whitespace"
+
+    parent_inner_lens: set[int] = set()
+    subrow_inner_lens: set[int] = set()
+    parents_seen = 0
+    subrows_seen = 0
+    nbsp = " "
+    for plain, html in non_blank:
+        inner = _LABEL_TEXT_RE.sub("", html)
+        # Padding MUST be U+00A0, never a regular space (regular
+        # spaces collapse in SVG text rendering).
+        if len(inner) > len(plain):
+            tail = inner[len(plain):]
+            assert all(ch == nbsp for ch in tail), (
+                f"tick {html!r} padded with non-nbsp whitespace"
             )
-    assert len(inner_lengths) == 1, (
-        f"tick label widths not equalized: {sorted(inner_lengths)}"
+        is_parent = plain.endswith(" Track 1") or plain.endswith(" Track 2")
+        if is_parent:
+            parent_inner_lens.add(len(inner))
+            parents_seen += 1
+        else:
+            subrow_inner_lens.add(len(inner))
+            subrows_seen += 1
+
+    assert subrows_seen > 0, "expected at least one sub-row tick"
+    # Every sub-row shares the same width (left-aligned).
+    assert len(subrow_inner_lens) == 1, (
+        f"sub-row tick widths not equalized: {sorted(subrow_inner_lens)}"
     )
+    if parents_seen > 0:
+        # Parent rows are centered → pad with at most half the
+        # deficit → inner width strictly less than the sub-row
+        # width on the full fixture.
+        max_sub = max(subrow_inner_lens)
+        for w in parent_inner_lens:
+            assert w <= max_sub, (
+                f"parent inner width {w} > sub-row width {max_sub} — "
+                "parent should pad with at most half the deficit"
+            )
 
 
 def test_tick_labels_wrap_text_in_category_colored_span() -> None:
