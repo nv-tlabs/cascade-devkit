@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-import type { SilAvAnnotation, TimelineSegment, TrackId, AgentProperty, Condition } from './types'
+import type { SilAvAnnotation, TimelineSegment, TrackId, AgentProperty, Condition, Containment } from './types'
 import { envDisplayName, EGO_ACTION_DISPLAY_NAMES, AGENT_ACTION_DISPLAY_NAMES, AGENT_TYPE_DISPLAY_NAMES, TRAFFIC_OBJECT_DISPLAY_NAMES, CONDITION_DISPLAY_NAMES, PROPERTY_DISPLAY_NAMES } from './attribute-cycling'
 import { nextStringId } from './string-id'
 import { trimKeypointsToWindow } from './keypoint-utils'
@@ -2409,27 +2409,29 @@ export function migrateIdsToString(ann: SilAvAnnotation): void {
     const s = String(eid)
     return envIdMap.get(s) || s
   }
-  for (const c of ann.ego_vehicle?.containment || []) {
-    (c as any).env_id = remapEnvId(c.env_id)
+  // Legacy containments stored `env_id` as a number; the runtime type
+  // (`Containment.env_id: string`) is enforced at every write. The five
+  // sites below used to cast to `any` to dodge type-checking on the
+  // legacy data — now that `remapEnvId` returns `string` and every
+  // containment array is typed `Containment[]`, the assignment is
+  // type-safe and the cast is gone. Funneling the assignment through
+  // this single helper localizes the migration contract so a future
+  // schema change only needs to touch one place, per the code-quality
+  // review.
+  const remapContainmentEnv = (c: Containment): void => {
+    c.env_id = remapEnvId(c.env_id)
   }
+  for (const c of ann.ego_vehicle?.containment || []) remapContainmentEnv(c)
   for (const agent of ann.agents || []) {
-    for (const c of agent.containment || []) {
-      (c as any).env_id = remapEnvId(c.env_id)
-    }
+    for (const c of agent.containment || []) remapContainmentEnv(c)
   }
   for (const obj of ann.traffic_objects || []) {
-    for (const c of obj.containment || []) {
-      (c as any).env_id = remapEnvId(c.env_id)
-    }
+    for (const c of obj.containment || []) remapContainmentEnv(c)
   }
   for (const light of ann.traffic_lights || []) {
-    for (const c of light.containment || []) {
-      (c as any).env_id = remapEnvId(c.env_id)
-    }
+    for (const c of light.containment || []) remapContainmentEnv(c)
     for (const sh of light.signal_heads || []) {
-      for (const c of sh.env_controlled || []) {
-        (c as any).env_id = remapEnvId(c.env_id)
-      }
+      for (const c of sh.env_controlled || []) remapContainmentEnv(c)
     }
   }
 }
