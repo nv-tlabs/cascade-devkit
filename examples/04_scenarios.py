@@ -25,7 +25,7 @@ from causal_ai_av.dataset import CausalAVDataset
 
 @dataclass(frozen=True)
 class Scenario:
-    id: str       # short id matching the reference doc's scenario number
+    id: str       # short descriptive slug — also the column key in the printout
     title: str    # one-line human description
     query: str    # DSL — copy-paste-able into the API
 
@@ -37,58 +37,58 @@ class Scenario:
 SCENARIOS: list[Scenario] = [
     # ===== VRU Interactions =====
     Scenario(
-        id="1",
+        id="ped-crosswalk-drive",
         title="Ego drives through crosswalk while pedestrian present",
         query="agent.type = ped and env.type = crosswalk and ego.action = drive",
     ),
     Scenario(
-        id="2",
+        id="ped-crosswalk-yield",
         title="Ego yields/stops at crosswalk for a pedestrian",
         query="agent.type = ped and env.type = crosswalk "
               "and ego.action in (stop, yield, decel)",
     ),
     Scenario(
-        id="8",
+        id="ped-jaywalk-yield",
         title="Pedestrian jaywalks; ego brakes / yields",
         query="agent(type = ped, action(jaywalk = true)) "
               "and ego.action in (stop, yield, decel)",
     ),
     Scenario(
-        id="9",
+        id="ped-crosswalk-turn",
         title="Pedestrian crosses while ego is turning",
         query="agent.type = ped and env.type = crosswalk "
               "and ego.action in (turn_left, turn_right)",
     ),
     Scenario(
-        id="12",
+        id="cyclist-defensive",
         title="Cyclist mid-block in ego's path; ego defensive",
         query="agent.type = cyclist and ego.action in (stop, yield, decel)",
     ),
 
     # ===== Signalized Intersections =====
     Scenario(
-        id="14",
+        id="red-light-stop",
         title="Ego stops at a red traffic light (nominal)",
         query="light.color = red and ego.action = stop and env.type = intersection",
     ),
     Scenario(
-        id="16",
+        id="signal-blackout-stop",
         title="Signal blackout — ego treats as all-way stop",
         query="light.state = off and ego.action = stop and env.type = intersection",
     ),
     Scenario(
-        id="20",
+        id="yellow-in-intersection",
         title="Ego already in intersection when yellow begins, proceeds",
         query="light(color = yellow, ego_in_on_yellow = true) "
               "and ego.action in (drive, enter, creep)",
     ),
     Scenario(
-        id="21",
+        id="yellow-approach-stop",
         title="Ego approaches intersection, yellow appears, ego stops",
         query="light(color = yellow, on_ego_path = true) and ego.action = stop",
     ),
     Scenario(
-        id="23",
+        id="yellow-could-have-cleared",
         title="Ego stops on yellow it could have cleared safely",
         query="light(color = yellow, could_have_cleared = true) and ego.action = stop",
     ),
@@ -107,7 +107,7 @@ SCENARIOS: list[Scenario] = [
 
     # ===== Obstacle Avoidance & Lane Adjustment =====
     Scenario(
-        id="76",
+        id="vehicle-stopped-front-nudge",
         title="Vehicle stopped in front of ego, ego nudges or changes lane",
         query="agent(type = vehicle, pos = front, action(type in (stop, not_move))) "
               "and ego.action in (nudge, change_lane_left, change_lane_right)",
@@ -135,12 +135,12 @@ SCENARIOS: list[Scenario] = [
 
     # ===== Roundabouts =====
     Scenario(
-        id="144",
+        id="roundabout-transit",
         title="Ego transits roundabout without yielding",
         query="env.type = roundabout and ego.action = drive",
     ),
     Scenario(
-        id="142",
+        id="roundabout-cut-in",
         title="Vehicle cuts in at roundabout exit; ego brakes",
         query="env.type = roundabout "
               "and agent(type = vehicle, action(type in (change_lane, change_lane_left, change_lane_right))) "
@@ -182,7 +182,11 @@ def main() -> None:
     try:
         dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
     except KeyError:
-        raise SystemExit("set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations")
+        raise SystemExit(
+            "CAUSAL_AV_DATASET_ROOT is not set. Point it at a directory of "
+            "annotation JSON bundles. See the 'Getting the data' section of "
+            "the repo's README.md for how to obtain them."
+        )
 
     ds = CausalAVDataset(dataset_root)
 

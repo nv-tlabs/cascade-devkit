@@ -6,6 +6,9 @@ Load the local corpus, run one query, print the count.
 
     CAUSAL_AV_DATASET_ROOT=/path/to/json_annotations \\
         uv run python examples/01_quickstart.py
+
+If you do not yet have the annotation JSONs, see the "Getting the
+data" section of the repo's `README.md`.
 """
 
 from __future__ import annotations
@@ -20,7 +23,11 @@ def main() -> None:
     try:
         dataset_root = Path(os.environ["CAUSAL_AV_DATASET_ROOT"])
     except KeyError:
-        raise SystemExit("set CAUSAL_AV_DATASET_ROOT to the directory of JSON annotations")
+        raise SystemExit(
+            "CAUSAL_AV_DATASET_ROOT is not set. Point it at a directory of "
+            "annotation JSON bundles. See the 'Getting the data' section of "
+            "the repo's README.md for how to obtain them."
+        )
 
     ds = CausalAVDataset(dataset_root)
 
