@@ -1,6 +1,14 @@
 # Local exploration / planning artifacts, not part of the deliverable
 meta/
 
+# Agent-tool isolation worktrees. The Agent runtime creates short-lived
+# worktrees under .claude/worktrees/ for `isolation: "worktree"` spawns
+# and does not always clean them up. They are local-only checkouts of
+# already-pushed branches — never part of the deliverable. Tracked
+# committed agent material (skills, settings) lives elsewhere under
+# .claude/ and is NOT covered by this rule.
+.claude/worktrees/
+
 # Python bytecode
 __pycache__/
 *.pyc
