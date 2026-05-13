@@ -52,7 +52,11 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
 # readable, while a sparse clip stays compact. The annotator stacks
 # video on top of timeline inside the same browser tab; we follow
 # that reading order here.
-_VERTICAL_SPACING = 0.05
+#
+# Tightened from 0.05 → 0.015 so the video and timeline read as one
+# clustered viewer rather than two separated panes — matches the
+# annotator's tight stack.
+_VERTICAL_SPACING = 0.015
 
 # Default scrub rate. The spec calls 8 fps "scrub-not-playback" and
 # uses it as the smoke-test bar in `meta/10_visualization_api_plan.md`.
@@ -295,7 +299,9 @@ class ClipPlayer:
         # been computed from the timeline's lane counts.
         fig.update_layout(
             template="plotly_white",
-            margin={"l": 80, "r": 20, "t": 20, "b": 40},
+            # Tight top + bottom margins so the video + timeline read
+            # as one clustered viewer (matches the annotator's stack).
+            margin={"l": 80, "r": 20, "t": 6, "b": 30},
             showlegend=False,
             xaxis={"showticklabels": False, "showgrid": False, "zeroline": False},
             yaxis={"showticklabels": False, "showgrid": False, "zeroline": False},

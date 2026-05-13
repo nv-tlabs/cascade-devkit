@@ -369,26 +369,46 @@ _LABEL_PAD: str = " "
 
 
 def _band_label_html(key: BandKey, pad_to: int) -> str:
-    """Render a band's tick label as colored HTML, left-aligned by
-    trailing-nbsp padding to `pad_to` characters.
+    """Render a band's tick label as colored HTML with per-row-type
+    alignment padding.
 
-    The tick text is wrapped in `<span style="color:#...">` so each
-    tick carries the category cue via color (Plotly's SVG renderer
+    Tick text is wrapped in `<span style="color:#...">` so each tick
+    carries the category cue via color (Plotly's SVG renderer
     interprets HTML inside `ticktext`). The right edge of the span
-    sits at the y-axis tick anchor; trailing nbsp's are appended
-    *inside* the span so the visible text starts at a consistent
-    left edge across every label.
+    sits at the y-axis tick anchor; trailing non-breaking spaces
+    push the visible text leftward by the amount of padding.
+
+    Alignment rule:
+      - **Parent rows** (entity headers like "Env Track 1",
+        "Agent Track 2") → **centered**: pad with `(pad_to - len)
+        // 2` trailing nbsp's so the visible text sits in the
+        middle of the longest-label's column.
+      - **Sub-rows** (family heads like "containment", "actions")
+        → **left-aligned**: pad with the full `pad_to - len`
+        trailing nbsp's so the visible text starts at the same
+        left edge as every other sub-row.
+
+    This mirrors the annotator's row-label hierarchy: an entity
+    header is the visual centerpiece of its block, its sub-rows
+    indent under it along a shared left edge.
     """
-    category, _entity_idx, _family, sub_row_idx, _sh_idx = key
+    category, _entity_idx, family, _sub_row_idx, _sh_idx = key
     text = _band_label_text(key)
     if not text:
         return ""
-    pad_count = max(0, pad_to - len(text))
+    deficit = max(0, pad_to - len(text))
+    if family == "parent":
+        # Centering: pad with half the deficit so the visible text
+        # sits in the middle of the longest-label column. Floor
+        # division biases the visible text very slightly leftward
+        # when the deficit is odd — imperceptible at typical label
+        # lengths.
+        pad_count = deficit // 2
+    else:
+        # Left-aligning: full deficit pushes the visible text to
+        # the same left column as every other sub-row.
+        pad_count = deficit
     padded_text = text + _LABEL_PAD * pad_count
-    # `sub_row_idx > 0` is already filtered to "" above; the active
-    # ticks here are parent rows + family heads, both of which want
-    # the category color.
-    _ = sub_row_idx  # silence "unused" — kept in signature for future use
     color = _category_label_color(category)
     return f'<span style="color:{color}">{padded_text}</span>'
 
