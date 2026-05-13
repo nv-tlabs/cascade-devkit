@@ -414,6 +414,82 @@ def test_entity_color_unknown_kind_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
+# family_color — per-family bar palette + entity-base fallback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "category,family,expected",
+    [
+        # Environments
+        ("Environments", "condition", "#06b6d4"),
+        # Ego
+        ("Ego", "containment", "#22c55e"),
+        ("Ego", "influence", "#f97316"),
+        ("Ego", "action", "#3b82f6"),
+        ("Ego", "property", "#93c5fd"),
+        # Agents
+        ("Agents", "containment", "#22c55e"),
+        ("Agents", "pose", "#14b8a6"),
+        ("Agents", "influence", "#f97316"),
+        ("Agents", "action", "#c084fc"),
+        ("Agents", "property", "#d8b4fe"),
+        # Objects
+        ("Objects", "containment", "#22c55e"),
+        ("Objects", "state", "#d97706"),
+        # Traffic Lights
+        ("Traffic Lights", "physical_containment", "#22c55e"),
+        ("Traffic Lights", "signal_head", "#f97316"),
+        ("Traffic Lights", "env_control", "#22c55e"),
+        ("Traffic Lights", "state", "#dc2626"),
+    ],
+)
+def test_family_color_palette_matches_annotator(
+    category: str, family: str, expected: str
+) -> None:
+    """Pin every `(category, family) → hex` to the annotator's
+    `subColor` table in `Timeline.tsx:990-1068`. Any palette edit must
+    update this table and document why."""
+    from causal_ai_av.viz import family_color
+
+    assert family_color(category, family) == expected
+
+
+@pytest.mark.parametrize(
+    "category,group_kind",
+    [
+        ("Environments", "env"),
+        ("Ego", "ego"),
+        ("Objects", "object"),
+        ("Agents", "agent"),
+        ("Traffic Lights", "light"),
+    ],
+)
+def test_family_color_fallback_to_entity_color(
+    category: str, group_kind: str
+) -> None:
+    """For families with no family-specific color (notably the `parent`
+    row), `family_color` falls back to `entity_color(group_kind)` so
+    parent bars keep their entity hue."""
+    from causal_ai_av.viz import family_color
+
+    assert family_color(category, "parent") == entity_color(group_kind)
+    # An unknown family also falls through to the entity base — this
+    # keeps callers stable when a future SegmentFamily lands before its
+    # palette entry does.
+    assert family_color(category, "totally-new-family") == entity_color(group_kind)
+
+
+def test_family_color_unknown_category_raises() -> None:
+    """Unknown categories raise — silently mis-spelling a label should
+    not silently mis-color a row."""
+    from causal_ai_av.viz import family_color
+
+    with pytest.raises(KeyError):
+        family_color("NotACategory", "containment")
+
+
+# ---------------------------------------------------------------------------
 # render_frame — smoke test with a mocked video reader
 # ---------------------------------------------------------------------------
 

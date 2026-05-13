@@ -1041,3 +1041,309 @@ def test_arrows_target_new_band_y() -> None:
         "source and target bands collapsed onto the same row — "
         "per-entity layout broken"
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-entity bands (Category > Entity > Family > Sub-row)
+# ---------------------------------------------------------------------------
+
+
+def test_per_entity_bands() -> None:
+    """A bundle with 3 agents on 3 distinct tracks produces 3 separate
+    "Agent Track N" blocks on the y-axis, each with its own family
+    sub-rows."""
+
+    def _agent(idx: int) -> Agent:
+        return Agent.model_validate(
+            {
+                "id": f"agent_{idx}",
+                "type": "oxd:Car",
+                "visibility_start_timestamp": "0:0.0",
+                "visibility_end_timestamp": "0:5.0",
+                "actions": [
+                    AgentAction(
+                        id=f"agent_{idx}_act_0",
+                        action_type="Yield",
+                        start_timestamp="0:1.0",
+                        end_timestamp="0:2.0",
+                    ).model_dump()
+                ],
+                "_track_index": idx,
+            }
+        )
+
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="per_entity", duration_s=10.0),
+        annotation=SilAvAnnotation(agents=[_agent(0), _agent(1), _agent(2)]),
+    )
+    fig = render_timeline(_seq(bundle))
+    yticks = _yticks(fig)
+    expected = {
+        "Agents · Agent Track 1",
+        "Agents · Agent Track 1 · actions",
+        "Agents · Agent Track 2",
+        "Agents · Agent Track 2 · actions",
+        "Agents · Agent Track 3",
+        "Agents · Agent Track 3 · actions",
+    }
+    missing = expected - set(yticks)
+    assert not missing, f"missing per-entity bands: {missing}; got {yticks}"
+
+
+def test_singleton_ego_has_no_entity_label() -> None:
+    """Ego is a singleton — its tick labels collapse to `"Ego · <leaf>"`
+    with no per-track tag."""
+    fig = render_timeline(_seq(_make_full_bundle()))
+    yticks = _yticks(fig)
+    ego_labels = [t for t in yticks if t.startswith("Ego")]
+    assert ego_labels, "expected at least one Ego band"
+    for label in ego_labels:
+        # No "Ego Track N" prefix anywhere in the Ego labels.
+        assert "Ego Track" not in label, (
+            f"Ego label has unexpected track tag: {label}"
+        )
+        # All Ego labels are exactly two segments: "Ego · <leaf>".
+        parts = label.split(" · ")
+        assert len(parts) == 2 and parts[0] == "Ego", (
+            f"Ego label has wrong structure: {label}"
+        )
+
+
+def test_multi_track_index_produces_multiple_sub_rows() -> None:
+    """An Agent containing 3 containments at `_cont_track_index =
+    0, 1, 2` produces 3 sub-rows under its containment family band:
+    the first labeled "containment", the next two blank."""
+    cont0 = Containment(
+        id="cont0", env_id="env_0", lane_number="1",
+        start_timestamp="0:0.0", end_timestamp="0:2.0",
+    )
+    cont1 = Containment.model_validate({
+        "id": "cont1", "env_id": "env_0", "lane_number": "2",
+        "start_timestamp": "0:0.0", "end_timestamp": "0:2.0",
+        "_cont_track_index": 1,
+    })
+    cont2 = Containment.model_validate({
+        "id": "cont2", "env_id": "env_0", "lane_number": "3",
+        "start_timestamp": "0:0.0", "end_timestamp": "0:2.0",
+        "_cont_track_index": 2,
+    })
+    env = Environment(
+        id="env_0", type="fst:Road",
+        start_timestamp="0:0.0", end_timestamp="0:10.0",
+    )
+    agent = Agent(
+        id="agent_0", type="oxd:Car",
+        visibility_start_timestamp="0:0.0", visibility_end_timestamp="0:5.0",
+        containment=[cont0, cont1, cont2],
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="sub_rows", duration_s=10.0),
+        annotation=SilAvAnnotation(environments=[env], agents=[agent]),
+    )
+    fig = render_timeline(_seq(bundle))
+    yticks = _yticks(fig)
+    # Find the index of the first labeled "containment" row and verify
+    # the next two are blank — matches the annotator's
+    # `i === 0 ? 'containment' : ''` labeling rule.
+    cont_idx = yticks.index("Agents · Agent Track 1 · containment")
+    assert yticks[cont_idx + 1] == "", (
+        f"expected blank trailing sub-row label, got {yticks[cont_idx + 1]!r}"
+    )
+    assert yticks[cont_idx + 2] == "", (
+        f"expected blank trailing sub-row label, got {yticks[cont_idx + 2]!r}"
+    )
+
+
+def test_trailing_sub_row_labels_are_blank() -> None:
+    """The first sub-row of each family carries the family leaf
+    label; subsequent sub-rows render with `""`. This matches the
+    annotator's behavior — the family name is shown ONCE per group.
+    """
+    cond0 = Condition(
+        id="c0", env_id="env_0", type=["Construction Zone"],
+        start_timestamp="0:0.0", end_timestamp="0:2.0",
+    )
+    cond1 = Condition.model_validate({
+        "id": "c1", "env_id": "env_0", "type": ["Construction Zone"],
+        "start_timestamp": "0:0.0", "end_timestamp": "0:2.0",
+        "_cond_track_index": 1,
+    })
+    env = Environment(
+        id="env_0", type="fst:Road",
+        start_timestamp="0:0.0", end_timestamp="0:10.0",
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="cond_sub_rows", duration_s=10.0),
+        annotation=SilAvAnnotation(
+            environments=[env], conditions=[cond0, cond1],
+        ),
+    )
+    fig = render_timeline(_seq(bundle))
+    yticks = _yticks(fig)
+    # Two condition sub-rows: first labeled, second blank.
+    cond_idx = yticks.index("Environments · Env Track 1 · conditions")
+    assert yticks[cond_idx + 1] == "", (
+        f"trailing sub-row not blank: {yticks[cond_idx + 1]!r}"
+    )
+
+
+def test_segment_fill_uses_family_color() -> None:
+    """Per-family bar colors come from `family_color(category, family)`,
+    NOT the entity base color. A containment shape and an action shape
+    on the same agent have distinct fills."""
+    bundle = _make_full_bundle()
+    fig = render_timeline(_seq(bundle))
+    shapes_by_prefix: dict[str, str] = {}
+    for s in _shapes(fig):
+        name = s.get("name", "")
+        if not name.startswith("segment:"):
+            continue
+        sid = name[len("segment:"):]
+        for prefix in (
+            "agent_action_", "agent_cont_", "agent_prop_", "agent_infl_",
+            "ego_act_", "ego_cont_", "ego_infl_",
+            "cond_",
+        ):
+            if sid.startswith(prefix):
+                shapes_by_prefix.setdefault(prefix, s["fillcolor"])
+                break
+
+    # Agent containment vs. action — distinct hues per annotator's
+    # subColor palette.
+    assert shapes_by_prefix["agent_cont_"] == "#22c55e"
+    assert shapes_by_prefix["agent_action_"] == "#c084fc"
+    assert shapes_by_prefix["agent_prop_"] == "#d8b4fe"
+    assert shapes_by_prefix["agent_infl_"] == "#f97316"
+    # Ego subtracks have their own palette.
+    assert shapes_by_prefix["ego_act_"] == "#3b82f6"
+    assert shapes_by_prefix["ego_cont_"] == "#22c55e"
+    assert shapes_by_prefix["ego_infl_"] == "#f97316"
+    # Env condition.
+    assert shapes_by_prefix["cond_"] == "#06b6d4"
+    # Distinct fills are present on the figure.
+    assert (
+        shapes_by_prefix["agent_cont_"] != shapes_by_prefix["agent_action_"]
+    )
+
+
+def test_track_groups_filter_accepts_legacy_short_names() -> None:
+    """The `track_groups` kwarg accepts BOTH the new category labels
+    ("Environments", "Traffic Lights") and the PR-37 legacy short
+    names ("Env", "Lights") for backward compat."""
+    fig_new = render_timeline(_seq(_make_full_bundle()), track_groups=["Agents"])
+    fig_legacy = render_timeline(_seq(_make_full_bundle()), track_groups=["Agents"])
+    # Sanity baseline — same call, same output.
+    assert _yticks(fig_new) == _yticks(fig_legacy)
+    # Filter to Environments via the new name AND the legacy "Env"
+    # alias; both must produce the same y-axis tick list.
+    fig_envs_new = render_timeline(
+        _seq(_make_full_bundle()), track_groups=["Environments"]
+    )
+    fig_envs_legacy = render_timeline(
+        _seq(_make_full_bundle()), track_groups=["Env"]
+    )
+    assert _yticks(fig_envs_new) == _yticks(fig_envs_legacy)
+    assert _yticks(fig_envs_new), "expected at least one Environments band"
+
+
+def test_band_tick_text_matches_annotator_terse_style() -> None:
+    """Tick labels use the annotator's terse leaf words: plural
+    "conditions"/"actions"/"properties"/"influences"/"states", and
+    short "TL control" / "signal head" / "containment" for the
+    paren-disambiguated families."""
+    from causal_ai_av.spec import (
+        LightStates,
+        ObjectStateEntry,
+        SignalHead,
+        TrafficLight,
+        TrafficObject,
+    )
+
+    env = Environment(
+        id="env_0", type="fst:Road",
+        start_timestamp="0:0.0", end_timestamp="0:10.0",
+    )
+    cond = Condition(
+        id="cond_0", env_id="env_0", type=["Construction Zone"],
+        start_timestamp="0:1.0", end_timestamp="0:5.0",
+    )
+    obj = TrafficObject(
+        id="obj_0", type="oxd:Cone",
+        visibility_start_timestamp="0:0.0", visibility_end_timestamp="0:5.0",
+        state_sequence=[
+            ObjectStateEntry(
+                id="obj_state_0", motion_state="Stationary",
+                start_timestamp="0:0.0", end_timestamp="0:5.0",
+            )
+        ],
+    )
+    light = TrafficLight(
+        id="light_0",
+        visibility_start_timestamp="0:0.0", visibility_end_timestamp="0:5.0",
+        containment=[
+            Containment(
+                id="light_phys_0", env_id="env_0",
+                start_timestamp="0:0.0", end_timestamp="0:5.0",
+            )
+        ],
+        signal_heads=[
+            SignalHead(
+                id="sh_0",
+                start_timestamp="0:0.0", end_timestamp="0:5.0",
+                state_sequence=[
+                    LightStates(
+                        id="ls_0", type="Steady", color="red",
+                        start_timestamp="0:0.0", end_timestamp="0:3.0",
+                    )
+                ],
+                env_controlled=[
+                    Containment(
+                        id="sh_cont_0", env_id="env_0",
+                        start_timestamp="0:0.0", end_timestamp="0:3.0",
+                    )
+                ],
+            ),
+        ],
+    )
+    agent = Agent(
+        id="agent_0", type="oxd:Car",
+        visibility_start_timestamp="0:0.0", visibility_end_timestamp="0:5.0",
+        actions=[AgentAction(
+            id="agent_0_act_0", action_type="Yield",
+            start_timestamp="0:1.0", end_timestamp="0:2.0",
+        )],
+        properties=[AgentProperty(
+            id="agent_0_prop_0", property_type="Parked",
+            start_timestamp="0:1.0", end_timestamp="0:2.0",
+        )],
+        influenced_by=[Influence(
+            id="agent_0_infl_0", influencers=["env_0"],
+            start_timestamp="0:1.0", end_timestamp="0:2.0",
+        )],
+    )
+    ann = SilAvAnnotation(
+        environments=[env], conditions=[cond],
+        traffic_objects=[obj], traffic_lights=[light],
+        agents=[agent],
+    )
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="terse", duration_s=10.0),
+        annotation=ann,
+    )
+    fig = render_timeline(_seq(bundle))
+    yticks = set(_yticks(fig))
+    # Spot check each terse leaf rewrite — with the entity track tag.
+    assert "Environments · Env Track 1 · conditions" in yticks
+    assert "Objects · Object Track 1 · states" in yticks
+    assert "Traffic Lights · Light Track 1 · TL control" in yticks
+    assert "Traffic Lights · Light Track 1 · sh0 · signal head" in yticks
+    # env_control labeled "containment" under each signal head.
+    assert "Traffic Lights · Light Track 1 · sh0 · containment" in yticks
+    assert "Traffic Lights · Light Track 1 · sh0 · states" in yticks
+    assert "Agents · Agent Track 1 · actions" in yticks
+    assert "Agents · Agent Track 1 · properties" in yticks
+    assert "Agents · Agent Track 1 · influences" in yticks

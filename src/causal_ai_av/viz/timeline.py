@@ -295,8 +295,14 @@ def _family_sub_row_idx(seg: Segment) -> int:
 def _family_sh_idx(seg: Segment) -> int | None:
     """Return the signal-head ordinal for Lights per-head families;
     `None` for any other (category, family) combination.
+
+    The per-SH discriminator only applies to Traffic Lights — `"state"`
+    appears in both `Objects` and `Traffic Lights`, but only the Lights
+    case wants a per-head split.
     """
     if seg.family not in _PER_SH_FAMILIES:
+        return None
+    if _track_id_to_category(seg.track_id) != "Traffic Lights":
         return None
     if not seg.meta:
         return 0
