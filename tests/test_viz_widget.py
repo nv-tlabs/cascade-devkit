@@ -688,3 +688,62 @@ def test_play_tick_updates_layout_image_source() -> None:
     # the tick, no full layout rebuild.
     assert after_playhead_x != before_playhead_x
     assert abs(after_playhead_x - 1.5) < 1e-9
+
+
+def test_layout_image_sizing_is_stretch() -> None:
+    """The video layout-image uses `sizing="stretch"` — fills the box
+    exactly with no internal letterboxing. PR-44 used `"contain"` and
+    that recreated a visible gap between the video bottom and the
+    timeline top whenever the box's aspect didn't match the source
+    16:9 (which is most cell widths).
+    """
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq)
+    img = player._fig.layout.images[0]
+    assert img.sizing == "stretch", (
+        f"layout image sizing={img.sizing!r}, expected 'stretch' "
+        f"(any other value reintroduces the letterbox gap)"
+    )
+
+
+def test_default_fig_width_pinned() -> None:
+    """`fig.layout.width` is explicitly pinned to a wide default so
+    the FigureWidget renders at a useful size. `autosize=True` +
+    `ipywidgets.Layout(width="100%")` alone don't reliably expand
+    a FigureWidget past Plotly's ~700px first-render default.
+    """
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq)
+    width = player._fig.layout.width
+    assert width is not None and width >= 1200, (
+        f"fig.layout.width={width!r} — needs to be pinned to a wide "
+        f"default so the widget actually expands in Jupyter cells"
+    )
+
+
+def test_width_kwarg_overrides_default() -> None:
+    """Callers can pass `width=N` to pin a specific figure width."""
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq, width=900)
+    assert player._fig.layout.width == 900
+
+
+def test_yaxis_tickfont_is_monospace() -> None:
+    """The timeline's y-axis tick font family is a monospace
+    fontstack so the nbsp-based left-alignment in `_band_label_html`
+    produces visually aligned columns. With Plotly's default
+    proportional font, two labels with the same char count have
+    different pixel widths → they don't align even though the math
+    pads to equal char counts.
+    """
+    seq = _seq_with_fake_video()
+    player = ClipPlayer(seq)
+    family = (player._fig.layout.yaxis2.tickfont.family or "").lower()
+    # Accept any monospace-coded font name in the stack.
+    assert any(
+        kw in family
+        for kw in ("monospace", "menlo", "consolas", "sfmono", "mono")
+    ), (
+        f"yaxis2.tickfont.family={family!r} is not monospace; "
+        f"nbsp padding will not produce aligned label columns"
+    )

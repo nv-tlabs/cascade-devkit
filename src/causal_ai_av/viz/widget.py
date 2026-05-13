@@ -78,12 +78,17 @@ _VIDEO_PX = 480
 _VIDEO_PAPER_X_LEFT: float = -0.18
 _VIDEO_PAPER_X_RIGHT: float = 1.0
 
-# Assumed Jupyter cell width in pixels, used only to size the video
-# pane's height when aspect-fitting. The widget itself autosizes
-# horizontally at render time — the assumed width is just a target
-# for the pixel-height math so the contained image fills the box
-# without letterboxing at typical cell widths.
-_ASSUMED_CELL_WIDTH_PX: int = 1000
+# Assumed Jupyter cell width in pixels, used to size the video
+# pane's height when aspect-fitting AND to pin `fig.layout.width`
+# as a default. `autosize=True` + `ipywidgets.Layout(width="100%")`
+# alone don't reliably grow a FigureWidget past Plotly's ~700px
+# first-render default; an explicit `width` is required. 1400 is
+# a useful default for modern wide-screen Jupyter sessions while
+# still fitting a 1080p source's aspect comfortably. Users on
+# narrower cells can override via the `width=` kwarg on
+# `ClipPlayer.__init__`.
+_DEFAULT_WIDTH: int = 1400
+_ASSUMED_CELL_WIDTH_PX: int = _DEFAULT_WIDTH
 
 # Chrome (margins + ipywidgets row) that the figure layout needs to
 # leave room for. Adding it to the video + timeline pixels gives the
@@ -227,6 +232,7 @@ class ClipPlayer:
         agent_ids: list[str] | None = None,
         track_groups: list[str] | None = None,
         height: int | None = None,
+        width: int | None = None,
         frame_quality: int = _DEFAULT_FRAME_QUALITY,
         frame_max_dim: int | None = None,
         show_inline_labels: bool = True,
@@ -377,8 +383,16 @@ class ClipPlayer:
         usable = 1.0 - _VERTICAL_SPACING
         timeline_domain_top = (timeline_px / subplot_total) * usable
         video_domain_bottom = timeline_domain_top + _VERTICAL_SPACING
+        # Pin a default width — `autosize=True` + `Layout(width="100%")`
+        # alone don't reliably expand a `FigureWidget` in ipywidgets
+        # (the widget's first-render pixel width tends to stick at
+        # Plotly's ~700px default regardless of container width).
+        # Setting `fig.layout.width` explicitly forces a useful render
+        # size. Users with smaller cells can override via `width=`.
+        resolved_width = int(width) if width is not None else _DEFAULT_WIDTH
         fig.update_layout(
             height=total_height,
+            width=resolved_width,
             yaxis={
                 "showticklabels": False,
                 "showgrid": False,
@@ -392,10 +406,18 @@ class ClipPlayer:
         # Attach the video as a layout-level image. Paper xref means
         # we can put the box's left edge at `x=-0.18` (reaching into
         # the y-tick-label margin) and the right edge at `x=1.0` so
-        # the box spans labels + bars + chrome. `sizing="contain"`
-        # preserves the source aspect ratio inside the box; combined
-        # with the aspect-derived video_px above, the contained image
-        # fills the box almost edge-to-edge.
+        # the box spans labels + bars + chrome.
+        #
+        # `sizing="stretch"` fills the box exactly — no internal
+        # letterboxing. The PR-44 `sizing="contain"` attempt
+        # preserved aspect by adding letterboxes inside the box,
+        # which recreated the very gap between video bottom and
+        # timeline top that the layout-image refactor was meant to
+        # kill (at any cell width != the assumed 1000px, the box
+        # aspect didn't match the source 16:9, so vertical letterbox
+        # appeared). Stretching distorts the video ~18% horizontally
+        # for a 16:9 source in a 1.18-paper-wide box — acceptable
+        # trade-off for a tight visual stack with no gap.
         fig.update_layout(
             images=[
                 {
@@ -412,7 +434,7 @@ class ClipPlayer:
                     "sizey": 1.0 - video_domain_bottom,
                     "xanchor": "left",
                     "yanchor": "top",
-                    "sizing": "contain",
+                    "sizing": "stretch",
                     "layer": "above",
                     "name": "frame",
                 }
