@@ -39,6 +39,20 @@ This project uses [uv](https://docs.astral.sh/uv/) for environment and
 dependency management. Clone the repo first; the package is not on
 PyPI.
 
+### Quick install (Ubuntu / Debian)
+
+After cloning, one command does everything below:
+
+```bash
+./scripts/install.sh
+```
+
+The script installs the system prerequisites (apt + Node LTS + uv),
+runs `make install`, and smoke-tests the Python side. It is
+idempotent — re-running is safe. Read on for what the script does
+step-by-step, or skip to **Install the project** if you already have
+the prerequisites.
+
 ### Prerequisites (Ubuntu / Debian)
 
 You need four things on PATH before `make install` works:
@@ -53,7 +67,8 @@ You need four things on PATH before `make install` works:
 Plus `uv` itself — installed separately because it manages your Python
 environments and is not a Python package.
 
-One-liner on a fresh Ubuntu 22.04+ / Debian Bookworm:
+Manual recipe (what `./scripts/install.sh` does on a fresh
+Ubuntu 22.04+ / Debian Bookworm):
 
 ```bash
 sudo apt-get update

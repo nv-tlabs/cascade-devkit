@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-14 feat(install): `scripts/install.sh` one-command bootstrap for Ubuntu/Debian — apt + NodeSource + uv + `make install` + smoke-test; idempotent; README + AGENTS.md surface it as the quick path (#<PR>)
 - 2026-05-13 refactor(brand): rename to CASCADE — `causal_ai_av` → `cascade_av`, `CausalAVDataset` → `CascadeDataset`, `causal-av-annotate` → `cascade-annotate`, `CAUSAL_AV_*` env vars → `CASCADE_AV_*`; README + docs + notebooks pick up the new brand (#65)
 - 2026-05-13 fix(viz): emit Ego parent band — `families=["action"]` (and any single-family filter) now keeps the "Ego" header above the surviving ego sub-row instead of orphaning a context-free leaf label (#64)
 - 2026-05-13 feat(viz): `unique_clips=True` on `matches.visualize()` — dedup carousel by clip_id, union intervals, "N matches" label; notebook 06 opts in (#63)
