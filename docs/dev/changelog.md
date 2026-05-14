@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-14 feat(install): curl-pipe one-liner — `scripts/install.sh` clones the repo when run outside a checkout (auto-`apt install git` if missing), making the README's `curl -LsSf … | bash` form actually work end-to-end (#<PR>)
 - 2026-05-14 docs(readme): condense intro to one paragraph; soften em-dashes to colons; drop pre-ship asides ("schema 2.0.0", "not on PyPI", "until bundles ship publicly") (#68)
 - 2026-05-14 feat(install): `scripts/install.sh` one-command bootstrap for Ubuntu/Debian — apt + NodeSource + uv + `make install` + smoke-test; idempotent; README + AGENTS.md surface it as the quick path (#67)
 - 2026-05-13 refactor(brand): rename to CASCADE — `causal_ai_av` → `cascade_av`, `CausalAVDataset` → `CascadeDataset`, `causal-av-annotate` → `cascade-annotate`, `CAUSAL_AV_*` env vars → `CASCADE_AV_*`; README + docs + notebooks pick up the new brand (#65)
