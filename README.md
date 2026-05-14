@@ -110,7 +110,8 @@ The DevKit reads two kinds of artifacts:
 
 1. **Annotation JSON bundles** — the causal/spatio-temporal labels
    this repo adds. You point `CascadeDataset` at a local directory of
-   `*.json` files.
+   `*.json` files. See **Fetching from HuggingFace** below for the
+   one-line download.
 2. **Sensor data** (camera videos, LiDAR, radar, egomotion) — the
    underlying *Physical AI AV Dataset* on HuggingFace. Pulled
    on-demand by `ds.download_clips(...)` when you need pixels or
@@ -126,6 +127,33 @@ export CASCADE_AV_DATASET_ROOT=/path/to/json_annotations
 A [`.env.example`](.env.example) ships at the repo root. Copy it to
 `.env` if your tooling auto-loads dotenv (IDE test runners, Docker
 Compose, `dotenv-cli`; plain `uv run` does not).
+
+### Fetching from HuggingFace
+
+The annotation JSONs live in a HuggingFace dataset repo. Install the
+`[hf]` extra (it ships with the curl-pipe / `make install` flow) and
+pull either the whole corpus or a named, versioned split:
+
+```python
+from cascade_av.io.hf import CausalAnnotationsHfRepo
+
+repo = CausalAnnotationsHfRepo("nvidia/cascade")   # path_in_repo auto-detected
+
+# Whole corpus
+for bundle in repo.iter_annotations():
+    ...
+
+# Named, versioned splits — declared by `data/dataset_split.yaml`
+# in the repo and never rewritten once published, so a (name, split)
+# pair is a stable, citeable handle.
+repo.available_splits()                            # {"cascade-v0.1": ["train", "validation"]}
+train = repo.load_split("cascade-v0.1", "train")   # list[AnnotationBundle]
+```
+
+Downloads land in the standard `huggingface_hub` cache; re-running
+hits the cache, not the network. Replace `"nvidia/cascade"` with your
+own fork/mirror if needed — both `CASCADE_REPO_URL` (for `install.sh`)
+and `repo_id=` (for the Python API) are fully overridable.
 
 ## Quickstart
 

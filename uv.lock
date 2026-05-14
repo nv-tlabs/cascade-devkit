@@ -249,6 +249,7 @@ annotator = [
 ]
 hf = [
     { name = "physical-ai-av" },
+    { name = "pyyaml" },
 ]
 viz = [
     { name = "anywidget" },
@@ -279,6 +280,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'viz'", specifier = ">=10.0" },
     { name = "plotly", marker = "extra == 'viz'", specifier = ">=5.20" },
     { name = "pydantic", specifier = ">=2.6" },
+    { name = "pyyaml", marker = "extra == 'hf'", specifier = ">=6" },
 ]
 provides-extras = ["hf", "annotator", "viz"]
 
