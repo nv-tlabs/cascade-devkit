@@ -54,17 +54,20 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Sanity: confirm we're in the repo root.
+# Repo coordinates. Kept up here so the curl-pipe path and the post-clone
+# path point at the same upstream.
 # ---------------------------------------------------------------------------
-step "Sanity check"
-if [ ! -f "pyproject.toml" ] || [ ! -f "Makefile" ] || [ ! -d "src/cascade_av" ]; then
-    die "run this script from the repo root (pyproject.toml + Makefile + src/cascade_av/ expected)"
-fi
-ok "repo root looks correct"
+REPO_URL="${CASCADE_REPO_URL:-https://github.com/NVIDIA-dev/av-causal-dataset-tools.git}"
+REPO_DIRNAME="${CASCADE_REPO_DIR:-av-causal-dataset-tools}"
+
+is_repo_root() {
+    [ -f "pyproject.toml" ] && [ -f "Makefile" ] && [ -d "src/cascade_av" ]
+}
 
 # ---------------------------------------------------------------------------
-# 2. OS check. Anything other than Ubuntu/Debian falls out with a clear
-# pointer to the manual recipe.
+# 1. OS check. Anything other than Ubuntu/Debian falls out with a clear
+# pointer to the manual recipe. Runs before any clone so we don't fetch a
+# repo we can't actually install on.
 # ---------------------------------------------------------------------------
 step "OS check"
 if [ ! -f /etc/os-release ]; then
@@ -75,6 +78,34 @@ case "${ID:-}:${ID_LIKE:-}" in
     ubuntu:*|debian:*|*:*ubuntu*|*:*debian*) ok "${PRETTY_NAME:-$ID}";;
     *) die "this script supports Ubuntu/Debian; detected ID=${ID}, ID_LIKE=${ID_LIKE:-}. See the manual recipe in README.md → Prerequisites." ;;
 esac
+
+# ---------------------------------------------------------------------------
+# 2. Locate (or clone) the DevKit. Three branches:
+#   (a) cwd is already the repo root → just continue.
+#   (b) ./$REPO_DIRNAME exists and looks like the repo → cd into it.
+#   (c) otherwise → install git if missing, clone, cd in.
+# Branch (c) is what makes the curl-pipe one-liner self-contained:
+# `curl … | bash` runs in a fresh cwd with no checkout, so the script
+# fetches the repo it's about to install.
+# ---------------------------------------------------------------------------
+step "Locating the CASCADE DevKit"
+if is_repo_root; then
+    ok "running from repo root ($(pwd))"
+elif [ -d "$REPO_DIRNAME" ] && (cd "$REPO_DIRNAME" && is_repo_root); then
+    cd "$REPO_DIRNAME"
+    ok "using existing clone at $(pwd)"
+else
+    info "no DevKit checkout here; cloning $REPO_URL into ./$REPO_DIRNAME"
+    if ! command -v git >/dev/null 2>&1; then
+        info "git not on PATH; installing via apt"
+        $SUDO apt-get update -qq
+        $SUDO apt-get install -y --no-install-recommends git ca-certificates
+    fi
+    git clone --depth 1 "$REPO_URL" "$REPO_DIRNAME"
+    cd "$REPO_DIRNAME"
+    is_repo_root || die "cloned $REPO_URL but it doesn't look like the CASCADE DevKit; aborting"
+    ok "cloned and entered $(pwd)"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. apt packages. `-y` for non-interactive; we suppress recommended-but-
@@ -164,18 +195,28 @@ ok "Python side imports cleanly"
 # ---------------------------------------------------------------------------
 echo
 step "Install complete"
+# The repo path the user lands in is wherever the cwd ended up after the
+# "locate or clone" step — either the existing checkout they invoked us
+# from, or the freshly-cloned ./$REPO_DIRNAME. Show it explicitly so a
+# curl-pipe user knows which directory to cd into.
+INSTALL_DIR="$(pwd)"
 cat <<EOF
+${DIM}Installed to:${RESET} $INSTALL_DIR
+
 ${DIM}Next steps:${RESET}
 
-  ${BOLD}1.${RESET} Point the DevKit at your annotation JSONs:
+  ${BOLD}1.${RESET} Enter the DevKit directory (if you're not already there):
+       ${DIM}cd $INSTALL_DIR${RESET}
+
+  ${BOLD}2.${RESET} Point the DevKit at your annotation JSONs:
        ${DIM}export CASCADE_AV_DATASET_ROOT=/path/to/json_annotations${RESET}
 
-  ${BOLD}2.${RESET} Run the test suite (does not need the corpus for unit tests):
+  ${BOLD}3.${RESET} Run the test suite (does not need the corpus for unit tests):
        ${DIM}make test${RESET}
 
-  ${BOLD}3.${RESET} Launch the annotator against a directory of clips:
+  ${BOLD}4.${RESET} Launch the annotator against a directory of clips:
        ${DIM}make annotator-dev DATA=/path/to/clips${RESET}
 
-  ${BOLD}4.${RESET} Read README.md → Getting the data for where annotation
+  ${BOLD}5.${RESET} Read README.md → Getting the data for where annotation
      bundles come from, or open one of the notebooks under notebooks/.
 EOF

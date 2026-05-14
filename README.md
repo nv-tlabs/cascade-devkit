@@ -36,19 +36,25 @@ through a `because_of` operator.
 ## Install
 
 This project uses [uv](https://docs.astral.sh/uv/) for environment and
-dependency management. Clone the repo first.
+dependency management.
 
 ### Quick install (Ubuntu / Debian)
 
-After cloning, one command does everything below:
+Fresh host? One line clones the repo, installs the system
+prerequisites (apt + Node LTS + uv), runs `make install`, and
+smoke-tests the Python side:
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/NVIDIA-dev/av-causal-dataset-tools/main/scripts/install.sh | bash
+```
+
+Already cloned? Same script, run from the repo root:
 
 ```bash
 ./scripts/install.sh
 ```
 
-The script installs the system prerequisites (apt + Node LTS + uv),
-runs `make install`, and smoke-tests the Python side. It is
-idempotent — re-running is safe. Read on for what the script does
+Idempotent — re-running is safe. Read on for what the script does
 step-by-step, or skip to **Install the project** if you already have
 the prerequisites.
 
