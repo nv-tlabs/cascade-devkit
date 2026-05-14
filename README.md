@@ -1,11 +1,11 @@
 # CASCADE DevKit
 
-Python DevKit for the **CASCADE dataset** — *Causal Spatio-Temporal
-Analysis of Driving Environments*. Causal and spatio-temporal action
-annotations on top of NVIDIA's *Physical AI AV Dataset*. The DevKit
-parses the annotation JSON into a typed Pydantic tree and exposes a
-small query language for searching the corpus by entity, attribute,
-time, and cause.
+Python DevKit for the **CASCADE dataset**: Causal Spatio-Temporal
+Analysis of Driving Environments. It parses the annotation JSON
+into a typed Pydantic tree, exposes a small query language for
+searching by entity, attribute, time, and cause, and renders any
+clip or query result as a video frame paired with its annotation
+timeline.
 
 ```python
 from cascade_av.dataset import CascadeDataset
@@ -18,7 +18,7 @@ ds.count("ego.action = decel because_of agent.type = ped")
 ## What's annotated
 
 Each clip is a short front-facing driving video paired with a JSON
-annotation bundle (schema `2.0.0`). Every clip is annotated with:
+annotation bundle, including:
 
 | entity | what it captures |
 |---|---|
@@ -36,8 +36,7 @@ through a `because_of` operator.
 ## Install
 
 This project uses [uv](https://docs.astral.sh/uv/) for environment and
-dependency management. Clone the repo first; the package is not on
-PyPI.
+dependency management. Clone the repo first.
 
 ### Quick install (Ubuntu / Debian)
 
@@ -112,17 +111,13 @@ The DevKit reads two kinds of artifacts:
    sensors. See [Working with the sensor data](#working-with-the-sensor-data)
    below.
 
-Until the annotation bundles ship publicly, obtain them from the
-project owners and put the directory of `*.json` files anywhere on
-local disk.
-
 Examples and notebooks read the path from an environment variable:
 
 ```bash
 export CASCADE_AV_DATASET_ROOT=/path/to/json_annotations
 ```
 
-A [`.env.example`](.env.example) ships at the repo root — copy it to
+A [`.env.example`](.env.example) ships at the repo root. Copy it to
 `.env` if your tooling auto-loads dotenv (IDE test runners, Docker
 Compose, `dotenv-cli`; plain `uv run` does not).
 
@@ -157,12 +152,12 @@ ego.action = decel because_of agent.type = ped
 
 ## Visualization
 
-`cascade_av.viz` renders any subset of a clip — a single instant, a
-time range, or a `MatchSet` — as a decoded camera frame paired with
+`cascade_av.viz` renders any subset of a clip: a single instant, a
+time range, or a `MatchSet`, as a decoded camera frame paired with
 the clip's annotation timeline. The timeline carries one bar per
 agent action, ego action, environment, condition, and traffic-light
-state, plus five families of causal arrow — `because_of`, `link_to`,
-`containment`, `influence`, `action_target` — and a yellow highlight
+state, plus five families of causal arrow: `because_of`, `link_to`,
+`containment`, `influence`, `action_target`. It also includes a yellow highlight
 band over any match interval.
 
 The viz API requires the optional `[viz]` extra and runs in
