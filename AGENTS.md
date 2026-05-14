@@ -22,9 +22,15 @@ app for editing the JSON bundles — ships under
 ## Start here
 
 ```bash
-# Install Python deps (all extras + dev/notebooks groups) and the
-# annotator's npm deps.
-make install
+# Fresh Ubuntu / Debian host? One command installs system prereqs
+# (apt + Node LTS + uv), runs `make install`, and smoke-tests the
+# Python side. Idempotent. See README.md → Quick install for what it
+# does step-by-step.
+./scripts/install.sh
+
+# Already have the prereqs (uv, Node, ffmpeg)? Skip the bootstrap
+# and install directly:
+make install         # uv sync --all-extras + annotator npm deps
 
 # Smoke-test: run the pytest suite. Unit tests do not need the corpus.
 make test
