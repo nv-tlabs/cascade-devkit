@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-14 feat(io.hf): auto-detect `data/` path + split-aware loaders (`available_splits`, `iter_split`, `load_split`) backed by `dataset_split.yaml`; README "Fetching from HuggingFace" subsection; `pyyaml` pinned on the `[hf]` extra (#<PR>)
 - 2026-05-14 feat(install): curl-pipe one-liner — `scripts/install.sh` clones the repo when run outside a checkout (auto-`apt install git` if missing), making the README's `curl -LsSf … | bash` form actually work end-to-end (#69)
 - 2026-05-14 docs(readme): condense intro to one paragraph; soften em-dashes to colons; drop pre-ship asides ("schema 2.0.0", "not on PyPI", "until bundles ship publicly") (#68)
 - 2026-05-14 feat(install): `scripts/install.sh` one-command bootstrap for Ubuntu/Debian — apt + NodeSource + uv + `make install` + smoke-test; idempotent; README + AGENTS.md surface it as the quick path (#67)

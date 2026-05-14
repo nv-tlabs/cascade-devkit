@@ -73,6 +73,215 @@ def test_hf_adapter_importable() -> None:
     from cascade_av.io.hf import CausalAnnotationsHfRepo  # noqa: F401
 
 
+# ---------------------------------------------------------------------------
+# HF adapter — autodetect + split-aware loaders. All exercised against
+# monkey-patched parent class methods so the tests never touch the network.
+# `_make_hf_repo` is the shared no-network constructor.
+# ---------------------------------------------------------------------------
+import pytest  # noqa: E402  — local imports keep the network-free tests grouped
+
+
+def _make_hf_repo(monkeypatch, *, repo_files=None, **kwargs):
+    """Construct a `CausalAnnotationsHfRepo` with the parent class network
+    calls stubbed out.
+
+    `repo_files` controls what `HfApi.list_repo_files` returns during
+    autodetect; pass `None` to make autodetect raise (covering the
+    "HF unreachable → fall back to root" path).
+    """
+    from huggingface_hub import HfApi
+    from physical_ai_av.utils.hf_interface import HfRepoInterface
+
+    def fake_init(self, *, repo_id, repo_type, revision=None, **_kw):
+        self.repo_id = repo_id
+        self.repo_type = repo_type
+        self.revision = revision
+
+    monkeypatch.setattr(HfRepoInterface, "__init__", fake_init)
+
+    if repo_files is None:
+        def boom(*a, **kw):
+            raise RuntimeError("simulated HF failure")
+        monkeypatch.setattr(HfApi, "list_repo_files", boom)
+    else:
+        monkeypatch.setattr(
+            HfApi, "list_repo_files", lambda self, *a, **kw: list(repo_files),
+        )
+
+    from cascade_av.io.hf import CausalAnnotationsHfRepo
+    return CausalAnnotationsHfRepo("fake/repo", **kwargs)
+
+
+def test_hf_autodetect_picks_data_when_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Files prefixed with `data/` → autodetect picks `data`."""
+    repo = _make_hf_repo(
+        monkeypatch,
+        repo_files=[
+            "LICENSE",
+            "README.md",
+            "data/batch_00001/foo.json",
+            "data/dataset_split.yaml",
+        ],
+    )
+    assert repo.path_in_repo == "data"
+
+
+def test_hf_autodetect_falls_back_to_root_when_no_data_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No `data/` prefix → autodetect returns `""` (legacy / flat layouts)."""
+    repo = _make_hf_repo(
+        monkeypatch,
+        repo_files=["LICENSE", "README.md", "annotation_a.json"],
+    )
+    assert repo.path_in_repo == ""
+
+
+def test_hf_autodetect_falls_back_on_api_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Any HF API failure during autodetect → fall back to root rather
+    than propagating an opaque error. Callers can still pass an explicit
+    `path_in_repo=` if needed."""
+    repo = _make_hf_repo(monkeypatch, repo_files=None)
+    assert repo.path_in_repo == ""
+
+
+def test_hf_explicit_path_in_repo_bypasses_autodetect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Passing `path_in_repo=` explicitly skips the `list_repo_files`
+    round-trip — locks the "autodetect is free when you don't need it"
+    contract."""
+    from huggingface_hub import HfApi
+    from physical_ai_av.utils.hf_interface import HfRepoInterface
+
+    monkeypatch.setattr(
+        HfRepoInterface, "__init__",
+        lambda self, *, repo_id, repo_type, revision=None, **_kw: setattr(
+            self, "repo_id", repo_id,
+        ) or setattr(self, "repo_type", repo_type) or setattr(
+            self, "revision", revision,
+        ),
+    )
+    called: list[bool] = []
+    monkeypatch.setattr(
+        HfApi, "list_repo_files",
+        lambda self, *a, **kw: (called.append(True), [])[1],
+    )
+
+    from cascade_av.io.hf import CausalAnnotationsHfRepo
+    repo = CausalAnnotationsHfRepo("fake/repo", path_in_repo="custom")
+    assert repo.path_in_repo == "custom"
+    assert called == [], (
+        "autodetect should not run when path_in_repo is supplied explicitly"
+    )
+
+
+def test_hf_available_splits_parses_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """`available_splits()` parses `dataset_split.yaml` and returns
+    `{name: [sub_splits]}` ordered by manifest position."""
+    yaml_path = tmp_path / "dataset_split.yaml"
+    yaml_path.write_text(
+        "- name: cascade-v0.1\n"
+        "  date: 2026-05-14\n"
+        "  train:\n"
+        "    - a.json\n"
+        "    - b.json\n"
+        "  validation:\n"
+        "    - c.json\n"
+        "- name: cascade-v0.2\n"
+        "  date: 2026-06-01\n"
+        "  train:\n"
+        "    - d.json\n"
+        "  validation:\n"
+        "    - e.json\n"
+        "  test:\n"
+        "    - f.json\n"
+    )
+
+    repo = _make_hf_repo(monkeypatch, repo_files=["data/dataset_split.yaml"])
+
+    from physical_ai_av.utils.hf_interface import HfRepoInterface
+    monkeypatch.setattr(
+        HfRepoInterface, "download_file",
+        lambda self, repo_path: str(yaml_path),
+    )
+
+    splits = repo.available_splits()
+    assert splits == {
+        "cascade-v0.1": ["train", "validation"],
+        "cascade-v0.2": ["train", "validation", "test"],
+    }
+
+
+def test_hf_iter_split_yields_bundles(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, rich_path: Path,
+) -> None:
+    """`iter_split(name, split)` resolves each filename in the manifest
+    via `load_annotation`, threading `path_in_repo` onto the request."""
+    yaml_path = tmp_path / "dataset_split.yaml"
+    yaml_path.write_text(
+        "- name: cascade-v0.1\n"
+        "  date: 2026-05-14\n"
+        "  train:\n"
+        "    - batch_00001/sample.json\n"
+        "  validation: []\n"
+    )
+    requested: list[str] = []
+
+    def fake_download_file(self, repo_path):
+        requested.append(repo_path)
+        if repo_path.endswith("dataset_split.yaml"):
+            return str(yaml_path)
+        if repo_path == "data/batch_00001/sample.json":
+            return str(rich_path)
+        raise FileNotFoundError(repo_path)
+
+    repo = _make_hf_repo(monkeypatch, repo_files=["data/dataset_split.yaml"])
+
+    from physical_ai_av.utils.hf_interface import HfRepoInterface
+    monkeypatch.setattr(HfRepoInterface, "download_file", fake_download_file)
+
+    bundles = list(repo.iter_split("cascade-v0.1", "train"))
+    assert len(bundles) == 1
+    assert bundles[0].schema_version == "2.0.0"
+    # Locked: path_in_repo got prepended to the filename from the YAML.
+    assert "data/batch_00001/sample.json" in requested
+
+
+def test_hf_iter_split_raises_on_unknown_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    yaml_path = tmp_path / "dataset_split.yaml"
+    yaml_path.write_text("- name: cascade-v0.1\n  train: []\n")
+    repo = _make_hf_repo(monkeypatch, repo_files=["data/dataset_split.yaml"])
+    from physical_ai_av.utils.hf_interface import HfRepoInterface
+    monkeypatch.setattr(
+        HfRepoInterface, "download_file",
+        lambda self, repo_path: str(yaml_path),
+    )
+    with pytest.raises(KeyError, match="cascade-bogus"):
+        list(repo.iter_split("cascade-bogus", "train"))
+
+
+def test_hf_iter_split_raises_on_unknown_sub_split(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    yaml_path = tmp_path / "dataset_split.yaml"
+    yaml_path.write_text("- name: cascade-v0.1\n  train: []\n")
+    repo = _make_hf_repo(monkeypatch, repo_files=["data/dataset_split.yaml"])
+    from physical_ai_av.utils.hf_interface import HfRepoInterface
+    monkeypatch.setattr(
+        HfRepoInterface, "download_file",
+        lambda self, repo_path: str(yaml_path),
+    )
+    with pytest.raises(KeyError, match="test"):
+        list(repo.iter_split("cascade-v0.1", "test"))
+
+
 def test_condition_type_accepts_bare_string() -> None:
     """Some corpora write `conditions[].type` as a bare string ("Construction
     Zone") rather than the canonical list shape. The schema coerces it so
