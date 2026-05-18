@@ -346,7 +346,7 @@ camera and decode a frame from it.
 
 ## Migrating older annotations
 
-The current schema is **2.1.0** (see
+The current schema is **2.2.0** (see
 [`docs/dev/schema-history.md`](docs/dev/schema-history.md)). Files written
 against an older version still load — Pydantic's `extra="allow"` machinery
 keeps any removed fields alive in `__pydantic_extra__` — but the loader
@@ -364,12 +364,14 @@ cascade-migrate /path/to/json_annotations --output-dir /path/to/migrated
 cascade-migrate /path/to/json_annotations --check
 ```
 
-Deprecated payload (currently: `bounding_boxes` arrays from 2.0.0) moves
-into a sibling `<stem>.extra.json` sidecar under
-`extensions["bbox/1.0"]`. The base schema in `cascade_av.spec` stays
-clean; future schema extensions consume the sidecar via
-`cascade_av.extensions`. The CLI is idempotent — re-running on an
-already-migrated tree is a no-op.
+Deprecated payload moves into a sibling `<stem>.extra.json` sidecar:
+`bounding_boxes` (from 2.0.0) lands under `extensions["bbox/1.0"]`;
+annotator timeline-layout indices `_*_track_index` (from 2.1.0 and
+earlier) land under `extensions["ui/1.0"]`, keyed by entity id. The base
+schema in `cascade_av.spec` stays clean; the first-party `UiExtension`
+ships in-tree under `cascade_av.extensions`. The CLI is idempotent —
+re-running on an already-migrated tree is a no-op, and chains
+2.0.0 → 2.1.0 → 2.2.0 in one pass via BFS over registered migrators.
 
 ## Project layout
 

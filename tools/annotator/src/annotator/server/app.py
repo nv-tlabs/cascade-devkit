@@ -26,9 +26,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from cascade_av.spec import AnnotationBundle
-
-from annotator.server.io_adapter import ClipEntry, load_bundle, save_bundle
+from annotator.server.io_adapter import (
+    ClipEntry,
+    bundle_from_wire,
+    bundle_to_wire,
+    load_bundle,
+    save_bundle,
+)
 from annotator.server.video import (
     TranscodeError,
     VideoNotFound,
@@ -81,7 +85,7 @@ def create_app(
         if clip_id not in clip_index:
             raise HTTPException(status_code=404, detail=f"unknown clip_id: {clip_id}")
         bundle = load_bundle(clip_index[clip_id])
-        return bundle.model_dump(by_alias=True, exclude_unset=True, mode="json")
+        return bundle_to_wire(bundle)
 
     @app.put("/api/clips/{clip_id}/annotations")
     async def put_annotations(clip_id: str, request: Request) -> JSONResponse:
@@ -94,7 +98,7 @@ def create_app(
             )
         payload = await request.json()
         try:
-            bundle = AnnotationBundle.model_validate(payload)
+            bundle = bundle_from_wire(payload)
         except ValidationError as exc:
             return JSONResponse(status_code=422, content={"errors": exc.errors()})
         # Force clip_id alignment — the URL is authoritative.
@@ -117,7 +121,7 @@ def create_app(
             status_code=200,
             content={
                 "saved_to": str(saved_path),
-                "bundle": bundle.model_dump(by_alias=True, exclude_unset=True, mode="json"),
+                "bundle": bundle_to_wire(bundle),
             },
         )
 

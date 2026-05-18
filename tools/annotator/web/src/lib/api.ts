@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 import type { AnnotationBundle } from './types'
+import {
+  extractUiExtension,
+  hydrateUiExtension,
+  type WireBundle,
+} from './ui-extension'
 
 const BASE = '/api'
 
@@ -66,18 +71,28 @@ export async function listClips(): Promise<ClipEntry[]> {
 }
 
 export async function getBundle(clipId: string): Promise<AnnotationBundle> {
-  return request<AnnotationBundle>('GET', `/clips/${encodeURIComponent(clipId)}/annotations`)
+  // The server emits a wire envelope (`bundle + _extensions`) as of schema
+  // 2.2.0; hydrate the ui/1.0 indices back onto entity fields so the rest of
+  // the frontend sees the pre-2.2.0 shape and nothing else needs to know.
+  const wire = await request<WireBundle>(
+    'GET',
+    `/clips/${encodeURIComponent(clipId)}/annotations`,
+  )
+  return hydrateUiExtension(wire)
 }
 
 /** Save a bundle. The server returns `{saved_to, bundle}` — we return the
  *  echoed bundle so callers can keep using it directly. */
 export async function saveBundle(clipId: string, bundle: AnnotationBundle): Promise<AnnotationBundle> {
-  const res = await request<{ saved_to: string; bundle: AnnotationBundle }>(
+  // Pack the inline indices into the ui/1.0 wire envelope; the server splits
+  // it into main JSON + sibling sidecar.
+  const wireOut = extractUiExtension(bundle)
+  const res = await request<{ saved_to: string; bundle: WireBundle }>(
     'PUT',
     `/clips/${encodeURIComponent(clipId)}/annotations`,
-    bundle,
+    wireOut,
   )
-  return res.bundle
+  return hydrateUiExtension(res.bundle)
 }
 
 /** Stage labels the server emits during a video resolve. The frontend treats
