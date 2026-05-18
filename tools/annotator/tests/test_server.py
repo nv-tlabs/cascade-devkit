@@ -514,3 +514,32 @@ def test_validate_endpoint_works_in_read_only_mode(corpus_copy: Path) -> None:
     body = r.json()
     assert "ok" in body
     assert "issues" in body
+
+
+def test_validate_endpoint_empty_condition_type_string_coerces_and_fires_rule(
+    tmp_path: Path,
+) -> None:
+    """A bare-string `condition.type: ""` survives the schema's `_str_to_list`
+    coercion (Condition wraps bare strings → `[""]`) and trips
+    ``condition_requires_type``. Locks the coercion + rule interaction
+    end-to-end across the wire.
+    """
+    video = tmp_path / "freshclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    payload = _clean_validate_payload()
+    # Wire-shape: `type` arrives as a bare string. Pydantic coerces to [""].
+    payload["annotation"]["conditions"] = [{"id": "C1", "type": ""}]
+
+    r = client.post("/api/clips/freshclip/annotations/validate", json=payload)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is False
+    rules = {i["rule"] for i in body["issues"]}
+    assert "condition_requires_type" in rules
+    # And the offending entity is the one we just added.
+    cond_issues = [i for i in body["issues"] if i["rule"] == "condition_requires_type"]
+    assert any(i["entity_id"] == "C1" for i in cond_issues)
