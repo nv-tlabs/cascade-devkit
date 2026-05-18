@@ -36,36 +36,39 @@ through a `because_of` operator.
 ## Install
 
 This project uses [uv](https://docs.astral.sh/uv/) for environment and
-dependency management.
+dependency management. Pick one of the two paths below — they produce
+the same result.
 
-### Quick install (Ubuntu / Debian)
+### Option A: one-line install (Ubuntu / Debian, recommended)
 
-Fresh host? One line clones the repo, installs the system
-prerequisites (apt + Node LTS + uv), runs `make install`, and
-smoke-tests the Python side:
+`scripts/install.sh` does everything end-to-end: clones the repo (if
+you ran it via curl-pipe), installs apt prerequisites (`make`,
+`build-essential`, `ffmpeg`), installs Node 20 LTS, installs `uv`,
+runs `make install` (Python deps + annotator npm), and smoke-tests
+the Python side. Idempotent — re-running is safe.
+
+Fresh host (no checkout yet):
 
 ```bash
 curl -LsSf https://raw.githubusercontent.com/NVIDIA-dev/av-causal-dataset-tools/main/scripts/install.sh | bash
 ```
 
-Already cloned? Same script, run from the repo root:
+Already cloned, run from the repo root:
 
 ```bash
 ./scripts/install.sh
 ```
-
-Idempotent — re-running is safe. Read on for what the script does
-step-by-step, or skip to **Install the project** if you already have
-the prerequisites.
 
 > **First time using the annotator?** The 5-minute walkthrough at
 > [`docs/user/getting-started.md`](docs/user/getting-started.md) takes
 > you from a fresh clone to your first saved annotation, including
 > HuggingFace token setup and reading the startup preflight log.
 
-### Prerequisites (Ubuntu / Debian)
+### Option B: manual install
 
-You need four things on PATH before `make install` works:
+For non-Debian hosts, hardened environments where piping a script
+into a shell isn't acceptable, or CI runners with custom apt mirrors.
+You need these on PATH before `make install`:
 
 | Tool | Why |
 |------|-----|
@@ -73,12 +76,10 @@ You need four things on PATH before `make install` works:
 | **`make`** | All documented install / test / run targets are make recipes. |
 | **Node ≥ 18 (LTS) + npm** | Only used by the annotator frontend (Vite bundle). |
 | **`ffmpeg` + `ffprobe`** | Only used by the annotator (HEVC → H.264 transcode + codec detection). See [`tools/annotator/README.md`](tools/annotator/README.md) for which features degrade if missing. |
+| **`uv`** | Manages your Python environments. Not a Python package — installed separately. |
 
-Plus `uv` itself — installed separately because it manages your Python
-environments and is not a Python package.
-
-Manual recipe (what `./scripts/install.sh` does on a fresh
-Ubuntu 22.04+ / Debian Bookworm):
+On Ubuntu 22.04+ / Debian Bookworm the recipe below installs every
+prerequisite and then the project itself:
 
 ```bash
 sudo apt-get update
@@ -90,6 +91,17 @@ sudo apt-get install -y nodejs
 
 # uv via the official installer
 curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Project deps — Python (all extras) + the annotator's npm deps.
+make install
+```
+
+For finer-grained control over the Python side:
+
+```bash
+uv sync                                    # core install
+uv sync --extra hf                         # + parent-dataset integration (video loading)
+uv sync --all-extras --group notebooks     # + notebook tooling (JupyterLab, matplotlib, pandas)
 ```
 
 **Container alternative.** A [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
@@ -97,47 +109,21 @@ ships with the repo and installs all of the above automatically — open
 the folder in VS Code Dev Containers, GitHub Codespaces, or any
 compatible host. No host-side setup needed beyond the IDE.
 
-### Install the project
-
-```bash
-# One-shot — Python deps (all extras) + the annotator's npm deps.
-make install
-
-# Or run the steps explicitly:
-uv sync                                    # core install
-uv sync --extra hf                         # + parent-dataset integration (video loading)
-uv sync --all-extras --group notebooks     # + notebook tooling (JupyterLab, matplotlib, pandas)
-```
-
 ## Getting the data
 
-The DevKit reads two kinds of artifacts:
+The DevKit reads two kinds of artifacts: **annotation JSON bundles**
+(this repo's causal/spatio-temporal labels) and **sensor data**
+(camera videos, LiDAR, radar, egomotion — the underlying *Physical AI
+AV Dataset* on HuggingFace). Sensor data is always pulled on-demand by
+`ds.download_clips(...)`; see
+[Working with the sensor data](#working-with-the-sensor-data). For the
+annotation JSONs, pick one of the two paths below.
 
-1. **Annotation JSON bundles** — the causal/spatio-temporal labels
-   this repo adds. You point `CascadeDataset` at a local directory of
-   `*.json` files. See **Fetching from HuggingFace** below for the
-   one-line download.
-2. **Sensor data** (camera videos, LiDAR, radar, egomotion) — the
-   underlying *Physical AI AV Dataset* on HuggingFace. Pulled
-   on-demand by `ds.download_clips(...)` when you need pixels or
-   sensors. See [Working with the sensor data](#working-with-the-sensor-data)
-   below.
+### Option A: stream from HuggingFace
 
-Examples and notebooks read the path from an environment variable:
-
-```bash
-export CASCADE_AV_DATASET_ROOT=/path/to/json_annotations
-```
-
-A [`.env.example`](.env.example) ships at the repo root. Copy it to
-`.env` if your tooling auto-loads dotenv (IDE test runners, Docker
-Compose, `dotenv-cli`; plain `uv run` does not).
-
-### Fetching from HuggingFace
-
-The annotation JSONs live in a HuggingFace dataset repo. Install the
-`[hf]` extra (it ships with the curl-pipe / `make install` flow) and
-pull either the whole corpus or a named, versioned split:
+The JSONs live in a HuggingFace dataset repo. The `[hf]` extra ships
+with `make install` (i.e. both install paths above); pull either the
+whole corpus or a named, versioned split:
 
 ```python
 from cascade_av.io.hf import CausalAnnotationsHfRepo
@@ -159,6 +145,21 @@ Downloads land in the standard `huggingface_hub` cache; re-running
 hits the cache, not the network. Replace `"nvidia/cascade"` with your
 own fork/mirror if needed — both `CASCADE_REPO_URL` (for `install.sh`)
 and `repo_id=` (for the Python API) are fully overridable.
+
+### Option B: point at a local directory
+
+If you already have JSONs on disk — a previous HF download, a fork, a
+private mirror, or a freshly-recorded session — point `CascadeDataset`
+at the directory directly. Examples and notebooks read the path from
+an environment variable:
+
+```bash
+export CASCADE_AV_DATASET_ROOT=/path/to/json_annotations
+```
+
+A [`.env.example`](.env.example) ships at the repo root. Copy it to
+`.env` if your tooling auto-loads dotenv (IDE test runners, Docker
+Compose, `dotenv-cli`; plain `uv run` does not).
 
 ## Quickstart
 
@@ -351,32 +352,10 @@ camera and decode a frame from it.
 
 ## Migrating older annotations
 
-The current schema is **2.2.0** (see
-[`docs/dev/schema-history.md`](docs/dev/schema-history.md)). Files written
-against an older version still load — Pydantic's `extra="allow"` machinery
-keeps any removed fields alive in `__pydantic_extra__` — but the loader
-emits a one-shot `DeprecationWarning` per version pointing at the
-migration tool:
-
-```bash
-# In place (overwrites the source directory):
-cascade-migrate /path/to/json_annotations
-
-# Side-by-side (recommended for a first run):
-cascade-migrate /path/to/json_annotations --output-dir /path/to/migrated
-
-# CI gate — exit non-zero if any file would migrate:
-cascade-migrate /path/to/json_annotations --check
-```
-
-Deprecated payload moves into a sibling `<stem>.extra.json` sidecar:
-`bounding_boxes` (from 2.0.0) lands under `extensions["bbox/1.0"]`;
-annotator timeline-layout indices `_*_track_index` (from 2.1.0 and
-earlier) land under `extensions["ui/1.0"]`, keyed by entity id. The base
-schema in `cascade_av.spec` stays clean; the first-party `UiExtension`
-ships in-tree under `cascade_av.extensions`. The CLI is idempotent —
-re-running on an already-migrated tree is a no-op, and chains
-2.0.0 → 2.1.0 → 2.2.0 in one pass via BFS over registered migrators.
+Current schema is **2.2.0**. Older files still load (with a one-shot
+`DeprecationWarning`); run `cascade-migrate <corpus-dir>` to upgrade
+in place. Full version history, sidecar layout, and CLI options:
+[`docs/dev/schema-history.md`](docs/dev/schema-history.md).
 
 ## Project layout
 
