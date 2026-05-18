@@ -35,39 +35,27 @@ import { removeKeypointAt } from '../lib/keypoint-utils'
 import { buildCompletenessMap } from '../lib/completeness'
 import { ACTION_LINK_TO_CONFIG } from '../lib/attribute-cycling'
 import type { TimelineSegment, TrackId, SilAvAnnotation } from '../lib/types'
+import {
+  AGENT_SUBTRACK_BASE,
+  BOTTOM_PADDING,
+  CATEGORY_HEADER_HEIGHT,
+  COLLAPSED_GROUP_HEIGHT,
+  COND_SUBTRACK_HEIGHT,
+  EGO_SUBTRACK_BASE,
+  ENV_MAIN_HEIGHT,
+  HEADER_HEIGHT,
+  LABEL_PANEL_WIDTH,
+  OBJ_CONT_ROW_Y,
+  SCRUBBER_LANE_HEIGHT,
+  SH_GAP,
+  findTrackAtY,
+  getObjStateRowY,
+  getTrackGap,
+  getTrackHeight,
+  getTrackY,
+} from '../lib/timeline-layout'
 import { ZoomIn, ZoomOut, Maximize2, Plus, Minus, ChevronRight, ChevronDown } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
-
-const TRACK_HEIGHT = 32
-const ENV_TRACK_HEIGHT = 50
-const EGO_TRACK_HEIGHT = 42
-const EGO_SUBTRACK_BASE = 24
-const AGENT_TRACK_HEIGHT = 84
-const HEADER_HEIGHT = 36
-const SCRUBBER_LANE_HEIGHT = 16
-const LABEL_PANEL_WIDTH = 140
-const COND_SUBTRACK_HEIGHT = 18
-const ENV_MAIN_HEIGHT = 30
-const AGENT_SUBTRACK_BASE = ENV_MAIN_HEIGHT  // 30 — subtracks start below the main bar
-// Object tracks: main + N containment rows + 1 state row (no gap). State row Y
-// depends on the number of containment rows for that track.
-const OBJ_CONT_ROW_Y = ENV_MAIN_HEIGHT                          // 30 (containment first)
-const getObjStateRowY = (contRows: number) => OBJ_CONT_ROW_Y + Math.max(1, contRows) * COND_SUBTRACK_HEIGHT
-const getObjTrackHeight = (contRows: number) => getObjStateRowY(contRows) + COND_SUBTRACK_HEIGHT
-const OBJ_LIGHT_TRACK_HEIGHT = getObjTrackHeight(1) // 66 — single-containment-row default (used for lights)
-// Light tracks: now have signal heads, each with containment + bar + states
-// Layout per light: [Main] [PhysCont] [gap] [SH1 bar] [SH1 cont] [SH1 states...] [gap] [SH2 bar] [SH2 cont] [SH2 states...] ...
-const SH_GAP = 4
-const COLLAPSED_GROUP_HEIGHT = 24
-// Height reserved above each non-collapsed group's first track for the
-// category header pill ("AGENTS", "OBJECTS", ...). Lives in the gap
-// region so the track row's top slot stays free for the track-name row
-// alone — otherwise the name row would collide with the first subtrack
-// label ("containment") which is absolutely-positioned at
-// AGENT_SUBTRACK_BASE / ENV_MAIN_HEIGHT (=30). Collapsed groups already
-// render the header as their only row, so no extra space is reserved
-// when the next group's first track is collapsed.
-const CATEGORY_HEADER_HEIGHT = 24
 
 /** Compute total subtrack rows for a traffic light based on its signal heads. */
 function getLightPhysContRows(light: { containment?: unknown[] }): number {
@@ -122,10 +110,6 @@ function getSignalHeadY(light: { signal_heads?: { state_sequence?: unknown[]; en
   return y + SH_GAP // gap before this head's bar
 }
 
-const GROUP_GAP = 6
-const TRACK_GAP = 4
-const BOTTOM_PADDING = 40
-
 // Canvas colors are resolved from CSS variables so they flip with the
 // theme. The hard-coded fallbacks here only apply when the canvas paints
 // during SSR or before the document is ready (impossible in practice but
@@ -163,49 +147,6 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.lineTo(x, y + r)
   ctx.quadraticCurveTo(x, y, x + r, y)
   ctx.closePath()
-}
-
-function getTrackHeight(group: string, trackId?: string, lightSubRowCounts?: Map<string, number>, collapsed?: boolean): number {
-  if (collapsed) return COLLAPSED_GROUP_HEIGHT
-  if (group === 'Agents') {
-    if (trackId && lightSubRowCounts) {
-      const contRows = lightSubRowCounts.get(trackId) ?? 1
-      const inflRows = lightSubRowCounts.get(`${trackId}_infl`) ?? 0
-      const propRows = lightSubRowCounts.get(`${trackId}_prop`) ?? 0
-      return AGENT_SUBTRACK_BASE + (contRows + inflRows + 1 + propRows) * COND_SUBTRACK_HEIGHT + COND_SUBTRACK_HEIGHT
-    }
-    return AGENT_TRACK_HEIGHT
-  }
-  if (group === 'Ego') {
-    if (lightSubRowCounts) {
-      const contRows = lightSubRowCounts.get('ego_act') ?? 1
-      const inflRows = lightSubRowCounts.get('ego_act_infl') ?? 0
-      const propRows = lightSubRowCounts.get('ego_act_prop') ?? 0
-      return EGO_SUBTRACK_BASE + contRows * COND_SUBTRACK_HEIGHT + inflRows * COND_SUBTRACK_HEIGHT + COND_SUBTRACK_HEIGHT + propRows * COND_SUBTRACK_HEIGHT
-    }
-    return EGO_TRACK_HEIGHT
-  }
-  if (group === 'Environments') {
-    if (trackId && lightSubRowCounts) {
-      const condRows = lightSubRowCounts.get(`${trackId}_cond`) ?? 1
-      return ENV_MAIN_HEIGHT + condRows * COND_SUBTRACK_HEIGHT + 2
-    }
-    return ENV_TRACK_HEIGHT
-  }
-  if (group === 'TrafficLights' && trackId && lightSubRowCounts) {
-    const rows = lightSubRowCounts.get(trackId) ?? 2
-    const shCount = lightSubRowCounts.get(`${trackId}_shcount`) ?? 0
-    return ENV_MAIN_HEIGHT + rows * COND_SUBTRACK_HEIGHT + shCount * SH_GAP
-  }
-  if (group === 'Objects') {
-    if (trackId && lightSubRowCounts) {
-      const contRows = lightSubRowCounts.get(trackId) ?? 1
-      return getObjTrackHeight(contRows)
-    }
-    return OBJ_LIGHT_TRACK_HEIGHT
-  }
-  if (group === 'TrafficLights') return OBJ_LIGHT_TRACK_HEIGHT
-  return TRACK_HEIGHT
 }
 
 /** True when the main track row has any parent entity assigned.
@@ -272,36 +213,6 @@ function getSubtrackRowLabels(group: string, trackId: string, lightLaneCounts: M
     }
   }
   return out
-}
-
-/** Gap after track i (group gap or agent-to-agent gap).
- *
- * When the next track starts a new group and is non-collapsed, the gap
- * is widened by CATEGORY_HEADER_HEIGHT so the panel can render the
- * group's header pill in that space rather than steal space from the
- * track row itself (which would collide with the first subtrack label).
- * Collapsed groups already use their single row as their header, so no
- * extra space is reserved when the next track is collapsed.
- */
-function getTrackGap(trackList: { group: string; id: string; _collapsed?: boolean }[], i: number): number {
-  if (i + 1 >= trackList.length) return 0
-  if (trackList[i].group !== trackList[i + 1].group) {
-    return GROUP_GAP + (trackList[i + 1]._collapsed ? 0 : CATEGORY_HEADER_HEIGHT)
-  }
-  if (!trackList[i]._collapsed && trackList[i].group === trackList[i + 1].group) return TRACK_GAP
-  return 0
-}
-
-function getTrackY(trackList: { group: string; id: string; _collapsed?: boolean }[], rowIdx: number, lightLaneCounts?: Map<string, number>): number {
-  let y = HEADER_HEIGHT
-  // The first track is always first-in-group; reserve header space for
-  // non-collapsed groups so the canvas paint and panel render stay aligned.
-  if (trackList.length > 0 && !trackList[0]._collapsed) y += CATEGORY_HEADER_HEIGHT
-  for (let i = 0; i < rowIdx; i++) {
-    y += getTrackHeight(trackList[i].group, trackList[i].id, lightLaneCounts, trackList[i]._collapsed)
-    y += getTrackGap(trackList, i)
-  }
-  return y
 }
 
 /**
@@ -1575,14 +1486,8 @@ export function Timeline() {
         return
       }
 
-      // Find which track row was clicked using variable heights
-      let rowIdx = -1
-      let cumY = HEADER_HEIGHT
-      for (let i = 0; i < trackList.length; i++) {
-        const h = getTrackHeight(trackList[i].group, trackList[i].id, lightLaneCounts, trackList[i]._collapsed)
-        if (my >= cumY && my < cumY + h) { rowIdx = i; break }
-        cumY += h + getTrackGap(trackList, i)
-      }
+      // Find which track row was clicked.
+      const rowIdx = findTrackAtY(my, trackList, lightLaneCounts)
       if (rowIdx < 0 || rowIdx >= trackList.length) { selectPath(null); return }
       if (trackList[rowIdx]._collapsed) { toggleGroupCollapse(trackList[rowIdx].group); return }
       const trackId = trackList[rowIdx].id
@@ -2371,13 +2276,7 @@ export function Timeline() {
         const rawT0 = Math.max(0, Math.min((duration || 999) - segLen, dragState.origT0 + dt))
         // Cross-track detection
         const tl = trackListRef.current
-        let rowIdx = -1
-        let cy = HEADER_HEIGHT
-        for (let i = 0; i < tl.length; i++) {
-          const rh = getTrackHeight(tl[i].group, tl[i].id, lightLaneCounts, tl[i]._collapsed)
-          if (my >= cy && my < cy + rh) { rowIdx = i; break }
-          cy += rh + getTrackGap(tl, i)
-        }
+        const rowIdx = findTrackAtY(my, tl, lightLaneCounts)
         let targetTrackId = dragState.seg.trackId
         if (rowIdx >= 0 && rowIdx < tl.length) {
           const candidate = tl[rowIdx]
@@ -2449,14 +2348,8 @@ export function Timeline() {
       const pps = (w * zoomLevel) / Math.max(duration, 1)
       const liveScrollOffset = getLiveScrollOffset()
       const t = mx / pps + liveScrollOffset
-      // Find row with variable heights
-      let rowIdx = -1
-      let cumY = HEADER_HEIGHT
-      for (let i = 0; i < trackList.length; i++) {
-        const h = getTrackHeight(trackList[i].group, trackList[i].id, lightLaneCounts, trackList[i]._collapsed)
-        if (my >= cumY && my < cumY + h) { rowIdx = i; break }
-        cumY += h + getTrackGap(trackList, i)
-      }
+      // Find which track row was right-clicked.
+      const rowIdx = findTrackAtY(my, trackList, lightLaneCounts)
       if (rowIdx < 0 || rowIdx >= trackList.length) return
       if (trackList[rowIdx]._collapsed) return
       const track = trackList[rowIdx]
@@ -2966,13 +2859,7 @@ export function Timeline() {
       return 'pointer'
     }
     const my = myRaw + verticalScroll
-    let rowIdx = -1
-    let cumY = HEADER_HEIGHT
-    for (let i = 0; i < trackList.length; i++) {
-      const h = getTrackHeight(trackList[i].group, trackList[i].id, lightLaneCounts, trackList[i]._collapsed)
-      if (my >= cumY && my < cumY + h) { rowIdx = i; break }
-      cumY += h + getTrackGap(trackList, i)
-    }
+    const rowIdx = findTrackAtY(my, trackList, lightLaneCounts)
     if (rowIdx < 0 || rowIdx >= trackList.length) return 'default'
     if (trackList[rowIdx]._collapsed) return 'pointer'
     const trackSegs = tracks.get(trackList[rowIdx].id) || []

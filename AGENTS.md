@@ -88,7 +88,7 @@ truth; this table mirrors `make help`. If you add a new verb, update
 | Verb | What it does |
 |------|--------------|
 | `make install` | `uv sync --all-extras` + `npm install` in `tools/annotator/web` |
-| `make test` | Run the full pytest suite |
+| `make test` | Run Python (pytest) and annotator frontend (vitest) test suites |
 | `make lint` | `ruff check` on Python + `npm run lint` on the annotator frontend |
 | `make fmt` | `ruff format` on Python |
 | `make annotator-dev DATA=<path> [PORT=<n>]` | Launch the annotator backend pointed at a directory of clips or videos; `PORT` is optional (default `8765`) |
@@ -106,10 +106,15 @@ notebook builds, or one-off REPLs.
 
 ## Testing
 
-`make test` runs `uv run pytest`. The annotator's video tests mock
-`subprocess.run` / `shutil.which`, so real `ffmpeg` is never invoked.
-Tests that need the corpus expect `CASCADE_AV_DATASET_ROOT` to point at
-a directory of annotation JSONs; unit tests do not require it.
+`make test` runs `uv run pytest` and then the annotator frontend's
+vitest suite (`cd tools/annotator/web && npm test`). The annotator's
+video tests mock `subprocess.run` / `shutil.which`, so real `ffmpeg` is
+never invoked. Tests that need the corpus expect
+`CASCADE_AV_DATASET_ROOT` to point at a directory of annotation JSONs;
+unit tests do not require it. Frontend tests live next to the modules
+they exercise as `*.test.ts` and run under Node (no DOM); add an
+`environment: "jsdom"` line in `vitest.config.ts` if a future test
+needs the browser DOM.
 
 ## Skills
 

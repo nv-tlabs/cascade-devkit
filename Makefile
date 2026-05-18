@@ -18,8 +18,9 @@ install:  ## Install Python deps (all extras + groups) and the annotator's npm d
 	uv sync --all-extras
 	cd tools/annotator/web && npm install
 
-test:  ## Run the full pytest suite.
+test:  ## Run Python (pytest) and annotator frontend (vitest) test suites.
 	uv run pytest
+	cd tools/annotator/web && npm test
 
 lint:  ## Lint Python (ruff) and the annotator frontend (eslint).
 	uv run ruff check .
