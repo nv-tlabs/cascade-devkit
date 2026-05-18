@@ -15,6 +15,14 @@ export interface ClipEntry {
   clip_id: string
   kind: ClipKind
   has_video: boolean
+  /**
+   * Mirrors `AnnotationBundle.status` from the bundle's JSON. `null` for
+   * unlabelled clips (no file on disk) and for legacy bundles that omit
+   * the field. The sidebar paints "complete" green for `status === 'complete'`,
+   * amber "in progress" for any other annotated state, and gray
+   * "unlabelled" for the unlabelled kind.
+   */
+  status?: string | null
 }
 
 export interface HealthResponse {

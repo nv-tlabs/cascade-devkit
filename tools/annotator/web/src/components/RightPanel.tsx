@@ -19,8 +19,10 @@ import {
   ACTION_LINK_TO_CONFIG,
 } from '../lib/attribute-cycling'
 import type { SilAvAnnotation } from '../lib/types'
-import { AlertTriangle, Trash2, Link2, BarChart3, FileText, Download, Upload, Save, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { AlertTriangle, Trash2, Link2, BarChart3, FileText, Download, Upload, Save, ChevronDown, ChevronRight, X, CheckCircle2 } from 'lucide-react'
 import { checkSegmentCompleteness } from '../lib/completeness'
+import { validateBundle, type ValidateIssue } from '../lib/validate-api'
+import { IssuesPanel } from './IssuesPanel'
 
 // --- Shared UI helpers ---
 const inputCls = 'w-full px-3 py-2 text-sm bg-surface-overlay text-text-primary rounded-md border border-border-default focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30'
@@ -261,8 +263,17 @@ export function RightPanel() {
   const [briefEdit, setBriefEdit] = useState<string | null>(null)
   const [attrsOpen, setAttrsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Mark-complete state. `issues === null` means the user hasn't run the
+  // validate flow yet for this clip; the panel stays hidden in that case.
+  // After the first click on Mark Complete, results live here until the
+  // user switches clips (reset via the per-clip cleanup effect below).
+  const [validating, setValidating] = useState(false)
+  const [issues, setIssues] = useState<ValidateIssue[] | null>(null)
   const [becauseOtherMode, setBecauseOtherMode] = useState(false)
   const [becauseOtherText, setBecauseOtherText] = useState('')
+  // Reset the issues panel when the clip changes — otherwise stale findings
+  // from clip A would leak into clip B's panel.
+  useEffect(() => { setIssues(null) }, [selectedClipId])
   const ann = bundle?.annotation
   const segments = annotationToSegments(ann)
   const sel = selectedPath ? segments.find(s => s.id === selectedPath) : null
@@ -604,6 +615,50 @@ export function RightPanel() {
     setSaving(true)
     await saveCurrentBundle()
     setSaving(false)
+  }
+
+  /**
+   * Run server-side validation against the current bundle. If clean, set
+   * `status="complete"` in the store and fall through to the standard save
+   * path so locking / dirty-clearing / error-banner behaviour matches Save.
+   * If dirty, surface the issues in the right-panel `IssuesPanel`.
+   *
+   * Failure modes (network down, 503, etc.) leave the user on the existing
+   * save flow — they can still hit Save to checkpoint partial work. The
+   * validate endpoint is layered, not load-bearing for the rest of the UI.
+   */
+  const markComplete = async () => {
+    if (!bundle || !selectedClipId) return
+    setValidating(true)
+    try {
+      const res = await validateBundle(selectedClipId, bundle)
+      setIssues(res.issues)
+      if (!res.ok) return  // panel renders the errors; do not save
+      // Stamp the bundle as complete and use the standard save pipeline so
+      // dirty/baseline tracking, lock policy, and error banners all behave
+      // identically to a normal Save.
+      const stamped = { ...bundle, status: 'complete' }
+      useStore.getState().updateBundle(stamped)
+      await saveCurrentBundle()
+    } catch (e) {
+      // Endpoint unreachable / non-200. Surface a single "whole-clip" warning
+      // so the user knows the request failed, and keep them on the normal
+      // Save path. The headline will read "1 issue blocks completion" with
+      // a recognizable rule id so it's debuggable.
+      const msg = e instanceof Error ? e.message : String(e)
+      setIssues([
+        {
+          severity: 'error',
+          entity_path: 'request',
+          entity_id: null,
+          field: null,
+          rule: 'validate_endpoint_unreachable',
+          message: `Could not reach the validation endpoint: ${msg}`,
+        },
+      ])
+    } finally {
+      setValidating(false)
+    }
   }
   const loadJsonRef = useRef<HTMLInputElement>(null)
   const loadJson = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1427,20 +1482,46 @@ export function RightPanel() {
   return (
     <aside className="h-full flex flex-col bg-surface-raised overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
 
-      {/* Status + Save */}
+      {/* Status + Save + Mark complete */}
       <div className="px-5 pt-4 pb-5 border-b border-border-subtle">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-secondary">Status</h3>
           <span className={`px-3 py-1 rounded-full text-[11px] font-semibold border ${statusColor}`}>{status === 'needs_revision' ? 'revision requested' : status}</span>
         </div>
-        <button
-          onClick={save}
-          disabled={!bundle || saving || !dirty || locked || serverReadOnly}
-          className="w-full h-10 inline-flex items-center justify-center gap-2 px-5 rounded-md bg-accent text-accent-fg hover:bg-accent-hover text-sm font-semibold shadow-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={save}
+            disabled={!bundle || saving || !dirty || locked || serverReadOnly}
+            className="flex-1 h-10 inline-flex items-center justify-center gap-2 px-5 rounded-md bg-accent text-accent-fg hover:bg-accent-hover text-sm font-semibold shadow-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            onClick={markComplete}
+            disabled={!bundle || validating || locked || serverReadOnly}
+            title="Validate against the rule set and mark complete if clean"
+            className="flex-1 h-10 inline-flex items-center justify-center gap-2 px-4 rounded-md bg-success-bg text-success border border-success/30 hover:bg-success/15 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <CheckCircle2 className="w-4 h-4" /> {validating ? 'Checking…' : 'Mark complete'}
+          </button>
+        </div>
       </div>
+
+      {issues !== null && (
+        <IssuesPanel
+          issues={issues}
+          onSelect={(entityId) => {
+            // Find a segment whose entity id matches and select it. We look
+            // through the live segment list (regenerated above) so we don't
+            // need to maintain a separate entityToSeg map.
+            const match = segments.find(s => {
+              const meta = s.meta as Record<string, unknown> | undefined
+              return meta?.id === entityId
+            })
+            if (match) selectPath(match.id)
+          }}
+        />
+      )}
 
       <div>
       {/* === Details view === */}

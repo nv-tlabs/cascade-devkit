@@ -4,7 +4,7 @@ import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useStore } from '../lib/store'
 import { saveCurrentBundle } from '../lib/save'
-import { Search, Film, FileText } from 'lucide-react'
+import { Search, Film, FileText, CheckCircle2, Circle } from 'lucide-react'
 
 /**
  * Clip list. One entry per clip from /api/clips, with a kind badge
@@ -88,9 +88,27 @@ export function Sidebar() {
         {filtered.map((c) => {
           const selected = c.clip_id === selectedClipId
           const Icon = c.kind === 'annotated' ? FileText : Film
-          const badge = c.kind === 'annotated'
-            ? 'text-success bg-success-bg border-success/30'
-            : 'text-warning bg-warning-bg border-warning/30'
+          // Status badge precedence: `kind === 'unlabelled'` always wins
+          // over any stale status string. For annotated clips, the
+          // bundle's `status` decides between "complete" and "in progress".
+          // Legacy bundles without `status` fall through to "in progress".
+          let badgeKind: 'unlabelled' | 'in-progress' | 'complete' = 'in-progress'
+          if (c.kind === 'unlabelled') badgeKind = 'unlabelled'
+          else if (c.status === 'complete') badgeKind = 'complete'
+          const badgeCls =
+            badgeKind === 'complete'
+              ? 'text-success bg-success-bg border-success/30'
+              : badgeKind === 'in-progress'
+                ? 'text-warning bg-warning-bg border-warning/30'
+                : 'text-text-muted bg-surface-overlay border-border-default'
+          const badgeLabel =
+            badgeKind === 'complete'
+              ? 'complete'
+              : badgeKind === 'in-progress'
+                ? 'in progress'
+                : 'unlabelled'
+          const BadgeIcon =
+            badgeKind === 'complete' ? CheckCircle2 : Circle
           const displayId = c.clip_id.length > 20 ? c.clip_id.slice(0, 12) + '…' : c.clip_id
           return (
             <li key={c.clip_id}>
@@ -107,8 +125,9 @@ export function Sidebar() {
                   <code className="block text-xs font-mono text-text-primary truncate pr-1">
                     {displayId}
                   </code>
-                  <span className={`mt-1 inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-3 py-1 rounded-full border ${badge}`}>
-                    {c.kind}
+                  <span className={`mt-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-3 py-1 rounded-full border ${badgeCls}`}>
+                    <BadgeIcon className="w-2.5 h-2.5" />
+                    {badgeLabel}
                   </span>
                 </div>
               </button>

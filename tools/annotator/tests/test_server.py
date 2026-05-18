@@ -392,12 +392,24 @@ def test_build_clip_index_missing_source_raises(tmp_path: Path) -> None:
 # -----------------------------------------------------------------------------
 
 def _clean_validate_payload(clip_id: str = "freshclip") -> dict:
-    """A complete-but-minimal bundle payload that satisfies every hard rule."""
+    """A complete-but-minimal bundle payload that satisfies every rule.
+
+    Timestamps are populated explicitly because `timestamps_have_value`
+    (soft rule) warns on blank intervals; without them the validate endpoint
+    returns warnings even though every hard rule passes.
+    """
     return {
         "video": {"clip_id": clip_id, "duration_s": 10.0},
         "annotation": {
             "ego_vehicle": {
-                "actions": [{"id": "EA1", "type": "Drive Straight"}],
+                "actions": [
+                    {
+                        "id": "EA1",
+                        "type": "Drive Straight",
+                        "start_timestamp": "0:0.0",
+                        "end_timestamp": "0:5.0",
+                    }
+                ],
             },
         },
     }
@@ -514,6 +526,151 @@ def test_validate_endpoint_works_in_read_only_mode(corpus_copy: Path) -> None:
     body = r.json()
     assert "ok" in body
     assert "issues" in body
+
+
+# -----------------------------------------------------------------------------
+# PUT /annotations defense-in-depth — status=complete + validation gating
+# -----------------------------------------------------------------------------
+
+def _bundle_payload_for(corpus_copy: Path, *, status: str | None) -> tuple[str, dict]:
+    """Helper: build a (clip_id, wire-shape payload) pair from the corpus fixture.
+
+    Picks the status off the loaded bundle and overrides it. Used to exercise
+    the PUT gate without re-deriving the corpus shape in every test.
+    """
+    bundle = load_file(corpus_copy)
+    clip_id = bundle.video.clip_id
+    payload = bundle.model_dump(by_alias=True, exclude_unset=True, mode="json")
+    if status is None:
+        payload.pop("status", None)
+    else:
+        payload["status"] = status
+    return clip_id, payload
+
+
+def test_put_complete_with_clean_bundle_saves(corpus_copy: Path) -> None:
+    """A clean bundle marked `status="complete"` saves with 200."""
+    clip_id, payload = _bundle_payload_for(corpus_copy, status="complete")
+    client = _client(corpus_copy.parent)
+    r = client.put(f"/api/clips/{clip_id}/annotations", json=payload)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["bundle"]["status"] == "complete"
+
+
+def test_put_complete_with_dirty_bundle_returns_422(tmp_path: Path) -> None:
+    """A bundle with hard-error issues + `status="complete"` is rejected 422.
+
+    Body shape must mirror the /validate endpoint so the frontend reuses
+    a single issues-panel renderer for both paths.
+    """
+    video = tmp_path / "freshclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    # Empty ego.actions trips `ego_has_at_least_one_action`.
+    payload = {
+        "video": {"clip_id": "freshclip", "duration_s": 10.0},
+        "annotation": {"ego_vehicle": {"actions": []}},
+        "status": "complete",
+    }
+    r = client.put("/api/clips/freshclip/annotations", json=payload)
+    assert r.status_code == 422, r.text
+    body = r.json()
+    assert body["error"] == "validation failed"
+    assert isinstance(body["issues"], list)
+    assert body["issues"]
+    rules = {i["rule"] for i in body["issues"]}
+    assert "ego_has_at_least_one_action" in rules
+    # Every issue is the wire shape the frontend already consumes from
+    # /validate (defense-in-depth → reuse the issues-panel renderer).
+    for issue in body["issues"]:
+        assert set(issue.keys()) == {
+            "severity",
+            "entity_path",
+            "entity_id",
+            "field",
+            "rule",
+            "message",
+        }
+    # File on disk must NOT have been written — the gate runs before save.
+    assert not (tmp_path / "freshclip.json").exists()
+
+
+def test_put_dirty_with_status_annotating_still_saves(tmp_path: Path) -> None:
+    """Progress save semantics: a bundle that fails validation still persists
+    when its status is anything other than `complete`. Annotators must be
+    able to checkpoint partial work.
+    """
+    video = tmp_path / "freshclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    payload = {
+        "video": {"clip_id": "freshclip", "duration_s": 10.0},
+        "annotation": {"ego_vehicle": {"actions": []}},
+        "status": "annotating",
+    }
+    r = client.put("/api/clips/freshclip/annotations", json=payload)
+    assert r.status_code == 200, r.text
+    assert (tmp_path / "freshclip.json").exists()
+
+
+def test_put_complete_warnings_only_saves(tmp_path: Path) -> None:
+    """Soft-rule warnings do NOT block `status="complete"` — only hard errors do."""
+    video = tmp_path / "freshclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    # One ego action (satisfies every hard rule) with a blank because_of
+    # entry — trips `id_references_have_value` (warning only).
+    payload = {
+        "video": {"clip_id": "freshclip", "duration_s": 10.0},
+        "annotation": {
+            "ego_vehicle": {
+                "actions": [
+                    {
+                        "id": "EA1",
+                        "type": "Drive Straight",
+                        "start_timestamp": "0:0.0",
+                        "end_timestamp": "0:5.0",
+                        "because_of": [""],
+                    }
+                ]
+            }
+        },
+        "status": "complete",
+    }
+    r = client.put("/api/clips/freshclip/annotations", json=payload)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["bundle"]["status"] == "complete"
+
+
+def test_list_clips_includes_status(corpus_copy: Path) -> None:
+    """`GET /api/clips` exposes per-clip status so the sidebar can badge it
+    without loading every bundle. Annotated clips return their on-disk
+    status string; unlabelled clips return null."""
+    video_dir = corpus_copy.parent
+    (video_dir / "ZZ_some_unlabelled_clip.mp4").touch()
+
+    client = _client(video_dir)
+    r = client.get("/api/clips")
+    assert r.status_code == 200
+    items = {it["clip_id"]: it for it in r.json()}
+    for item in items.values():
+        assert "status" in item
+    assert items["ZZ_some_unlabelled_clip"]["status"] is None
+    # Annotated entry's status mirrors the on-disk JSON.
+    annotated_id = load_file(corpus_copy).video.clip_id
+    expected_status = load_file(corpus_copy).status
+    assert items[annotated_id]["status"] == expected_status
 
 
 def test_validate_endpoint_empty_condition_type_string_coerces_and_fires_rule(
