@@ -154,79 +154,31 @@ ego.action = decel because_of agent.type = ped
 
 ## Visualization
 
-`cascade_av.viz` renders any subset of a clip: a single instant, a
-time range, or a `MatchSet`, as a decoded camera frame paired with
-the clip's annotation timeline. The timeline carries one bar per
-agent action, ego action, environment, condition, and traffic-light
-state, plus five families of causal arrow: `because_of`, `link_to`,
-`containment`, `influence`, `action_target`. It also includes a yellow highlight
-band over any match interval.
-
-The viz API requires the optional `[viz]` extra and runs in
-JupyterLab, VS Code / Cursor notebooks, and similar Jupyter-protocol
-environments. Colab support is best-effort.
+`cascade_av.viz` renders any subset of a clip — a single instant, a
+time range, or a `MatchSet` — as a decoded camera frame paired with
+the clip's annotation timeline (one bar per agent action, ego action,
+environment, condition, traffic-light state, plus five families of
+causal arrow). Requires the optional `[viz]` extra:
 
 ```bash
 uv sync --extra viz
 ```
 
-The three common entry points hang off the objects you already use.
-`ds.get_sequence(clip_id)` returns a `Sequence` — the per-clip handle
-that bundles the parsed annotation with camera / sensor accessors and
-the `.visualize()` method:
-
 ```python
 seq = ds.get_sequence(clip_id)
 
-# Whole-clip scrubbable widget. Pass t=2.5 to open at a single instant,
-# or t=(2, 5) for an explicit window.
-seq.visualize()
-
-# Single match in context — pads the match interval by `pad` seconds
-# and paints `m.interval` as the yellow highlight band.
-m = ds.find("agent.type = ped while ego.action = decel").matches[0]
-seq.visualize(match=m, pad=1.0)
-
-# Fan out a whole MatchSet into a carousel of mini-players (one per
-# match, capped at `limit`).
-ds.find("ego.action = decel because_of agent.type = ped").visualize()
+seq.visualize()                                  # scrubbable widget over the whole clip
+seq.visualize(match=m, pad=1.0)                  # single match in context
+ds.find("ego.action = decel because_of agent.type = ped").visualize()  # MatchSet carousel
 ```
 
-For reports, doc figures, or headless pipelines, two functions return
-plain values you can pickle, save, or post-process:
+For reports, doc figures, or headless pipelines, `viz.render_frame()`
+and `viz.render_timeline()` return plain `PIL.Image` and
+`plotly.graph_objects.Figure` values you can save or post-process.
 
-```python
-from cascade_av import viz
-
-frame = viz.render_frame(seq, t=3.0)          # -> PIL.Image (RGB)
-fig   = viz.render_timeline(seq,              # -> plotly.graph_objects.Figure
-                            highlight=(2, 5))
-frame.save("/tmp/clip_t3.png")
-fig.write_image("/tmp/timeline.png")          # needs the `kaleido` extra
-```
-
-`seq.visualize(t=2.5, static=True)` is the shorthand for
-`viz.render_frame(seq, 2.5)` — handy when you start interactive and
-want a single still without switching modules.
-
-### Filtering the timeline
-
-Five filter kwargs narrow what shows up — `arrows`, `entity_kinds`,
-`agent_ids`, `track_groups`, `families`. They work on every entry point
-and AND together:
-
-```python
-# Just agent actions, hide the Ego row, drop because_of arrows.
-seq.visualize(
-    track_groups=["Agents"],
-    families=["action"],
-    arrows={"because_of": False},
-)
-```
-
-Full reference (every value each filter accepts, parent-retention
-semantics for `families`, composition rules) in
-[`docs/user/visualization.md`](docs/user/visualization.md).
+Full reference — every entry point, filter kwarg, headless variant,
+the `static=True` shorthand, and the carousel's `unique_clips` knob —
+in [`docs/user/visualization.md`](docs/user/visualization.md).
 
 ## Examples and notebooks
 
@@ -312,37 +264,6 @@ decodes frames at microsecond timestamps.
 download recipes; set `SENSOR_DEMO_DOWNLOAD=1` to also fetch a sister
 camera and decode a frame from it.
 
-## Migrating older annotations
-
-Current schema is **2.2.0**. Older files still load (with a one-shot
-`DeprecationWarning`); run `cascade-migrate <corpus-dir>` to upgrade
-in place. Full version history, sidecar layout, and CLI options:
-[`docs/dev/schema-history.md`](docs/dev/schema-history.md).
-
-## Project layout
-
-```
-src/cascade_av/
-  spec/        # Pydantic schema for the annotation JSON
-  io.py        # parse JSON → AnnotationBundle
-  dataset.py   # CascadeDataset / Sequence — corpus and per-clip API
-  query/       # DSL lexer + parser + evaluator + query helpers
-  viz/         # render_frame / render_timeline / ClipPlayer (optional [viz] extra)
-
-tools/
-  annotator/   # local FastAPI + React annotation tool (see below)
-
-docs/
-  user/
-    query_language.md  # DSL specification (grammar + semantics)
-    visualization.md   # viz filter reference
-    annotator.md       # annotator UI guide
-
-examples/      # runnable Python scripts
-notebooks/     # Jupyter notebooks (built from scripts/build_notebooks.py)
-tests/         # pytest suite
-```
-
 ## Annotator
 
 `tools/annotator/` ships a local annotation tool — a slim FastAPI server
@@ -374,6 +295,13 @@ the rest:
   end-to-end: mouse, keyboard, lock model, arrows, troubleshooting.
 - [`tools/annotator/README.md`](tools/annotator/README.md) — install,
   CLI flags, transcode pipeline, architecture.
+
+**Opening older bundles.** Current schema is **2.2.0**. Files written
+against an older version still load (with a one-shot
+`DeprecationWarning`); run `cascade-migrate <corpus-dir>` first to
+upgrade in place. See
+[`docs/dev/schema-history.md`](docs/dev/schema-history.md) for the
+version history, sidecar layout, and CLI options.
 
 ## Development
 
