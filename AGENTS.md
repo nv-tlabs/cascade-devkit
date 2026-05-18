@@ -184,9 +184,11 @@ The DevKit reads these from the environment. Copy
 
 Setting options: shell `export` (or per-command
 `VAR=... make test`); a `.env` file at the repo root (auto-loaded by
-IDE test runners, Docker Compose, and `dotenv-cli`, but **not** by
-plain shell or `uv run`); or on the Horde DGXC VM via `hgx secrets`,
-which auto-inject across sessions.
+the annotator itself — `cascade-annotate` walks up from cwd at
+startup, `override=False` so shell exports win — plus IDE test
+runners, Docker Compose, and `dotenv-cli`, but **not** plain shell or
+the other `uv run` / `make` targets); or on the Horde DGXC VM via
+`hgx secrets`, which auto-inject across sessions.
 
 ### Never commit
 

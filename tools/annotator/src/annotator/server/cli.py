@@ -19,6 +19,39 @@ from pathlib import Path
 VIDEO_EXTS: frozenset[str] = frozenset({".mp4", ".mkv", ".mov", ".avi"})
 
 
+def _load_dotenv(start: Path | None = None) -> Path | None:
+    """Load a ``.env`` from the working tree without overriding shell env.
+
+    Walks up from ``start`` (or the current working directory) looking for a
+    ``.env`` file and loads it into ``os.environ`` with ``override=False`` —
+    so an explicit ``export HF_TOKEN=…`` in the shell, a CI secret, or a
+    ``hgx``-injected variable always wins over a stale value in the file.
+
+    Returns the path of the loaded file, or ``None`` if no ``.env`` was
+    found. Existing-but-unreadable files raise the underlying ``OSError``.
+
+    The annotator auto-loads ``.env`` at startup here so a user who fills
+    in ``HF_TOKEN`` in the file and launches via ``make annotator-dev``
+    (which does *not* source dotenv itself) still gets HF auth.
+    """
+    from dotenv import find_dotenv, load_dotenv
+
+    if start is None:
+        found = find_dotenv(
+            usecwd=True,
+            filename=".env",
+            raise_error_if_not_found=False,
+        )
+    else:
+        candidate = start / ".env"
+        found = str(candidate) if candidate.is_file() else ""
+
+    if not found:
+        return None
+    load_dotenv(found, override=False)
+    return Path(found)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cascade-annotate",
@@ -122,6 +155,15 @@ def main(argv: list[str] | None = None) -> int:
         level=log_level.upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+
+    # Auto-load `.env` from the working tree *before* any code that reads
+    # the environment (HuggingFace, VideoResolver, etc.). `override=False`
+    # so a shell `export HF_TOKEN=…` or a CI secret beats a stale file.
+    dotenv_path = _load_dotenv()
+    if dotenv_path is not None:
+        logging.info("loaded environment from %s", dotenv_path)
+    else:
+        logging.info("no .env file found in working tree; using shell environment only")
 
     # Defer heavy imports until past argparse so `--help` stays snappy.
     from annotator.server.app import create_app
