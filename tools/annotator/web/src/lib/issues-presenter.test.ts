@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   canMarkComplete,
+  composeValidationSummary,
   groupIssuesBySeverity,
   issuesHeadline,
 } from './issues-presenter'
@@ -95,5 +96,67 @@ describe('canMarkComplete', () => {
 
   it('returns false for a mixed list (warnings do not rescue errors)', () => {
     expect(canMarkComplete([warn('a'), err('b'), warn('c')])).toBe(false)
+  })
+})
+
+describe('composeValidationSummary', () => {
+  it('returns null when there is nothing to show', () => {
+    expect(composeValidationSummary({ transportError: null, issues: null })).toBeNull()
+  })
+
+  it('returns a summary with no banner when only prior issues exist', () => {
+    const out = composeValidationSummary({
+      transportError: null,
+      issues: [err('a'), warn('b')],
+    })
+    expect(out).not.toBeNull()
+    expect(out!.transportBanner).toBeNull()
+    expect(out!.hasIssuesResult).toBe(true)
+    expect(out!.errors.map(i => i.rule)).toEqual(['a'])
+    expect(out!.warnings.map(i => i.rule)).toEqual(['b'])
+    expect(out!.headline).toBe('1 issue block completion')
+  })
+
+  it('renders banner without overwriting prior issues — the #91 regression guard', () => {
+    // The user got issues from a previous successful validate, then the next
+    // request failed at the transport layer. The banner must coexist with
+    // the prior findings — not replace them.
+    const out = composeValidationSummary({
+      transportError: 'network unreachable',
+      issues: [err('hard_rule_a'), warn('soft_rule_b')],
+    })
+    expect(out!.transportBanner).toBe('network unreachable')
+    expect(out!.hasIssuesResult).toBe(true)
+    expect(out!.errors).toHaveLength(1)
+    expect(out!.warnings).toHaveLength(1)
+    expect(out!.headline).toBe('1 issue block completion')
+  })
+
+  it('renders banner alone when there is no prior result', () => {
+    // First Mark-complete click failed at the transport layer; there's no
+    // prior result to display, just the banner.
+    const out = composeValidationSummary({
+      transportError: '503 Service Unavailable',
+      issues: null,
+    })
+    expect(out!.transportBanner).toBe('503 Service Unavailable')
+    expect(out!.hasIssuesResult).toBe(false)
+    expect(out!.errors).toEqual([])
+    expect(out!.warnings).toEqual([])
+    expect(out!.headline).toBeNull()
+  })
+
+  it('renders an all-clear prior result alongside a transport banner', () => {
+    // Edge case: the user got a clean validate, kept editing without fixing
+    // anything (clean → clean), and the second request blew up at transport.
+    // The banner shows, but the prior "All clear" headline stays so the user
+    // can see the last good state.
+    const out = composeValidationSummary({
+      transportError: 'parse error',
+      issues: [],
+    })
+    expect(out!.transportBanner).toBe('parse error')
+    expect(out!.hasIssuesResult).toBe(true)
+    expect(out!.headline).toBe('All clear')
   })
 })

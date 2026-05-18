@@ -56,3 +56,53 @@ export function canMarkComplete(issues: ValidateIssue[]): boolean {
   }
   return true
 }
+
+/**
+ * What the IssuesPanel renders at the top of the panel, given the current
+ * validation state. Three concerns are merged in one place so the component
+ * stays presentation-only:
+ *
+ *   - `transportError` — the last `POST /validate` failed at the transport
+ *     layer (network down, 503, 5xx, JSON parse failure). When present, a
+ *     banner appears above the issues list. The banner does NOT replace the
+ *     issues list; if the user previously got a successful result and the
+ *     next click fails the network, both the banner AND the prior issues are
+ *     visible.
+ *   - `issues` — the last successful validate result. `null` means the user
+ *     hasn't run validate yet (or only run it once and it failed).
+ *   - `errors` / `warnings` — derived from `issues`, surfaced separately so
+ *     the panel can render the breakdown sub-line.
+ *
+ * Returns ``null`` when the panel should not render at all. The caller
+ * mounts the component iff this returns non-null.
+ */
+export interface ValidationSummary {
+  /** Free-text banner shown above the issues list, or `null` to hide. */
+  transportBanner: string | null
+  /** True when there's a prior successful result to display. */
+  hasIssuesResult: boolean
+  /** Grouped issues (empty arrays when `hasIssuesResult` is false). */
+  errors: ValidateIssue[]
+  warnings: ValidateIssue[]
+  /** Headline copy for the prior-result section; `null` when none to show. */
+  headline: string | null
+}
+
+export function composeValidationSummary(opts: {
+  transportError: string | null
+  issues: ValidateIssue[] | null
+}): ValidationSummary | null {
+  const { transportError, issues } = opts
+  if (transportError === null && issues === null) return null
+  const hasIssuesResult = issues !== null
+  const { errors, warnings } = hasIssuesResult
+    ? groupIssuesBySeverity(issues!)
+    : { errors: [], warnings: [] }
+  return {
+    transportBanner: transportError,
+    hasIssuesResult,
+    errors,
+    warnings,
+    headline: hasIssuesResult ? issuesHeadline(errors.length, warnings.length) : null,
+  }
+}

@@ -263,17 +263,24 @@ export function RightPanel() {
   const [briefEdit, setBriefEdit] = useState<string | null>(null)
   const [attrsOpen, setAttrsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  // Mark-complete state. `issues === null` means the user hasn't run the
-  // validate flow yet for this clip; the panel stays hidden in that case.
-  // After the first click on Mark Complete, results live here until the
-  // user switches clips (reset via the per-clip cleanup effect below).
+  // Mark-complete state. `issues === null` means the user hasn't received
+  // a successful validate response yet for this clip. `transportError` is
+  // non-null when the most recent `POST /validate` failed at the transport
+  // layer (network down, 5xx, JSON parse); it renders as a banner above
+  // the issues list so prior findings are NOT clobbered by a flaky network
+  // — the user's content-issue work-in-progress stays visible. Both reset
+  // on clip switch via the per-clip cleanup effect below.
   const [validating, setValidating] = useState(false)
   const [issues, setIssues] = useState<ValidateIssue[] | null>(null)
+  const [transportError, setTransportError] = useState<string | null>(null)
   const [becauseOtherMode, setBecauseOtherMode] = useState(false)
   const [becauseOtherText, setBecauseOtherText] = useState('')
   // Reset the issues panel when the clip changes — otherwise stale findings
   // from clip A would leak into clip B's panel.
-  useEffect(() => { setIssues(null) }, [selectedClipId])
+  useEffect(() => {
+    setIssues(null)
+    setTransportError(null)
+  }, [selectedClipId])
   const ann = bundle?.annotation
   const segments = annotationToSegments(ann)
   const sel = selectedPath ? segments.find(s => s.id === selectedPath) : null
@@ -633,6 +640,7 @@ export function RightPanel() {
     try {
       const res = await validateBundle(selectedClipId, bundle)
       setIssues(res.issues)
+      setTransportError(null) // success clears any prior transport banner
       if (!res.ok) return  // panel renders the errors; do not save
       // Stamp the bundle as complete and use the standard save pipeline so
       // dirty/baseline tracking, lock policy, and error banners all behave
@@ -641,21 +649,12 @@ export function RightPanel() {
       useStore.getState().updateBundle(stamped)
       await saveCurrentBundle()
     } catch (e) {
-      // Endpoint unreachable / non-200. Surface a single "whole-clip" warning
-      // so the user knows the request failed, and keep them on the normal
-      // Save path. The headline will read "1 issue blocks completion" with
-      // a recognizable rule id so it's debuggable.
+      // Endpoint unreachable / non-200. Surface a transport banner on the
+      // panel and leave any prior validate findings intact — replacing the
+      // issues list with the network error would wipe out the user's
+      // in-progress fix list (the #91 regression).
       const msg = e instanceof Error ? e.message : String(e)
-      setIssues([
-        {
-          severity: 'error',
-          entity_path: 'request',
-          entity_id: null,
-          field: null,
-          rule: 'validate_endpoint_unreachable',
-          message: `Could not reach the validation endpoint: ${msg}`,
-        },
-      ])
+      setTransportError(msg)
     } finally {
       setValidating(false)
     }
@@ -1507,9 +1506,10 @@ export function RightPanel() {
         </div>
       </div>
 
-      {issues !== null && (
+      {(issues !== null || transportError !== null) && (
         <IssuesPanel
           issues={issues}
+          transportError={transportError}
           onSelect={(entityId) => {
             // Find a segment whose entity id matches and select it. We look
             // through the live segment list (regenerated above) so we don't
