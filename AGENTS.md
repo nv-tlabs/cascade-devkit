@@ -180,6 +180,7 @@ The DevKit reads these from the environment. Copy
 |----------|---------|-----------|
 | `CASCADE_AV_DATASET_ROOT` | Path to the annotation-JSON directory | Yes for examples / notebooks / tests that iterate the real corpus |
 | `CASCADE_AV_VERBOSE` | Set to `1` for per-file detail in dataset-scan warnings | No (default `0`) |
+| `HF_TOKEN` | HuggingFace Hub token; required for `cascade-annotate --video-source=hf` (and `auto`'s HF fallback) against gated repos like `nvidia/PhysicalAI-Autonomous-Vehicles`. `huggingface-cli login` is an equivalent alternative. | Yes for HF-backed video |
 
 Setting options: shell `export` (or per-command
 `VAR=... make test`); a `.env` file at the repo root (auto-loaded by
