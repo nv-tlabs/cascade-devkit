@@ -32,7 +32,6 @@ from cascade_av.query import (
     extract_causal_triplets,
     filter_active_at,
     filter_active_in_range,
-    parse_timestamp,
 )
 from cascade_av.query.api import (
     count_on_dataset,
@@ -43,11 +42,7 @@ from cascade_av.query.api import (
 from cascade_av.query.context import ContextWindow, context_at
 from cascade_av.query.engine import Match
 from cascade_av.query.triplets import CausalTriplet
-from cascade_av.spec import (
-    AnnotationBundle,
-    BoundingBox,
-    BoundingBoxFrame,
-)
+from cascade_av.spec import AnnotationBundle
 from cascade_av.state import (
     ActorState,
     ActorStateRange,
@@ -65,52 +60,6 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
 # Default canonical-camera feature name. Match the parent dataset's feature
 # string for the wide-FOV front camera.
 DEFAULT_ANNOTATION_CAMERA = "camera_front_wide_120fov"
-
-
-# -----------------------------------------------------------------------------
-# Helpers — strict bbox matching, interval-set filters
-# -----------------------------------------------------------------------------
-
-def _strict_bbox_frame(
-    frames: list[BoundingBoxFrame], t: float, fps: float
-) -> BoundingBoxFrame | None:
-    """Return the bbox frame whose timestamp is within 1/fps of `t`, or None.
-
-    "Strict" per the spec: we tolerate a single-frame offset. If multiple
-    frames satisfy the predicate, the closest one wins.
-    """
-    if fps <= 0:
-        return None
-    tol = 1.0 / fps
-    best: tuple[float, BoundingBoxFrame] | None = None
-    for frame in frames:
-        ft = parse_timestamp(frame.timestamp)
-        if ft is None:
-            continue
-        d = abs(ft - t)
-        if d < tol and (best is None or d < best[0]):
-            best = (d, frame)
-    return best[1] if best else None
-
-
-def _bbox_for_agent(frame: BoundingBoxFrame, agent_id: str) -> BoundingBox | None:
-    """The single box drawn for `agent_id` in `frame`, or None."""
-    for box in frame.bounding_boxes:
-        if box.object_id == agent_id:
-            return box
-    return None
-
-
-def _frames_in_window(
-    frames: list[BoundingBoxFrame], t_start: float, t_end: float
-) -> list[BoundingBoxFrame]:
-    """Frames whose timestamp falls inside `[t_start, t_end]`."""
-    out: list[BoundingBoxFrame] = []
-    for frame in frames:
-        ft = parse_timestamp(frame.timestamp)
-        if ft is not None and t_start <= ft <= t_end:
-            out.append(frame)
-    return out
 
 
 # -----------------------------------------------------------------------------
@@ -777,7 +726,6 @@ class Sequence:
 
     def _state_at_instant(self, t: float) -> SequenceState:
         ann = self.annotation.annotation
-        fps = self.fps
 
         # Ego state
         ego_actions = filter_active_at(ann.ego_vehicle.actions, t)
@@ -800,13 +748,10 @@ class Sequence:
         for agent in agents_visible_at(self.annotation, t):
             agent_actions = filter_active_at(agent.actions, t)
             pose = ego_relative_pose_at(agent, t)
-            frame = _strict_bbox_frame(agent.bounding_boxes, t, fps)
-            bbox = _bbox_for_agent(frame, agent.id) if frame is not None else None
             actors.append(ActorState(
                 agent=agent,
                 actions=agent_actions,
                 pose_rel_to_ego=pose,
-                bbox=bbox,
             ))
 
         environments = filter_active_at(ann.environments, t)
@@ -868,12 +813,10 @@ class Sequence:
         for agent in visible_agents:
             actions = filter_active_in_range(agent.actions, t_start, t_end)
             poses = filter_active_in_range(agent.ego_relative_pose, t_start, t_end)
-            bbox_frames = _frames_in_window(agent.bounding_boxes, t_start, t_end)
             actors.append(ActorStateRange(
                 agent=agent,
                 actions=actions,
                 pose_rel_to_ego=poses,
-                bboxes=bbox_frames,
             ))
 
         environments = filter_active_in_range(ann.environments, t_start, t_end)

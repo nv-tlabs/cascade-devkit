@@ -5,7 +5,9 @@
 This corpus's spatial grounding is qualitative: agents carry an
 `ego_relative_pose` series describing where they are *relative to the ego
 vehicle* at each time window (e.g. `position_rel_to_ego="In front"`). Hard
-metric positions live in `bounding_boxes` (image-normalized 2-D).
+metric positions used to live in `bounding_boxes` but were removed from the
+base schema in 2.1.0; image-space geometry will return as a schema extension
+(see :mod:`cascade_av.extensions`).
 """
 
 from __future__ import annotations
