@@ -134,6 +134,7 @@ The `docs/dev` directory is the project's living memory. All contributors must k
 | `docs/dev/architecture.md` | Design decisions, system design, rationale. **Check this before starting any non-trivial work.** |
 | `docs/dev/contrib.md` | This document, explaining how to do contributions to the project. |
 | `docs/dev/changelog.md` | One-line entry per merged PR (newest first). **Update in the same PR that makes the change** — see [Pull Requests](#pull-requests). |
+| `docs/dev/schema-history.md` | Per-version table for the CASCADE annotation schema. Mirrors `SCHEMA_HISTORY` in `cascade_av.spec.versions`; update in the same PR that changes the registry. |
 
 ### Rules for agents
 
