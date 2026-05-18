@@ -7,6 +7,13 @@ import { Play, Pause, SkipBack, SkipForward, ChevronsLeft, ChevronsRight, MapPin
 import { parseTs, annotationToSegments, readEntityCssVar } from '../lib/timeline-utils'
 import { interpolateKeypoint, upsertKeypoint, moveKeypointAt, removeKeypointAt, EXACT_SNAP_SECONDS } from '../lib/keypoint-utils'
 import type { SilAvAnnotation, Keypoint } from '../lib/types'
+import { getVideoStatus, type VideoStatus } from '../lib/api'
+import { isInProgress, stageHeadline, stageDetail } from '../lib/video-status'
+
+/** How often the progress poller hits /api/clips/{id}/video/status.
+ * 600 ms is fast enough that stage transitions feel responsive on slow
+ * resolves and slow enough to keep the polling overhead negligible. */
+const STATUS_POLL_INTERVAL_MS = 600
 
 function fmt(s: number) {
   const m = Math.floor(s / 60)
@@ -176,6 +183,11 @@ export function VideoPlayer() {
   const [speed, setSpeed] = useState(1)
   const [zoomLevel, setZoomLevel] = useState(1)
   const [videoError, setVideoError] = useState<string | null>(null)
+  // Coarse progress reporting for the resolve pipeline. While the user
+  // waits on the synchronous GET /video, we poll /video/status so the
+  // overlay can announce *what* is taking time (downloading vs
+  // extracting vs transcoding) instead of a blind spinner.
+  const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null)
 
   const applyZoomTransform = useCallback(() => {
     const w = wrapperRef.current
@@ -206,12 +218,46 @@ export function VideoPlayer() {
     const v = videoRef.current
     if (!v) return
     setVideoError(null)
+    setVideoStatus(null)
     if (!selectedClipId) {
       v.removeAttribute('src')
       v.load()
       return
     }
     v.src = `/api/clips/${encodeURIComponent(selectedClipId)}/video`
+  }, [selectedClipId])
+
+  // Poll the server's resolve progress while the user waits on the
+  // synchronous GET /video request. The poll self-cancels on clip change,
+  // when the resolve reports ``ready`` or ``error``, or when the component
+  // unmounts. A 404 / 503 on the status endpoint (e.g. resolver not
+  // configured) silently stops the poll — the GET /video error path
+  // already covers those cases via the error overlay.
+  useEffect(() => {
+    if (!selectedClipId) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const s = await getVideoStatus(selectedClipId)
+        if (cancelled) return
+        setVideoStatus(s)
+        if (s.stage === 'ready' || s.stage === 'error') {
+          cancelled = true
+          window.clearInterval(handle)
+        }
+      } catch {
+        // Stop polling on any error; the GET /video path will surface the
+        // problem through `onVideoError`.
+        cancelled = true
+        window.clearInterval(handle)
+      }
+    }
+    void tick()
+    const handle = window.setInterval(tick, STATUS_POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(handle)
+    }
   }, [selectedClipId])
 
   const onVideoError = useCallback(async () => {
@@ -733,6 +779,18 @@ export function VideoPlayer() {
               <div className="max-w-md mx-4 px-4 py-3 rounded-md bg-danger-bg border border-danger/40 text-sm text-danger text-center pointer-events-auto">
                 <div className="font-semibold text-danger mb-1.5">Video unavailable</div>
                 <div className="text-xs text-danger whitespace-pre-wrap">{videoError}</div>
+              </div>
+            </div>
+          ) : isInProgress(videoStatus) && videoStatus ? (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="max-w-md mx-4 px-5 py-4 rounded-md bg-surface-overlay/95 border border-border-default text-center pointer-events-auto">
+                <div className="flex items-center justify-center gap-3 mb-1.5">
+                  <div className="w-3 h-3 rounded-full border-2 border-accent border-t-transparent animate-spin" aria-hidden="true" />
+                  <div className="font-semibold text-text-primary text-sm">{stageHeadline(videoStatus.stage)}</div>
+                </div>
+                {stageDetail(videoStatus) ? (
+                  <div className="text-xs text-text-muted italic">{stageDetail(videoStatus)}</div>
+                ) : null}
               </div>
             </div>
           ) : null}

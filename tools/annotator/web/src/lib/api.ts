@@ -79,3 +79,14 @@ export async function saveBundle(clipId: string, bundle: AnnotationBundle): Prom
   )
   return res.bundle
 }
+
+/** Stage labels the server emits during a video resolve. The frontend treats
+ * every non-{idle,ready,error} value as "in progress, show overlay." */
+export interface VideoStatus {
+  stage: string
+  message: string
+}
+
+export async function getVideoStatus(clipId: string): Promise<VideoStatus> {
+  return request<VideoStatus>('GET', `/clips/${encodeURIComponent(clipId)}/video/status`)
+}
