@@ -8,6 +8,7 @@ Routes:
   - GET  /api/clips/{clip_id}/annotations
   - PUT  /api/clips/{clip_id}/annotations
   - GET  /api/clips/{clip_id}/video           (Phase 3)
+  - GET  /api/clips/{clip_id}/video/status    (Phase 3 progress probe)
 
 The frontend dist is mounted at `/` (SPA fallback). If the dist directory
 does not exist, the server logs a warning and only the `/api/*` routes
@@ -143,6 +144,27 @@ def create_app(
         # in Chrome/Firefox accepts a single full response over the lifetime of
         # a local playback session, and seeks work via decoded-buffer scrubbing.
         return FileResponse(path, media_type="video/mp4", filename=path.name)
+
+    @app.get("/api/clips/{clip_id}/video/status")
+    def get_video_status(clip_id: str) -> dict[str, str]:
+        """Progress probe for the ``GET /video`` resolve pipeline.
+
+        The browser polls this endpoint while waiting on the synchronous
+        ``GET /video`` request so it can show a stage label
+        ("Downloading clip from HuggingFace…") instead of a blind spinner.
+        Returns ``{"stage": "idle", "message": ""}`` for clips that have not
+        been resolved in this process — the browser treats that as
+        "not interesting, keep waiting." A successful resolve advances to
+        ``"ready"`` and a failure to ``"error"``.
+        """
+        if clip_id not in clip_index:
+            raise HTTPException(status_code=404, detail=f"unknown clip_id: {clip_id}")
+        if video_resolver is None:
+            raise HTTPException(
+                status_code=503,
+                detail="video source not configured on this server",
+            )
+        return video_resolver.get_state(clip_id)
 
     # ----- Static frontend mount -----
 

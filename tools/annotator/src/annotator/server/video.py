@@ -39,6 +39,22 @@ LOG = logging.getLogger(__name__)
 VideoSourceMode = Literal["auto", "hf", "local"]
 LOCAL_VIDEO_EXTS: tuple[str, ...] = (".mp4", ".mkv", ".mov", ".avi")
 
+# Coarse stages a clip walks through during :meth:`VideoResolver.resolve`.
+# Surfaced to the browser via /api/clips/{id}/video/status so the UI can show
+# *what* is happening during a long HF resolve instead of an inscrutable spinner.
+# Order is not enforced — a clip can skip stages (e.g. a local H.264 file goes
+# locating → probing → ready and never enters downloading/extracting/transcoding).
+VideoStage = Literal[
+    "idle",         # never requested, or status cleared after a successful serve
+    "locating",     # picking a source file (local lookup or HF chunk resolution)
+    "downloading",  # HF chunk-zip download from the hub
+    "extracting",   # unzip of the per-clip MP4 out of the chunk archive
+    "probing",      # ffprobe codec detection
+    "transcoding",  # ffmpeg HEVC → H.264
+    "ready",        # resolve() returned a path; the FileResponse is being served
+    "error",        # last resolve() raised; ``message`` carries the human reason
+]
+
 
 class VideoToolsMissing(RuntimeError):
     """Raised when `ffmpeg` and/or `ffprobe` are not on PATH."""
@@ -235,6 +251,35 @@ class VideoResolver:
         # leader has already populated it.
         self._clip_locks: dict[str, threading.Lock] = {}
         self._clip_locks_guard = threading.Lock()
+        # Per-clip progress tracker — the browser polls
+        # ``GET /api/clips/{id}/video/status`` while the synchronous
+        # ``GET /video`` request is in flight, so it can show a stage label
+        # ("Downloading clip from HuggingFace…") instead of a blind spinner.
+        # Reads and writes are protected by ``_clip_state_guard`` so a poller
+        # never observes a half-written dict.
+        self._clip_state: dict[str, tuple[str, str]] = {}
+        self._clip_state_guard = threading.Lock()
+
+    def _set_state(self, clip_id: str, stage: str, message: str = "") -> None:
+        """Record the current progress stage for ``clip_id``.
+
+        Called from inside the per-clip lock during resolve(). The state dict
+        has its own guard (cheaper than holding the per-clip lock across the
+        status read path), so status pollers do not contend with each other.
+        """
+        with self._clip_state_guard:
+            self._clip_state[clip_id] = (stage, message)
+
+    def get_state(self, clip_id: str) -> dict[str, str]:
+        """Return the most recent stage + message for ``clip_id``.
+
+        Returns ``{"stage": "idle", "message": ""}`` for clips that have not
+        been requested in this process — there is no historical state to
+        report and "idle" is the only honest answer.
+        """
+        with self._clip_state_guard:
+            stage, message = self._clip_state.get(clip_id, ("idle", ""))
+        return {"stage": stage, "message": message}
 
     def _clip_lock(self, clip_id: str) -> threading.Lock:
         """Return the lock for ``clip_id``, lazily creating it on first use."""
@@ -325,6 +370,12 @@ class VideoResolver:
         zip_filename = ds.features.get_chunk_feature_filename(
             chunk_id, DEFAULT_ANNOTATION_CAMERA
         )
+        # The HF hub client streams the chunk archive on first access and
+        # serves a cached path afterwards — we cannot tell the two apart
+        # without poking at the cache, so the "downloading" stage covers
+        # both fast (cached) and slow (cold) returns. The browser only
+        # sees this label long enough to matter on the cold path.
+        self._set_state(clip_id, "downloading", "fetching chunk from HuggingFace")
         try:
             zip_path = Path(ds.download_file(zip_filename))
         except Exception as exc:  # noqa: BLE001 — surface anything as VideoNotFound
@@ -337,6 +388,7 @@ class VideoResolver:
         extracted_dir.mkdir(parents=True, exist_ok=True)
         extracted_mp4 = extracted_dir / f"{clip_id}.mp4"
         if not extracted_mp4.is_file() or extracted_mp4.stat().st_mtime < zip_path.stat().st_mtime:
+            self._set_state(clip_id, "extracting", f"unzipping {clip_id}.mp4")
             with zipfile.ZipFile(zip_path, "r") as zf:
                 candidates = [
                     n for n in zf.namelist()
@@ -384,12 +436,23 @@ class VideoResolver:
         _require_tools()
 
         with self._clip_lock(clip_id):
-            return self._resolve_locked(clip_id)
+            try:
+                path = self._resolve_locked(clip_id)
+            except Exception as exc:
+                # Best-effort progress reporting — surface the failure to
+                # status pollers so the UI can switch from "in progress" to
+                # an error affordance instead of leaving its last stage
+                # label hanging until the GET /video request itself fails.
+                self._set_state(clip_id, "error", str(exc))
+                raise
+            self._set_state(clip_id, "ready", "")
+            return path
 
     def _resolve_locked(self, clip_id: str) -> Path:
         """Same contract as :meth:`resolve`, executed under the per-clip lock."""
         # 1. Locate the source file. HF mode performs zip extraction with
         #    its own cache check; re-running under the lock is idempotent.
+        self._set_state(clip_id, "locating", "")
         if self.mode == "local":
             src = self._resolve_local(clip_id)
         elif self.mode == "hf":
@@ -411,6 +474,7 @@ class VideoResolver:
                 )
 
         # 2. If it's already H.264, serve as-is. Otherwise transcode.
+        self._set_state(clip_id, "probing", "")
         codec = _probe_codec(src)
         if codec is None:
             # ffprobe could read the file but found no stream — surface a clean
@@ -427,5 +491,6 @@ class VideoResolver:
             return cached
 
         LOG.info("transcoding %s (%s → h264) → %s", clip_id, codec, cached)
+        self._set_state(clip_id, "transcoding", f"{codec.upper()} → H.264")
         _transcode_to_h264(src, cached)
         return cached
