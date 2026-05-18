@@ -220,10 +220,15 @@ def id_references_resolve(bundle: AnnotationBundle) -> list[Issue]:
     """Every id mentioned in a cross-entity reference field must resolve.
 
     Reference fields scanned:
-      * Agent/Ego ``EgoAction.because_of / .link_to / .action_target``
-      * Agent ``AgentAction.because_of / .link_to / .action_target``
+      * ``EgoAction.because_of / .link_to / .action_target``
+      * ``AgentAction.because_of / .link_to / .action_target``
+      * ``AgentAction.signaling_details.link_to`` (when ``signaling_details``
+        is present — signal targets for `Signal*` action types).
+      * ``AgentProperty.signaling_details.link_to`` (same, for properties).
       * ``Influence.influencers`` (under ``agent.influenced_by`` and
-        ``ego_vehicle.influenced_by``)
+        ``ego_vehicle.influenced_by``).
+      * ``SignalHead.influenced_agent_ids`` — the agents this signal head
+        causally influences.
 
     The literal string ``"Ego"`` is always a valid target. Empty-string
     references are silently ignored — they're UI fill-state, not a violation.
@@ -255,6 +260,14 @@ def id_references_resolve(bundle: AnnotationBundle) -> list[Issue]:
         _check(action.because_of, base, action.id or None, "because_of")
         _check(action.link_to, base, action.id or None, "link_to")
         _check(action.action_target, base, action.id or None, "action_target")
+    for i, prop in enumerate(ann.ego_vehicle.properties):
+        if prop.signaling_details is not None:
+            _check(
+                prop.signaling_details.link_to,
+                f"annotation.ego_vehicle.properties[{i}].signaling_details",
+                prop.id or None,
+                "link_to",
+            )
     for i, inf in enumerate(ann.ego_vehicle.influenced_by):
         base = f"annotation.ego_vehicle.influenced_by[{i}]"
         _check(inf.influencers, base, inf.id or None, "influencers")
@@ -264,9 +277,32 @@ def id_references_resolve(bundle: AnnotationBundle) -> list[Issue]:
             _check(action.because_of, base, action.id or None, "because_of")
             _check(action.link_to, base, action.id or None, "link_to")
             _check(action.action_target, base, action.id or None, "action_target")
+            if action.signaling_details is not None:
+                _check(
+                    action.signaling_details.link_to,
+                    f"{base}.signaling_details",
+                    action.id or None,
+                    "link_to",
+                )
+        for j, prop in enumerate(agent.properties):
+            if prop.signaling_details is not None:
+                _check(
+                    prop.signaling_details.link_to,
+                    f"annotation.agents[{ai}].properties[{j}].signaling_details",
+                    prop.id or None,
+                    "link_to",
+                )
         for j, inf in enumerate(agent.influenced_by):
             base = f"annotation.agents[{ai}].influenced_by[{j}]"
             _check(inf.influencers, base, inf.id or None, "influencers")
+    for ti, tl in enumerate(ann.traffic_lights):
+        for hi, head in enumerate(tl.signal_heads):
+            _check(
+                head.influenced_agent_ids,
+                f"annotation.traffic_lights[{ti}].signal_heads[{hi}]",
+                head.id or None,
+                "influenced_agent_ids",
+            )
 
     return issues
 

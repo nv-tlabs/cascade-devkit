@@ -16,13 +16,17 @@ import pytest
 from cascade_av.spec import (
     Agent,
     AgentAction,
+    AgentProperty,
     AnnotationBundle,
     Condition,
     EgoAction,
     EgoVehicle,
     Environment,
     Influence,
+    SignalHead,
+    SignalingDetails,
     SilAvAnnotation,
+    TrafficLight,
     TrafficObject,
     VideoMeta,
 )
@@ -233,6 +237,87 @@ def test_id_references_resolve_blank_entries_ignored() -> None:
     bundle = _clean_bundle()
     # Empty-string entries are UI fill-state, not violations.
     bundle.annotation.ego_vehicle.actions[0].because_of = [""]
+    assert id_references_resolve(bundle) == []
+
+
+def test_id_references_resolve_signaling_details_link_to_dangling_errors() -> None:
+    """`AgentAction.signaling_details.link_to` is a real reference field.
+
+    A `Signal*` action without a resolved target is the upstream bug the
+    reviewer flagged: pre-fix, this case round-tripped through `validate`
+    as ``ok=True``.
+    """
+    bundle = _clean_bundle()
+    bundle.annotation.agents.append(
+        Agent(
+            id="A1",
+            type="oxd:Car",
+            actions=[
+                AgentAction(
+                    id="AA1",
+                    action_type="Signal",
+                    signaling_details=SignalingDetails(link_to=["Ghost"]),
+                )
+            ],
+        )
+    )
+    issues = id_references_resolve(bundle)
+    assert len(issues) == 1
+    assert issues[0].rule == "id_references_resolve"
+    assert issues[0].field == "link_to"
+    assert "Ghost" in issues[0].message
+    assert "signaling_details" in issues[0].entity_path
+
+
+def test_id_references_resolve_property_signaling_details_link_to_dangling_errors() -> None:
+    """Same coverage for `AgentProperty.signaling_details.link_to`."""
+    bundle = _clean_bundle()
+    bundle.annotation.agents.append(
+        Agent(
+            id="A1",
+            type="oxd:Car",
+            properties=[
+                AgentProperty(
+                    id="AP1",
+                    property_type="SignalLeft",
+                    signaling_details=SignalingDetails(link_to=["Ghost"]),
+                )
+            ],
+        )
+    )
+    issues = id_references_resolve(bundle)
+    assert any(
+        i.field == "link_to" and "Ghost" in i.message and "properties" in i.entity_path
+        for i in issues
+    )
+
+
+def test_id_references_resolve_signal_head_influenced_agent_ids_dangling_errors() -> None:
+    """`SignalHead.influenced_agent_ids` names the agents this head controls."""
+    bundle = _clean_bundle()
+    bundle.annotation.traffic_lights.append(
+        TrafficLight(
+            id="TL1",
+            signal_heads=[
+                SignalHead(id="SH1", influenced_agent_ids=["Phantom"])
+            ],
+        )
+    )
+    issues = id_references_resolve(bundle)
+    assert any(
+        i.field == "influenced_agent_ids" and "Phantom" in i.message for i in issues
+    )
+
+
+def test_id_references_resolve_signal_head_influenced_agent_ids_resolves_to_agent() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.agents.append(Agent(id="A1", type="oxd:Car"))
+    bundle.annotation.traffic_lights.append(
+        TrafficLight(
+            id="TL1",
+            signal_heads=[SignalHead(id="SH1", influenced_agent_ids=["A1"])],
+        )
+    )
     assert id_references_resolve(bundle) == []
 
 
