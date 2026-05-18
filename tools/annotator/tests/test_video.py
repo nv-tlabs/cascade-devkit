@@ -731,3 +731,175 @@ def test_clip_lock_table_grows_lazily(tmp_path: Path) -> None:
     assert list(resolver._clip_locks) == ["first"]
     resolver._clip_lock("second")
     assert set(resolver._clip_locks) == {"first", "second"}
+
+
+# -----------------------------------------------------------------------------
+# Progress tracking — get_state / _set_state and the resolve() pipeline hooks
+# -----------------------------------------------------------------------------
+
+def test_get_state_returns_idle_for_unseen_clip(tmp_path: Path) -> None:
+    """A clip that has never been requested has no recorded stage; the
+    status endpoint should not 404 it — pollers prefer a stable shape."""
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    resolver = VideoResolver(mode="local", video_dir=video_dir)
+    assert resolver.get_state("never-asked") == {"stage": "idle", "message": ""}
+
+
+def test_resolve_transitions_h264_clip_to_ready(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An already-H.264 source skips the transcode stage and lands at
+    ``ready`` once resolve() returns. ``probing`` is observed mid-resolve;
+    by the time the call returns the state has advanced."""
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "clipA.mp4").write_bytes(b"h264")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", _fake_ffmpeg_run([]))
+    monkeypatch.setattr(
+        "annotator.server.video.shutil.which", lambda name: f"/usr/bin/{name}",
+    )
+
+    resolver = VideoResolver(
+        mode="local", video_dir=video_dir, cache_dir=tmp_path / "cache",
+    )
+    assert resolver.get_state("clipA") == {"stage": "idle", "message": ""}
+
+    resolver.resolve("clipA")
+    state = resolver.get_state("clipA")
+    assert state["stage"] == "ready"
+    assert state["message"] == ""
+
+
+def test_resolve_records_transcoding_stage_for_hevc_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An HEVC source produces a ``transcoding`` stage label visible to a
+    poller that races the ffmpeg call. We assert the stage by intercepting
+    the (mocked) ffmpeg call and snapshotting state at that moment."""
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "hevcclip.mp4").write_bytes(b"hevc-bytes")
+
+    observed: dict[str, str] = {}
+
+    def fake_run(cmd, **kwargs):
+        if cmd[0] == "ffprobe":
+            return _fake_hevc_probe(cmd)
+        # ffmpeg — by this point _set_state("transcoding", ...) has fired.
+        snapshot = resolver.get_state("hevcclip")
+        observed["stage"] = snapshot["stage"]
+        observed["message"] = snapshot["message"]
+        Path(cmd[-1]).write_bytes(b"transcoded")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "annotator.server.video.shutil.which", lambda name: f"/usr/bin/{name}",
+    )
+
+    resolver = VideoResolver(
+        mode="local", video_dir=video_dir, cache_dir=tmp_path / "cache",
+    )
+    resolver.resolve("hevcclip")
+    assert observed["stage"] == "transcoding"
+    assert "HEVC" in observed["message"]
+    # After return we're at ready.
+    assert resolver.get_state("hevcclip")["stage"] == "ready"
+
+
+def test_resolve_marks_error_state_when_clip_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed resolve must leave ``stage="error"`` with the failure
+    reason as ``message`` — otherwise a poller would observe a stale
+    in-progress stage forever and the UI would never recover."""
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    # ffprobe/ffmpeg must still appear available — the failure is on the
+    # locate step, not the tools check.
+    monkeypatch.setattr(
+        "annotator.server.video.shutil.which", lambda name: f"/usr/bin/{name}",
+    )
+    resolver = VideoResolver(mode="local", video_dir=video_dir)
+    with pytest.raises(VideoNotFound):
+        resolver.resolve("absent")
+    state = resolver.get_state("absent")
+    assert state["stage"] == "error"
+    assert "absent" in state["message"]
+
+
+def test_video_status_endpoint_returns_idle_before_first_resolve(
+    tmp_path: Path,
+) -> None:
+    """Hitting the status endpoint before the corresponding ``GET /video``
+    returns ``idle`` — a poller may race the navigation."""
+    video = tmp_path / "clipS.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    resolver = VideoResolver(mode="local", video_dir=tmp_path)
+    app = create_app(
+        index, read_only=False, destination_dir=tmp_path, video_resolver=resolver,
+    )
+    client = TestClient(app)
+    r = client.get("/api/clips/clipS/video/status")
+    assert r.status_code == 200
+    assert r.json() == {"stage": "idle", "message": ""}
+
+
+def test_video_status_endpoint_404s_on_unknown_clip(tmp_path: Path) -> None:
+    """Unknown clip_id is 404 here for the same reason it's 404 on the
+    video route — the index is the source of truth on what clips exist."""
+    video = tmp_path / "knownclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    resolver = VideoResolver(mode="local", video_dir=tmp_path)
+    app = create_app(
+        index, read_only=False, destination_dir=tmp_path, video_resolver=resolver,
+    )
+    client = TestClient(app)
+    r = client.get("/api/clips/nonexistent/video/status")
+    assert r.status_code == 404
+
+
+def test_video_status_endpoint_503_when_no_resolver(tmp_path: Path) -> None:
+    """Status endpoint mirrors the video endpoint's 503 path so the
+    frontend can treat a missing resolver as a deterministic failure."""
+    video = tmp_path / "clipS.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(
+        index, read_only=False, destination_dir=tmp_path, video_resolver=None,
+    )
+    client = TestClient(app)
+    r = client.get("/api/clips/clipS/video/status")
+    assert r.status_code == 503
+
+
+def test_video_status_endpoint_reflects_ready_after_resolve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end smoke: a successful resolve advances the status endpoint
+    from idle → ready without the test ever touching ``_clip_state``."""
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "clipR.mp4").write_bytes(b"h264")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", _fake_ffmpeg_run([]))
+    monkeypatch.setattr(
+        "annotator.server.video.shutil.which", lambda name: f"/usr/bin/{name}",
+    )
+
+    index = build_clip_index([video_dir])
+    resolver = VideoResolver(
+        mode="local", video_dir=video_dir, cache_dir=tmp_path / "cache",
+    )
+    app = create_app(
+        index, read_only=False, destination_dir=tmp_path, video_resolver=resolver,
+    )
+    client = TestClient(app)
+    assert client.get("/api/clips/clipR/video/status").json()["stage"] == "idle"
+    r = client.get("/api/clips/clipR/video")
+    assert r.status_code == 200
+    assert client.get("/api/clips/clipR/video/status").json()["stage"] == "ready"
