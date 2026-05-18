@@ -58,6 +58,11 @@ Idempotent — re-running is safe. Read on for what the script does
 step-by-step, or skip to **Install the project** if you already have
 the prerequisites.
 
+> **First time using the annotator?** The 5-minute walkthrough at
+> [`docs/user/getting-started.md`](docs/user/getting-started.md) takes
+> you from a fresh clone to your first saved annotation, including
+> HuggingFace token setup and reading the startup preflight log.
+
 ### Prerequisites (Ubuntu / Debian)
 
 You need four things on PATH before `make install` works:
