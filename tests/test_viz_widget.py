@@ -139,7 +139,7 @@ def _make_full_bundle() -> AnnotationBundle:
         agents=[agent],
     )
     return AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="test_clip", duration_s=10.0),
         annotation=ann,
     )
@@ -439,7 +439,7 @@ def _bundle_with_n_overlapping_agent_actions(n: int) -> AnnotationBundle:
         actions=actions,
     )
     return AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="adaptive_lanes", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[agent]),
     )

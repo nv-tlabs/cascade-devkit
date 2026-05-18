@@ -129,7 +129,7 @@ def _make_full_bundle() -> AnnotationBundle:
         agents=[agent],
     )
     return AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="test_clip", duration_s=10.0),
         annotation=ann,
     )
@@ -210,7 +210,7 @@ def _make_all_categories_bundle() -> AnnotationBundle:
         ego_vehicle=ego, agents=[agent],
     )
     return AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="all_cats", duration_s=10.0),
         annotation=ann,
     )
@@ -458,7 +458,7 @@ def test_arrows_unknown_keys_are_ignored() -> None:
 def test_render_timeline_on_empty_bundle() -> None:
     """No entities at all → Figure returns cleanly with no segment/arrow shapes."""
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="empty_clip", duration_s=5.0),
     )
     fig = render_timeline(_seq(bundle))
@@ -478,7 +478,7 @@ def test_render_timeline_on_empty_bundle() -> None:
 def test_render_timeline_zero_duration_does_not_crash() -> None:
     """Bundles with no declared duration should still produce a Figure."""
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="no_dur"),
     )
     fig = render_timeline(_seq(bundle))
@@ -577,7 +577,7 @@ def _make_two_overlapping_agent_actions_bundle() -> AnnotationBundle:
     )
     ann = SilAvAnnotation(agents=[agent])
     return AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="overlap", duration_s=10.0),
         annotation=ann,
     )
@@ -619,7 +619,7 @@ def test_non_overlapping_subtracks_share_lane_zero() -> None:
         actions=[a1, a2],
     )
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="no_overlap", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[agent]),
     )
@@ -671,7 +671,7 @@ def test_inline_label_present_on_long_segments_suppressed_on_short_ones() -> Non
         actions=[long_action, short_action],
     )
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="labels", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[agent]),
     )
@@ -732,7 +732,7 @@ def test_inline_label_thresholds_match_current_constants() -> None:
         actions=[short_action, long_action],
     )
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="thresholds", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[agent]),
     )
@@ -1042,7 +1042,7 @@ def test_empty_bands_dropped() -> None:
     )
     ann = SilAvAnnotation(environments=[env])
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="env_only", duration_s=10.0),
         annotation=ann,
     )
@@ -1089,7 +1089,7 @@ def test_proportional_label_suppression() -> None:
             actions=[act],
         )
         return AnnotationBundle(
-            schema_version="2.0.0",
+            schema_version="2.1.0",
             video=VideoMeta(clip_id=f"prop_{duration}", duration_s=duration),
             annotation=SilAvAnnotation(agents=[agent]),
         )
@@ -1174,7 +1174,7 @@ def test_arrows_target_new_band_y() -> None:
         }
     )
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="arrow", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[a0, a1]),
     )
@@ -1262,7 +1262,7 @@ def test_per_entity_bands() -> None:
         )
 
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="per_entity", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1), _agent(2)]),
     )
@@ -1343,7 +1343,7 @@ def test_multi_track_index_produces_multiple_sub_rows() -> None:
         containment=[cont0, cont1, cont2],
     )
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="sub_rows", duration_s=10.0),
         annotation=SilAvAnnotation(environments=[env], agents=[agent]),
     )
@@ -1384,7 +1384,7 @@ def test_trailing_sub_row_labels_are_blank() -> None:
         start_timestamp="0:0.0", end_timestamp="0:10.0",
     )
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="cond_sub_rows", duration_s=10.0),
         annotation=SilAvAnnotation(
             environments=[env], conditions=[cond0, cond1],
@@ -1544,7 +1544,7 @@ def test_band_tick_text_matches_annotator_terse_style() -> None:
         agents=[agent],
     )
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="terse", duration_s=10.0),
         annotation=ann,
     )
@@ -1685,7 +1685,7 @@ def test_entity_block_tint_alternates_within_category() -> None:
         )
 
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="alt_tint", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1)]),
     )
@@ -2272,7 +2272,7 @@ def test_entity_block_gap_between_adjacent_blocks() -> None:
         )
 
     bundle = AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version="2.1.0",
         video=VideoMeta(clip_id="gap", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1)]),
     )
