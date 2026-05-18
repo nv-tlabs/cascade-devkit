@@ -224,6 +224,25 @@ def test_id_references_resolve_resolves_to_agent_action_id() -> None:
     assert id_references_resolve(bundle) == []
 
 
+def test_id_references_resolve_resolves_to_ego_action_id() -> None:
+    """The forward direction: an agent action references an ego action id."""
+    bundle = _clean_bundle()  # ego action id is "EA1"
+    bundle.annotation.agents.append(
+        Agent(
+            id="A1",
+            type="oxd:Car",
+            actions=[
+                AgentAction(
+                    id="AA1",
+                    action_type="Drive",
+                    because_of=["EA1"],
+                )
+            ],
+        )
+    )
+    assert id_references_resolve(bundle) == []
+
+
 def test_id_references_resolve_influencers_dangling_errors() -> None:
     bundle = _clean_bundle()
     bundle.annotation.ego_vehicle.influenced_by.append(
@@ -454,7 +473,13 @@ def test_validate_clean_bundle_returns_empty_list() -> None:
 
 
 def test_validate_aggregates_all_rules() -> None:
-    """A bundle that trips every hard rule yields >=7 issues, one per rule."""
+    """Every hard rule fires AND issues appear in `HARD_RULES + SOFT_RULES` order.
+
+    The `validate()` docstring sells stable order; this locks it. A reorder
+    that breaks UI grouping in PR 2 would otherwise pass unnoticed.
+    """
+    from cascade_av.validate import SOFT_RULES
+
     bundle = AnnotationBundle(
         video=VideoMeta(clip_id="messy", duration_s=10.0),
         annotation=SilAvAnnotation(
@@ -484,6 +509,17 @@ def test_validate_aggregates_all_rules() -> None:
     for i in issues:
         assert isinstance(i, Issue)
         assert i.severity == "error"
+
+    # Stable order: the rule-id sequence (with duplicates removed in
+    # first-seen order) matches the HARD_RULES + SOFT_RULES rule names.
+    seen: list[str] = []
+    for i in issues:
+        if i.rule not in seen:
+            seen.append(i.rule)
+    expected_order = [r.__name__ for r in (*HARD_RULES, *SOFT_RULES) if r.__name__ in seen]
+    assert seen == expected_order, (
+        f"issue order broke stable contract; got {seen}, expected {expected_order}"
+    )
 
 
 def test_validate_orders_hard_rules_before_soft_rules() -> None:
