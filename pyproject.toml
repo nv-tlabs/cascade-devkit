@@ -11,6 +11,9 @@ dependencies = [
     "pydantic>=2.6",
 ]
 
+[project.scripts]
+cascade-migrate = "cascade_av.cli.migrate:main"
+
 [project.optional-dependencies]
 hf = [
     "physical-ai-av>=0.2.2",
