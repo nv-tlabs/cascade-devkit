@@ -8,7 +8,7 @@
 # implementation change without churning every doc that quotes a
 # command.
 
-.PHONY: help install test lint fmt annotator-dev annotator-build
+.PHONY: help install test lint fmt annotator-dev annotator-build migrate
 
 help:  ## Show this help and exit.
 	@echo "Usage: make <target>"
@@ -37,3 +37,10 @@ annotator-dev:  ## Launch the annotator backend. Pass DATA=<path>. Optional: POR
 
 annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/dist).
 	cd tools/annotator/web && npm run build
+
+migrate:  ## Migrate annotations to the current schema. Pass INPUT=<path>. Optional OUTPUT=<path>.
+	@if [ -z "$(INPUT)" ]; then \
+	  echo "error: set INPUT=<path>. example: make migrate INPUT=/home/horde/02json OUTPUT=/tmp/migrated"; \
+	  exit 2; \
+	fi
+	uv run cascade-migrate $(INPUT) $(if $(OUTPUT),--output-dir $(OUTPUT)) -v

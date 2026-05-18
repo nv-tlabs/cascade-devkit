@@ -344,6 +344,33 @@ decodes frames at microsecond timestamps.
 download recipes; set `SENSOR_DEMO_DOWNLOAD=1` to also fetch a sister
 camera and decode a frame from it.
 
+## Migrating older annotations
+
+The current schema is **2.1.0** (see
+[`docs/dev/schema-history.md`](docs/dev/schema-history.md)). Files written
+against an older version still load — Pydantic's `extra="allow"` machinery
+keeps any removed fields alive in `__pydantic_extra__` — but the loader
+emits a one-shot `DeprecationWarning` per version pointing at the
+migration tool:
+
+```bash
+# In place (overwrites the source directory):
+cascade-migrate /path/to/json_annotations
+
+# Side-by-side (recommended for a first run):
+cascade-migrate /path/to/json_annotations --output-dir /path/to/migrated
+
+# CI gate — exit non-zero if any file would migrate:
+cascade-migrate /path/to/json_annotations --check
+```
+
+Deprecated payload (currently: `bounding_boxes` arrays from 2.0.0) moves
+into a sibling `<stem>.extra.json` sidecar under
+`extensions["bbox/1.0"]`. The base schema in `cascade_av.spec` stays
+clean; future schema extensions consume the sidecar via
+`cascade_av.extensions`. The CLI is idempotent — re-running on an
+already-migrated tree is a no-op.
+
 ## Project layout
 
 ```
