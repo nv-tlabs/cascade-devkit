@@ -108,7 +108,9 @@ def test_migrate_bbox_bearing_file_writes_sidecar(tmp_path: Path) -> None:
     assert exit_code == 0
 
     written_main = json.loads(src.read_text())
-    assert written_main["schema_version"] == "2.1.0"
+    # cascade-migrate walks the chain all the way to CURRENT_SCHEMA_VERSION
+    # — through 2.1.0 (bbox extraction) and 2.2.0 (ui-index extraction).
+    assert written_main["schema_version"] == CURRENT_SCHEMA_VERSION
     for agent in written_main["annotation"]["agents"]:
         assert "bounding_boxes" not in agent
     for obj in written_main["annotation"]["traffic_objects"]:
@@ -116,7 +118,7 @@ def test_migrate_bbox_bearing_file_writes_sidecar(tmp_path: Path) -> None:
 
     assert sidecar.exists()
     written_sidecar = json.loads(sidecar.read_text())
-    assert written_sidecar["schema_version"] == "2.1.0"
+    assert written_sidecar["schema_version"] == CURRENT_SCHEMA_VERSION
     assert written_sidecar["main_file"] == "f.json"
     bbox = written_sidecar["extensions"]["bbox/1.0"]
     assert "agent_0" in bbox["agents"]
@@ -131,7 +133,7 @@ def test_migrate_file_without_bboxes_skips_sidecar(tmp_path: Path) -> None:
 
     exit_code = main([str(src), "-v"])
     assert exit_code == 0
-    assert json.loads(src.read_text())["schema_version"] == "2.1.0"
+    assert json.loads(src.read_text())["schema_version"] == CURRENT_SCHEMA_VERSION
     assert not _sidecar_path_for(src).exists(), (
         "no sidecar should be written when there is nothing to migrate"
     )
@@ -179,7 +181,7 @@ def test_migrate_output_dir_does_not_touch_source(tmp_path: Path) -> None:
     # Output present.
     out_main = out / "src.json"
     out_sidecar = out / "src.extra.json"
-    assert json.loads(out_main.read_text())["schema_version"] == "2.1.0"
+    assert json.loads(out_main.read_text())["schema_version"] == CURRENT_SCHEMA_VERSION
     assert "bbox/1.0" in json.loads(out_sidecar.read_text())["extensions"]
 
 
@@ -285,8 +287,8 @@ def test_directory_input_processes_every_main_json_but_skips_sidecars(
 
     exit_code = main([str(tmp_path), "-v"])
     assert exit_code == 0
-    assert json.loads((tmp_path / "a.json").read_text())["schema_version"] == "2.1.0"
-    assert json.loads((tmp_path / "b.json").read_text())["schema_version"] == "2.1.0"
+    assert json.loads((tmp_path / "a.json").read_text())["schema_version"] == CURRENT_SCHEMA_VERSION
+    assert json.loads((tmp_path / "b.json").read_text())["schema_version"] == CURRENT_SCHEMA_VERSION
     # The stray "main_file"-shaped sidecar is left alone.
     assert json.loads((tmp_path / "c.extra.json").read_text())["schema_version"] == "0.0.0"
 
@@ -332,7 +334,8 @@ def test_migrated_pair_loads_through_library_and_preserves_sidecar(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         bundle = load_file(src)
-    assert bundle.schema_version == "2.1.0"
+    assert bundle.schema_version == CURRENT_SCHEMA_VERSION
+    # No bbox extension is registered in-tree; it round-trips as raw payload.
     assert "bbox/1.0" in bundle._sidecar_raw
 
     out = tmp_path / "round2.json"

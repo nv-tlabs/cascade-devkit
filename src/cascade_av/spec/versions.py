@@ -51,6 +51,17 @@ SCHEMA_HISTORY: tuple[SchemaVersion, ...] = (
         ),
         breaking=True,
     ),
+    SchemaVersion(
+        version="2.2.0",
+        released="2026-05-18",
+        summary=(
+            "Removed _*_track_index UI-layout fields from every typed model. "
+            "Indices move to a sibling <stem>.extra.json sidecar under "
+            "extensions['ui/1.0'], keyed by entity id. Run cascade-migrate "
+            "to convert; chains 2.0.0 → 2.1.0 → 2.2.0 in one pass."
+        ),
+        breaking=True,
+    ),
 )
 
 #: Default value for ``AnnotationBundle.schema_version`` on new bundles

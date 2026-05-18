@@ -13,11 +13,13 @@ round-trip rather than fail validation. Advisory `*Vocab` namespace classes
 near the bottom of this file enumerate the known values for autocomplete and
 for use in queries.
 
-Internal frontend indices (`_track_index`, `_cond_track_index`,
+Annotator timeline-layout indices (`_track_index`, `_cond_track_index`,
 `_state_track_index`, `_influence_track_index`, `_prop_track_index`,
-`_cont_track_index`) are explicitly modelled so they round-trip cleanly. They
-are exposed in Python without the leading underscore (e.g. `track_index`) via
-Pydantic aliases.
+`_cont_track_index`) lived on these models as typed fields through schema
+``2.1.0``. As of ``2.2.0`` they are no longer part of the main bundle: they
+live in the sibling ``<stem>.extra.json`` sidecar under
+``extensions["ui/1.0"]`` (see :mod:`cascade_av.extensions.ui`). Read and
+mutate them via ``bundle.ext("ui/1.0").get(entity_id, "track_index")``.
 
 `model_config = ConfigDict(extra="allow")` is set on every model so anything
 new added by the frontend (or any other producer) is preserved on read and
@@ -62,16 +64,6 @@ class Containment(BaseModel):
     other: str | None = None
     start_timestamp: str = ""
     end_timestamp: str = ""
-    track_index: int | None = Field(
-        default=None,
-        validation_alias="_track_index",
-        serialization_alias="_track_index",
-    )
-    cont_track_index: int | None = Field(
-        default=None,
-        validation_alias="_cont_track_index",
-        serialization_alias="_cont_track_index",
-    )
 
 
 class Influence(BaseModel):
@@ -84,11 +76,6 @@ class Influence(BaseModel):
     comment: str = ""
     start_timestamp: str = ""
     end_timestamp: str = ""
-    influence_track_index: int | None = Field(
-        default=None,
-        validation_alias="_influence_track_index",
-        serialization_alias="_influence_track_index",
-    )
 
 
 class Keypoint(BaseModel):
@@ -147,11 +134,6 @@ class Environment(BaseModel):
     start_timestamp: str = ""
     end_timestamp: str = ""
     keypoints: list[Keypoint] = Field(default_factory=list)
-    track_index: int | None = Field(
-        default=None,
-        validation_alias="_track_index",
-        serialization_alias="_track_index",
-    )
 
     @field_validator("num_lanes", "num_out_lanes", mode="before")
     @classmethod
@@ -172,16 +154,6 @@ class Condition(BaseModel):
     condition_other_description: str = ""
     start_timestamp: str = ""
     end_timestamp: str = ""
-    track_index: int | None = Field(
-        default=None,
-        validation_alias="_track_index",
-        serialization_alias="_track_index",
-    )
-    cond_track_index: int | None = Field(
-        default=None,
-        validation_alias="_cond_track_index",
-        serialization_alias="_cond_track_index",
-    )
 
     @field_validator("type", mode="before")
     @classmethod
@@ -225,11 +197,6 @@ class TrafficObject(BaseModel):
     containment: list[Containment] = Field(default_factory=list)
     state_sequence: list[ObjectStateEntry] = Field(default_factory=list)
     keypoints: list[Keypoint] = Field(default_factory=list)
-    track_index: int | None = Field(
-        default=None,
-        validation_alias="_track_index",
-        serialization_alias="_track_index",
-    )
 
 
 # -----------------------------------------------------------------------------
@@ -251,11 +218,6 @@ class LightStates(BaseModel):
     yellow_on_ego_path: bool | None = None
     ego_in_intersection_on_yellow: bool | None = None
     ego_could_have_cleared_safely: bool | None = None
-    state_track_index: int | None = Field(
-        default=None,
-        validation_alias="_state_track_index",
-        serialization_alias="_state_track_index",
-    )
 
 
 class SignalHead(BaseModel):
@@ -286,11 +248,6 @@ class TrafficLight(BaseModel):
     visibility_end_timestamp: str = ""
     containment: list[Containment] = Field(default_factory=list)
     signal_heads: list[SignalHead] = Field(default_factory=list)
-    track_index: int | None = Field(
-        default=None,
-        validation_alias="_track_index",
-        serialization_alias="_track_index",
-    )
 
 
 # -----------------------------------------------------------------------------
@@ -308,11 +265,6 @@ class AgentProperty(BaseModel):
     start_timestamp: str = ""
     end_timestamp: str = ""
     signaling_details: SignalingDetails | None = None
-    prop_track_index: int | None = Field(
-        default=None,
-        validation_alias="_prop_track_index",
-        serialization_alias="_prop_track_index",
-    )
 
 
 class AgentAction(BaseModel):
@@ -360,11 +312,6 @@ class Agent(BaseModel):
     containment: list[Containment] = Field(default_factory=list)
     influenced_by: list[Influence] = Field(default_factory=list)
     keypoints: list[Keypoint] = Field(default_factory=list)
-    track_index: int | None = Field(
-        default=None,
-        validation_alias="_track_index",
-        serialization_alias="_track_index",
-    )
 
 
 class EgoAction(BaseModel):

@@ -15,7 +15,7 @@ import shutil
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from annotator.server.video import probe_video_meta
 from cascade_av.io import load_file, save_file
@@ -192,6 +192,69 @@ def load_bundle(entry: ClipEntry) -> AnnotationBundle:
         assert entry.path is not None  # invariant of `kind == "annotated"`
         return load_file(entry.path)
     return make_empty_bundle(entry.clip_id, video_path=entry.video_path)
+
+
+def bundle_to_wire(bundle: AnnotationBundle) -> dict[str, Any]:
+    """Serialise a bundle for the wire (annotator GET response).
+
+    The on-disk format keeps schema-extension payloads in the sibling
+    ``<stem>.extra.json`` sidecar; the wire format folds them into a single
+    JSON object under ``_extensions`` so the frontend can hydrate everything
+    from one request. The shape is::
+
+        {
+          ...main bundle fields (schema_version, video, annotation, …)…,
+          "_extensions": {
+            "ui/1.0":   {...},
+            "bbox/1.0": {...},   # if applicable
+            ...
+          }
+        }
+
+    ``_extensions`` is absent (not empty) when no extension produced data,
+    matching the on-disk convention.
+    """
+    from cascade_av.extensions.registry import registered
+
+    data = bundle.model_dump(by_alias=True, exclude_unset=True, mode="json")
+    extensions: dict[str, Any] = dict(bundle._sidecar_raw)
+    for key, ext in registered().items():
+        payload = ext.dump(bundle)
+        if payload:
+            extensions[key] = payload
+    if extensions:
+        data["_extensions"] = extensions
+    return data
+
+
+def bundle_from_wire(payload: dict[str, Any]) -> AnnotationBundle:
+    """Inverse of :func:`bundle_to_wire`.
+
+    Pops the ``_extensions`` envelope before validating the main bundle, then
+    re-attaches each entry to ``bundle._extensions`` (via the registered
+    extension's :meth:`load`) or to ``bundle._sidecar_raw`` if no extension
+    is registered for that key. Raises whatever ``AnnotationBundle.model_validate``
+    raises on the trimmed payload — callers handle ``ValidationError``.
+    """
+    from cascade_av.extensions.registry import registered
+
+    extensions_in = payload.pop("_extensions", None) if isinstance(payload, dict) else None
+    bundle = AnnotationBundle.model_validate(payload)
+    if not isinstance(extensions_in, dict):
+        return bundle
+    handlers = registered()
+    for key, ext_data in extensions_in.items():
+        ext = handlers.get(key)
+        if ext is None:
+            bundle._sidecar_raw[key] = ext_data
+            continue
+        try:
+            ext.load(bundle, ext_data)
+        except Exception:
+            # Defensive: preserve the raw payload so the next save round-trips
+            # it even if a handler crashed. Mirrors the io.local fallback.
+            bundle._sidecar_raw[key] = ext_data
+    return bundle
 
 
 def save_bundle(

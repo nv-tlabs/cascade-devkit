@@ -68,7 +68,19 @@ def _ensure_discovered() -> None:
 
 
 def _reset_for_tests() -> None:
-    """Wipe the registry. Intended for use by test fixtures only."""
+    """Wipe the registry and re-register the first-party defaults.
+
+    Intended for use by test fixtures that want a known starting state. After
+    this call, the registry contains exactly the in-tree first-party
+    extensions (e.g. :class:`~cascade_av.extensions.ui.UiExtension`) — same
+    as immediately after ``import cascade_av.extensions`` at startup. Tests
+    that need a *completely* empty registry can clear it again themselves.
+    """
     global _discovered
     _registry.clear()
     _discovered = False
+    # Re-import (cheap; module is already loaded) so the side-effect of
+    # `_register_default_extensions()` runs again. We do this lazily to avoid
+    # a circular import at module load time.
+    from cascade_av.extensions import _register_default_extensions
+    _register_default_extensions()

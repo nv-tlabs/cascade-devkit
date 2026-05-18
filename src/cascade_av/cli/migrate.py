@@ -74,8 +74,126 @@ def _migrate_2_0_0_to_2_1_0(
     return main, sidecar
 
 
+#: All ``_*_track_index`` field aliases that lived inline on the typed schema
+#: through 2.1.0 and now live in the ``ui/1.0`` sidecar. Keys are the on-disk
+#: (underscore-prefixed) names; values are the corresponding sub-keys inside
+#: the ``ui/1.0`` payload (same name, leading underscore stripped).
+_UI_INDEX_INLINE_NAMES: dict[str, str] = {
+    "_track_index": "track_index",
+    "_cond_track_index": "cond_track_index",
+    "_cont_track_index": "cont_track_index",
+    "_state_track_index": "state_track_index",
+    "_influence_track_index": "influence_track_index",
+    "_prop_track_index": "prop_track_index",
+}
+
+
+def _walk_entities(ann: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """Yield every dict in the annotation tree that may carry a layout index.
+
+    Walks `environments`, `conditions`, `traffic_objects` (and nested
+    `containment`), `traffic_lights` (and nested `containment`, plus
+    `signal_heads` → `env_controlled` + `state_sequence`), `ego_vehicle`
+    (and nested `properties`, `containment`, `influenced_by`), and `agents`
+    (and nested `properties`, `containment`, `influenced_by`).
+
+    Hand-rolled rather than recursive over schema metadata because the
+    migration must keep working after the typed fields are gone from
+    ``cascade_av.spec.schema`` — it operates on raw JSON.
+    """
+    def _list(d: dict[str, Any], k: str) -> list[Any]:
+        v = d.get(k)
+        return v if isinstance(v, list) else []
+
+    for env in _list(ann, "environments"):
+        if isinstance(env, dict):
+            yield env
+    for cond in _list(ann, "conditions"):
+        if isinstance(cond, dict):
+            yield cond
+    for obj in _list(ann, "traffic_objects"):
+        if not isinstance(obj, dict):
+            continue
+        yield obj
+        for cont in _list(obj, "containment"):
+            if isinstance(cont, dict):
+                yield cont
+    for light in _list(ann, "traffic_lights"):
+        if not isinstance(light, dict):
+            continue
+        yield light
+        for cont in _list(light, "containment"):
+            if isinstance(cont, dict):
+                yield cont
+        for head in _list(light, "signal_heads"):
+            if not isinstance(head, dict):
+                continue
+            for cont in _list(head, "env_controlled"):
+                if isinstance(cont, dict):
+                    yield cont
+            for state in _list(head, "state_sequence"):
+                if isinstance(state, dict):
+                    yield state
+    ego = ann.get("ego_vehicle")
+    if isinstance(ego, dict):
+        for prop in _list(ego, "properties"):
+            if isinstance(prop, dict):
+                yield prop
+        for cont in _list(ego, "containment"):
+            if isinstance(cont, dict):
+                yield cont
+        for infl in _list(ego, "influenced_by"):
+            if isinstance(infl, dict):
+                yield infl
+    for agent in _list(ann, "agents"):
+        if not isinstance(agent, dict):
+            continue
+        yield agent
+        for prop in _list(agent, "properties"):
+            if isinstance(prop, dict):
+                yield prop
+        for cont in _list(agent, "containment"):
+            if isinstance(cont, dict):
+                yield cont
+        for infl in _list(agent, "influenced_by"):
+            if isinstance(infl, dict):
+                yield infl
+
+
+def _migrate_2_1_0_to_2_2_0(
+    main: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """2.1.0 → 2.2.0: pull the six ``_*_track_index`` aliases off every entity
+    into the sidecar's ``ui/1.0`` key, keyed by entity ``id``.
+
+    Entities without an ``id`` (or with an empty one) have nowhere stable to
+    park their index in the sidecar — they're skipped, with the field stripped
+    silently. In practice the corpus emits non-empty ids on every entity that
+    carries a layout index; see the survey log in the PR description.
+    """
+    ann = main.get("annotation") or {}
+    ui_payload: dict[str, dict[str, int]] = {}
+    for entity in _walk_entities(ann):
+        entity_id = entity.get("id")
+        for inline_name, payload_key in _UI_INDEX_INLINE_NAMES.items():
+            value = entity.pop(inline_name, None)
+            if value is None:
+                continue
+            if not isinstance(entity_id, str) or not entity_id:
+                # No stable key; drop the index rather than colliding under "".
+                continue
+            try:
+                ui_payload.setdefault(payload_key, {})[entity_id] = int(value)
+            except (TypeError, ValueError):
+                continue
+    main["schema_version"] = "2.2.0"
+    sidecar = {"ui/1.0": ui_payload} if ui_payload else {}
+    return main, sidecar
+
+
 MIGRATIONS: dict[tuple[str, str], Migrator] = {
     ("2.0.0", "2.1.0"): _migrate_2_0_0_to_2_1_0,
+    ("2.1.0", "2.2.0"): _migrate_2_1_0_to_2_2_0,
 }
 
 

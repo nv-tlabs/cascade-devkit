@@ -16,6 +16,7 @@ import plotly.graph_objects as go
 import pytest
 
 from cascade_av.dataset import Sequence
+from cascade_av.extensions.ui import UiIndexes
 from cascade_av.spec import (
     Agent,
     AgentAction,
@@ -1161,23 +1162,19 @@ def test_arrows_target_new_band_y() -> None:
     )
     # agent_1 on its own track (track_index=1) so the painter emits a
     # distinct per-entity block for it — that's the layout the arrow
-    # test exercises. Passing the index via `model_validate` on a
-    # dict with the schema's `_track_index` alias.
-    a1 = Agent.model_validate(
-        {
-            "id": "agent_1",
-            "type": "oxd:Car",
-            "visibility_start_timestamp": "0:3.5",
-            "visibility_end_timestamp": "0:6.5",
-            "actions": [a1_act.model_dump()],
-            "_track_index": 1,
-        }
+    # test exercises. The index lives in the ui/1.0 sidecar (schema 2.2.0+).
+    a1 = Agent(
+        id="agent_1",
+        type="oxd:Car",
+        visibility_start_timestamp="0:3.5",
+        visibility_end_timestamp="0:6.5",
+        actions=[a1_act],
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="arrow", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[a0, a1]),
     )
+    UiIndexes.get_or_create(bundle).set("agent_1", "track_index", 1)
     fig = render_timeline(_seq(bundle))
     yticks_text = _yticks(fig)
     yticks_vals = list(fig.layout.yaxis.tickvals or ())
@@ -1243,29 +1240,28 @@ def test_per_entity_bands() -> None:
     track name so the user can disambiguate blocks."""
 
     def _agent(idx: int) -> Agent:
-        return Agent.model_validate(
-            {
-                "id": f"agent_{idx}",
-                "type": "oxd:Car",
-                "visibility_start_timestamp": "0:0.0",
-                "visibility_end_timestamp": "0:5.0",
-                "actions": [
-                    AgentAction(
-                        id=f"agent_{idx}_act_0",
-                        action_type="Yield",
-                        start_timestamp="0:1.0",
-                        end_timestamp="0:2.0",
-                    ).model_dump()
-                ],
-                "_track_index": idx,
-            }
+        return Agent(
+            id=f"agent_{idx}",
+            type="oxd:Car",
+            visibility_start_timestamp="0:0.0",
+            visibility_end_timestamp="0:5.0",
+            actions=[
+                AgentAction(
+                    id=f"agent_{idx}_act_0",
+                    action_type="Yield",
+                    start_timestamp="0:1.0",
+                    end_timestamp="0:2.0",
+                )
+            ],
         )
 
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="per_entity", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1), _agent(2)]),
     )
+    ui = UiIndexes.get_or_create(bundle)
+    for idx in (0, 1, 2):
+        ui.set(f"agent_{idx}", "track_index", idx)
     fig = render_timeline(_seq(bundle))
     yticks = _yticks(fig)
     # Three "Agent Track N" parents must show up.
@@ -1323,16 +1319,14 @@ def test_multi_track_index_produces_multiple_sub_rows() -> None:
         id="cont0", env_id="env_0", lane_number="1",
         start_timestamp="0:0.0", end_timestamp="0:2.0",
     )
-    cont1 = Containment.model_validate({
-        "id": "cont1", "env_id": "env_0", "lane_number": "2",
-        "start_timestamp": "0:0.0", "end_timestamp": "0:2.0",
-        "_cont_track_index": 1,
-    })
-    cont2 = Containment.model_validate({
-        "id": "cont2", "env_id": "env_0", "lane_number": "3",
-        "start_timestamp": "0:0.0", "end_timestamp": "0:2.0",
-        "_cont_track_index": 2,
-    })
+    cont1 = Containment(
+        id="cont1", env_id="env_0", lane_number="2",
+        start_timestamp="0:0.0", end_timestamp="0:2.0",
+    )
+    cont2 = Containment(
+        id="cont2", env_id="env_0", lane_number="3",
+        start_timestamp="0:0.0", end_timestamp="0:2.0",
+    )
     env = Environment(
         id="env_0", type="fst:Road",
         start_timestamp="0:0.0", end_timestamp="0:10.0",
@@ -1343,10 +1337,12 @@ def test_multi_track_index_produces_multiple_sub_rows() -> None:
         containment=[cont0, cont1, cont2],
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="sub_rows", duration_s=10.0),
         annotation=SilAvAnnotation(environments=[env], agents=[agent]),
     )
+    ui = UiIndexes.get_or_create(bundle)
+    ui.set("cont1", "cont_track_index", 1)
+    ui.set("cont2", "cont_track_index", 2)
     fig = render_timeline(_seq(bundle))
     yticks = _yticks(fig)
     # Find the index of the first labeled "containment" row under
@@ -1374,22 +1370,21 @@ def test_trailing_sub_row_labels_are_blank() -> None:
         id="c0", env_id="env_0", type=["Construction Zone"],
         start_timestamp="0:0.0", end_timestamp="0:2.0",
     )
-    cond1 = Condition.model_validate({
-        "id": "c1", "env_id": "env_0", "type": ["Construction Zone"],
-        "start_timestamp": "0:0.0", "end_timestamp": "0:2.0",
-        "_cond_track_index": 1,
-    })
+    cond1 = Condition(
+        id="c1", env_id="env_0", type=["Construction Zone"],
+        start_timestamp="0:0.0", end_timestamp="0:2.0",
+    )
     env = Environment(
         id="env_0", type="fst:Road",
         start_timestamp="0:0.0", end_timestamp="0:10.0",
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="cond_sub_rows", duration_s=10.0),
         annotation=SilAvAnnotation(
             environments=[env], conditions=[cond0, cond1],
         ),
     )
+    UiIndexes.get_or_create(bundle).set("c1", "cond_track_index", 1)
     fig = render_timeline(_seq(bundle))
     yticks = _yticks(fig)
     # Two condition sub-rows under Env Track 1: first labeled
@@ -1666,29 +1661,28 @@ def test_entity_block_tint_alternates_within_category() -> None:
     — the category cue lives on the tick label color."""
 
     def _agent(idx: int) -> Agent:
-        return Agent.model_validate(
-            {
-                "id": f"agent_{idx}",
-                "type": "oxd:Car",
-                "visibility_start_timestamp": "0:0.0",
-                "visibility_end_timestamp": "0:5.0",
-                "actions": [
-                    AgentAction(
-                        id=f"agent_{idx}_act_0",
-                        action_type="Yield",
-                        start_timestamp="0:1.0",
-                        end_timestamp="0:2.0",
-                    ).model_dump()
-                ],
-                "_track_index": idx,
-            }
+        return Agent(
+            id=f"agent_{idx}",
+            type="oxd:Car",
+            visibility_start_timestamp="0:0.0",
+            visibility_end_timestamp="0:5.0",
+            actions=[
+                AgentAction(
+                    id=f"agent_{idx}_act_0",
+                    action_type="Yield",
+                    start_timestamp="0:1.0",
+                    end_timestamp="0:2.0",
+                )
+            ],
         )
 
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="alt_tint", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1)]),
     )
+    ui = UiIndexes.get_or_create(bundle)
+    for idx in (0, 1):
+        ui.set(f"agent_{idx}", "track_index", idx)
     fig = render_timeline(_seq(bundle))
     a0 = next(
         s for s in _entity_block_shapes(fig)
@@ -2253,29 +2247,28 @@ def test_entity_block_gap_between_adjacent_blocks() -> None:
     template bg shows through a 0.2-row strip between blocks."""
 
     def _agent(idx: int) -> Agent:
-        return Agent.model_validate(
-            {
-                "id": f"agent_{idx}",
-                "type": "oxd:Car",
-                "visibility_start_timestamp": "0:0.0",
-                "visibility_end_timestamp": "0:5.0",
-                "actions": [
-                    AgentAction(
-                        id=f"agent_{idx}_act_0",
-                        action_type="Yield",
-                        start_timestamp="0:1.0",
-                        end_timestamp="0:2.0",
-                    ).model_dump()
-                ],
-                "_track_index": idx,
-            }
+        return Agent(
+            id=f"agent_{idx}",
+            type="oxd:Car",
+            visibility_start_timestamp="0:0.0",
+            visibility_end_timestamp="0:5.0",
+            actions=[
+                AgentAction(
+                    id=f"agent_{idx}_act_0",
+                    action_type="Yield",
+                    start_timestamp="0:1.0",
+                    end_timestamp="0:2.0",
+                )
+            ],
         )
 
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="gap", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1)]),
     )
+    ui = UiIndexes.get_or_create(bundle)
+    for idx in (0, 1):
+        ui.set(f"agent_{idx}", "track_index", idx)
     fig = render_timeline(_seq(bundle))
     blocks = _entity_block_shapes(fig)
     # Sort by y0 so adjacent-in-y blocks are adjacent in the list.

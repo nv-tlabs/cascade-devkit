@@ -34,10 +34,11 @@ the corpus is parsed via the canonical `AnnotationBundle` schema 2.0.0
 (`src/cascade_av/spec/schema.py`) which is already in the target form,
 and we never mutate the user's annotation here.
 
-Lane indexing (`_track_index`, `_cond_track_index`, etc.) is preserved
-read-only — we use whatever indices the producer wrote, defaulting to 0.
-The annotator's `autoAssignOverlappingTracks` is its own concern; viz only
-reads.
+Lane indexing (timeline rows / sub-lanes) is read from the ``ui/1.0`` sidecar
+extension on the bundle (``bundle.ext("ui/1.0")``). Through schema 2.1.0
+these lived as typed `_track_index` fields on each entity; in 2.2.0 they
+moved to the sidecar. The annotator's `autoAssignOverlappingTracks` is its
+own concern; viz only reads.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from cascade_av.extensions.ui import UiIndexes
 from cascade_av.query.time import parse_timestamp_or
 from cascade_av.spec import (
     Agent,
@@ -280,11 +282,17 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
         next_id += 1
         return nid
 
+    # Read layout indices off the ui/1.0 sidecar; `get_or_create` returns an
+    # empty indexer (every lookup → None) when no sidecar was loaded, which
+    # means every track collapses to row 0 — matches the pre-2.2.0 "no index
+    # set" behaviour.
+    ui = UiIndexes.get_or_create(bundle)
+
     envs_by_id: dict[str, Environment] = {e.id: e for e in ann.environments}
 
     # --- Environments ---
     for ei, env in enumerate(ann.environments):
-        track_idx = env.track_index or 0
+        track_idx = ui.get(env.id, "track_index") or 0
         segs.append(
             Segment(
                 id=f"env_{ei}_{_next()}",
@@ -300,7 +308,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
     # --- Conditions (subtracks under parent env) ---
     for ci, cond in enumerate(ann.conditions):
         parent_env = envs_by_id.get(cond.env_id)
-        parent_track_idx = (parent_env.track_index if parent_env else 0) or 0
+        parent_track_idx = (ui.get(parent_env.id, "track_index") if parent_env else 0) or 0
         segs.append(
             Segment(
                 id=f"cond_{ci}_{_next()}",
@@ -311,7 +319,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 meta={
                     "_condIndex": ci,
                     "_isCondSubtrack": True,
-                    "_cond_track_index": cond.cond_track_index or 0,
+                    "_cond_track_index": ui.get(cond.id, "cond_track_index") or 0,
                 },
                 family="condition",
             )
@@ -371,7 +379,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 meta={
                     "_contIndex": ci,
                     "_isEgoContSubtrack": True,
-                    "_cont_track_index": cont.cont_track_index or 0,
+                    "_cont_track_index": ui.get(cont.id, "cont_track_index") or 0,
                 },
                 family="containment",
             )
@@ -388,7 +396,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 meta={
                     "_inflIndex": ii,
                     "_isEgoInfluenceSubtrack": True,
-                    "_influence_track_index": infl.influence_track_index or 0,
+                    "_influence_track_index": ui.get(infl.id, "influence_track_index") or 0,
                 },
                 family="influence",
             )
@@ -405,7 +413,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                 meta={
                     "_propIndex": pi,
                     "_isEgoPropertySubtrack": True,
-                    "_prop_track_index": prop.prop_track_index or 0,
+                    "_prop_track_index": ui.get(prop.id, "prop_track_index") or 0,
                 },
                 family="property",
             )
@@ -414,7 +422,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
     # --- Traffic objects ---
     obj: TrafficObject
     for oi, obj in enumerate(ann.traffic_objects):
-        track_idx = obj.track_index or 0
+        track_idx = ui.get(obj.id, "track_index") or 0
         name_prefix = f"{obj.name} · " if obj.name else ""
         type_label = obj.type
         if obj.type.startswith("Other") and obj.other_type_description:
@@ -464,7 +472,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_objIndex": oi,
                         "_contIndex": ci,
                         "_isObjContSubtrack": True,
-                        "_cont_track_index": cont.cont_track_index or 0,
+                        "_cont_track_index": ui.get(cont.id, "cont_track_index") or 0,
                     },
                     family="containment",
                 )
@@ -473,7 +481,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
     # --- Traffic lights ---
     light: TrafficLight
     for li, light in enumerate(ann.traffic_lights):
-        track_idx = light.track_index or 0
+        track_idx = ui.get(light.id, "track_index") or 0
         name_prefix = f"{light.name} · " if light.name else ""
         segs.append(
             Segment(
@@ -503,7 +511,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_lightIndex": li,
                         "_contIndex": ci,
                         "_isLightPhysContSubtrack": True,
-                        "_cont_track_index": cont.cont_track_index or 0,
+                        "_cont_track_index": ui.get(cont.id, "cont_track_index") or 0,
                     },
                     family="physical_containment",
                 )
@@ -572,7 +580,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
 
     # --- Agents ---
     for ai, agent in enumerate(ann.agents):
-        track_idx = agent.track_index or 0
+        track_idx = ui.get(agent.id, "track_index") or 0
         prefix = _agent_prefix(agent)
         # Parent visibility bounds — fall back to action / pose envelope.
         if agent.visibility_start_timestamp and agent.visibility_end_timestamp:
@@ -641,7 +649,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_propIndex": pi,
                         "_isAgentPropertySubtrack": True,
                         "_segType": "property",
-                        "_prop_track_index": prop.prop_track_index or 0,
+                        "_prop_track_index": ui.get(prop.id, "prop_track_index") or 0,
                     },
                     family="property",
                 )
@@ -681,7 +689,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_agentIndex": ai,
                         "_contIndex": ci,
                         "_isAgentContSubtrack": True,
-                        "_cont_track_index": cont.cont_track_index or 0,
+                        "_cont_track_index": ui.get(cont.id, "cont_track_index") or 0,
                     },
                     family="containment",
                 )
@@ -699,7 +707,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                         "_agentIndex": ai,
                         "_inflIndex": ii,
                         "_isAgentInfluenceSubtrack": True,
-                        "_influence_track_index": infl.influence_track_index or 0,
+                        "_influence_track_index": ui.get(infl.id, "influence_track_index") or 0,
                     },
                     family="influence",
                 )
