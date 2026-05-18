@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 # Shared model config: permit unknown extras, accept both Python-name and
 # JSON-alias inputs.
@@ -455,6 +455,29 @@ class AnnotationBundle(BaseModel):
     annotation: SilAvAnnotation = Field(default_factory=SilAvAnnotation)
     status: str = "annotating"  # see AnnotationStatusVocab
     provenance: dict[str, Any] = Field(default_factory=lambda: {"generated_by": "human"})
+
+    # Schema-extension surface (see `cascade_av.extensions`). Both are
+    # PrivateAttr so they are absent from `model_dump()` / `model_dump_json()`
+    # and never pollute the main on-disk JSON. Extension payloads live in the
+    # `<stem>.extra.json` sidecar managed by `cascade_av.io`.
+    #
+    # `_extensions` is where registered extensions stash their typed view; the
+    # public `ext()` accessor reads from it.
+    #
+    # `_sidecar_raw` holds verbatim payloads for sidecar keys with no
+    # registered extension, so they round-trip through load → save without
+    # being silently dropped.
+    _extensions: dict[str, Any] = PrivateAttr(default_factory=dict)
+    _sidecar_raw: dict[str, Any] = PrivateAttr(default_factory=dict)
+
+    def ext(self, key: str) -> Any | None:
+        """Return the typed view a registered extension attached under ``key``.
+
+        Returns ``None`` when no extension has populated ``key`` on this
+        bundle (either the extension is not registered, or it found
+        nothing to load).
+        """
+        return self._extensions.get(key)
 
 
 # -----------------------------------------------------------------------------
