@@ -1,8 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Pydantic v2 schema for the CASCADE annotation format (schema_version 2.0.0).
+"""Pydantic v2 schema for the CASCADE annotation format.
 
 Single entry point: `AnnotationBundle`. Everything is reachable from it.
+
+Current schema version is :data:`CURRENT_SCHEMA_VERSION` (see
+:mod:`cascade_av.spec.versions` for the full registry).
 """
 
 from cascade_av.spec.schema import (
@@ -12,8 +15,6 @@ from cascade_av.spec.schema import (
     AgentTypeVocab,
     AnnotationBundle,
     AnnotationStatusVocab,
-    BoundingBox,
-    BoundingBoxFrame,
     Condition,
     Containment,
     DrivingJudgmentVocab,
@@ -31,6 +32,14 @@ from cascade_av.spec.schema import (
     TrafficLight,
     TrafficObject,
     VideoMeta,
+)
+from cascade_av.spec.versions import (
+    CURRENT_SCHEMA_VERSION,
+    SCHEMA_HISTORY,
+    SUPPORTED_SCHEMA_VERSIONS,
+    SchemaVersion,
+    changelog_for,
+    is_known,
 )
 
 __all__ = [
@@ -54,9 +63,14 @@ __all__ = [
     "TrafficLight",
     "SignalHead",
     "LightStates",
-    "BoundingBox",
-    "BoundingBoxFrame",
     "AgentTypeVocab",
     "AnnotationStatusVocab",
     "DrivingJudgmentVocab",
+    # Schema-version registry
+    "CURRENT_SCHEMA_VERSION",
+    "SCHEMA_HISTORY",
+    "SUPPORTED_SCHEMA_VERSIONS",
+    "SchemaVersion",
+    "changelog_for",
+    "is_known",
 ]

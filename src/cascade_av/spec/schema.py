@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Canonical Pydantic v2 schema for the CASCADE annotation format
-(schema_version "2.0.0").
+"""Canonical Pydantic v2 schema for the CASCADE annotation format.
+
+The current schema version is :data:`cascade_av.spec.versions.CURRENT_SCHEMA_VERSION`
+(2.1.0 as of writing); see :mod:`cascade_av.spec.versions` for the registry and
+``docs/dev/schema-history.md`` for the human-readable changelog.
 
 The on-disk corpus is ground truth. Vocabulary-typed fields (action types,
 agent types, etc.) are declared as plain `str` rather than `Enum`, because the
@@ -18,44 +21,27 @@ Pydantic aliases.
 
 `model_config = ConfigDict(extra="allow")` is set on every model so anything
 new added by the frontend (or any other producer) is preserved on read and
-dump without code change.
+dump without code change. Schema-extension data lives in a sidecar
+``<stem>.extra.json`` next to the main file; see :mod:`cascade_av.extensions`.
 """
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+
+from cascade_av.spec.versions import CURRENT_SCHEMA_VERSION
+
+# One-shot per process: schema versions we have already warned about as
+# "older than CURRENT_SCHEMA_VERSION". Reset by
+# `_reset_version_warn_cache_for_tests`.
+_warned_schema_versions: set[str] = set()
 
 # Shared model config: permit unknown extras, accept both Python-name and
 # JSON-alias inputs.
 _MC = ConfigDict(extra="allow", populate_by_name=True)
-
-
-# -----------------------------------------------------------------------------
-# Geometry: bounding boxes
-# -----------------------------------------------------------------------------
-
-class BoundingBox(BaseModel):
-    """One axis-aligned 2-D bounding box in normalized image coordinates."""
-
-    model_config = _MC
-
-    x: float
-    y: float
-    w: float
-    h: float
-    object_id: str = ""
-    object_class: str = ""
-
-
-class BoundingBoxFrame(BaseModel):
-    """One frame on the clip timeline carrying zero or more bounding boxes."""
-
-    model_config = _MC
-
-    timestamp: str
-    bounding_boxes: list[BoundingBox] = Field(default_factory=list)
 
 
 # -----------------------------------------------------------------------------
@@ -239,7 +225,6 @@ class TrafficObject(BaseModel):
     containment: list[Containment] = Field(default_factory=list)
     state_sequence: list[ObjectStateEntry] = Field(default_factory=list)
     keypoints: list[Keypoint] = Field(default_factory=list)
-    bounding_boxes: list[BoundingBoxFrame] = Field(default_factory=list)
     track_index: int | None = Field(
         default=None,
         validation_alias="_track_index",
@@ -301,7 +286,6 @@ class TrafficLight(BaseModel):
     visibility_end_timestamp: str = ""
     containment: list[Containment] = Field(default_factory=list)
     signal_heads: list[SignalHead] = Field(default_factory=list)
-    bounding_boxes: list[BoundingBoxFrame] = Field(default_factory=list)
     track_index: int | None = Field(
         default=None,
         validation_alias="_track_index",
@@ -376,7 +360,6 @@ class Agent(BaseModel):
     containment: list[Containment] = Field(default_factory=list)
     influenced_by: list[Influence] = Field(default_factory=list)
     keypoints: list[Keypoint] = Field(default_factory=list)
-    bounding_boxes: list[BoundingBoxFrame] = Field(default_factory=list)
     track_index: int | None = Field(
         default=None,
         validation_alias="_track_index",
@@ -450,7 +433,7 @@ class AnnotationBundle(BaseModel):
 
     model_config = _MC
 
-    schema_version: str = "2.0.0"
+    schema_version: str = CURRENT_SCHEMA_VERSION
     video: VideoMeta
     annotation: SilAvAnnotation = Field(default_factory=SilAvAnnotation)
     status: str = "annotating"  # see AnnotationStatusVocab
@@ -478,6 +461,31 @@ class AnnotationBundle(BaseModel):
         nothing to load).
         """
         return self._extensions.get(key)
+
+    @model_validator(mode="after")
+    def _warn_on_old_schema(self) -> "AnnotationBundle":
+        """Emit one DeprecationWarning per non-current schema_version per process.
+
+        The loader still accepts older bundles — this is advisory only — but
+        the message points users at the ``cascade-migrate`` CLI so the
+        deprecation isn't silent.
+        """
+        v = self.schema_version
+        if v != CURRENT_SCHEMA_VERSION and v not in _warned_schema_versions:
+            _warned_schema_versions.add(v)
+            warnings.warn(
+                f"AnnotationBundle has schema_version={v!r}; current is "
+                f"{CURRENT_SCHEMA_VERSION!r}. Run `cascade-migrate` to "
+                f"upgrade the corpus.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+        return self
+
+
+def _reset_version_warn_cache_for_tests() -> None:
+    """Wipe the schema-version warn cache. Test fixtures only."""
+    _warned_schema_versions.clear()
 
 
 # -----------------------------------------------------------------------------
@@ -535,8 +543,6 @@ __all__ = [
     "AgentTypeVocab",
     "AnnotationBundle",
     "AnnotationStatusVocab",
-    "BoundingBox",
-    "BoundingBoxFrame",
     "Condition",
     "Containment",
     "DrivingJudgmentVocab",
