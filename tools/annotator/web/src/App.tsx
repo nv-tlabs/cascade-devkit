@@ -9,6 +9,7 @@ import { Timeline } from './components/Timeline'
 import { RightPanel } from './components/RightPanel'
 import { LockBar } from './components/LockBar'
 import { VideoPlayer } from './components/VideoPlayer'
+import { nextVideoPct } from './lib/splitter'
 
 /**
  * Top-level layout: sidebar (clips) | center (LockBar + video + timeline) | right (segment editor).
@@ -28,14 +29,20 @@ export default function App() {
 
   const onSplitterMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
+    if (!containerElRef.current) return
+    // Capture deltas at mousedown so the splitter tracks the cursor exactly,
+    // regardless of where in the 6 px hit-bar the user grabbed it and regardless
+    // of any siblings (LockBar) sitting above the video div inside the container.
+    const startY = e.clientY
+    const startPct = videoHeight
+    const containerHeight = containerElRef.current.getBoundingClientRect().height
     draggingRef.current = true
     document.body.style.cursor = 'row-resize'
     document.body.style.userSelect = 'none'
+    const dragState = { startY, startPct, containerHeight }
     const onMove = (ev: MouseEvent) => {
-      if (!draggingRef.current || !containerElRef.current) return
-      const rect = containerElRef.current.getBoundingClientRect()
-      const pct = ((ev.clientY - rect.top) / rect.height) * 100
-      setVideoHeight(Math.max(15, Math.min(70, pct)))
+      if (!draggingRef.current) return
+      setVideoHeight(nextVideoPct(dragState, ev.clientY, { minPct: 15, maxPct: 70 }))
     }
     const onUp = () => {
       draggingRef.current = false
@@ -46,7 +53,7 @@ export default function App() {
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-  }, [])
+  }, [videoHeight])
 
   // Initial load: server health + clip list.
   useEffect(() => {
