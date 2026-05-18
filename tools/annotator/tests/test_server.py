@@ -385,3 +385,132 @@ def test_build_clip_index_dedupes_duplicate_clip_ids(tmp_path: Path) -> None:
 def test_build_clip_index_missing_source_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         build_clip_index([tmp_path / "does-not-exist"])
+
+
+# -----------------------------------------------------------------------------
+# POST /annotations/validate — server-side validation contract
+# -----------------------------------------------------------------------------
+
+def _clean_validate_payload(clip_id: str = "freshclip") -> dict:
+    """A complete-but-minimal bundle payload that satisfies every hard rule."""
+    return {
+        "video": {"clip_id": clip_id, "duration_s": 10.0},
+        "annotation": {
+            "ego_vehicle": {
+                "actions": [{"id": "EA1", "type": "Drive Straight"}],
+            },
+        },
+    }
+
+
+def _dirty_validate_payload(clip_id: str = "freshclip") -> dict:
+    """A bundle payload with NO ego actions — trips the ego rule."""
+    return {
+        "video": {"clip_id": clip_id, "duration_s": 10.0},
+        "annotation": {"ego_vehicle": {"actions": []}},
+    }
+
+
+def test_validate_endpoint_clean_bundle_returns_ok_true(tmp_path: Path) -> None:
+    """A bundle that satisfies every hard rule returns ``ok=True`` + no issues."""
+    video = tmp_path / "freshclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    r = client.post(
+        "/api/clips/freshclip/annotations/validate", json=_clean_validate_payload()
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["issues"] == []
+
+
+def test_validate_endpoint_dirty_bundle_returns_ok_false_and_issues(
+    tmp_path: Path,
+) -> None:
+    """A bundle missing the required ego action returns ``ok=False`` + an issue."""
+    video = tmp_path / "freshclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    r = client.post(
+        "/api/clips/freshclip/annotations/validate", json=_dirty_validate_payload()
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is False
+    assert isinstance(body["issues"], list)
+    assert body["issues"]
+    rules = {i["rule"] for i in body["issues"]}
+    assert "ego_has_at_least_one_action" in rules
+    # Every issue is the documented shape.
+    for issue in body["issues"]:
+        assert set(issue.keys()) == {
+            "severity",
+            "entity_path",
+            "entity_id",
+            "field",
+            "rule",
+            "message",
+        }
+        assert issue["severity"] in {"error", "warning"}
+
+
+def test_validate_endpoint_unknown_clip_404(corpus_copy: Path) -> None:
+    client = _client(corpus_copy.parent)
+    r = client.post(
+        "/api/clips/nope-does-not-exist/annotations/validate",
+        json={"video": {"clip_id": "x"}},
+    )
+    assert r.status_code == 404
+
+
+def test_validate_endpoint_invalid_json_422(tmp_path: Path) -> None:
+    """Payloads that fail pydantic validation surface as 422 with errors."""
+    video = tmp_path / "freshclip.mp4"
+    video.touch()
+    index = build_clip_index([tmp_path])
+    app = create_app(index, read_only=False, destination_dir=tmp_path)
+    client = TestClient(app)
+
+    r = client.post(
+        "/api/clips/freshclip/annotations/validate",
+        json={"definitely_not_a_bundle": 1},
+    )
+    assert r.status_code == 422
+    body = r.json()
+    assert "errors" in body
+    assert isinstance(body["errors"], list)
+    assert body["errors"]
+
+
+def test_validate_endpoint_does_not_write(corpus_copy: Path) -> None:
+    """Validation is read-only — the on-disk bytes must not change."""
+    bundle = load_file(corpus_copy)
+    clip_id = bundle.video.clip_id
+    payload = bundle.model_dump(by_alias=True, exclude_unset=True, mode="json")
+    pre_bytes = corpus_copy.read_bytes()
+
+    client = _client(corpus_copy.parent)
+    r = client.post(f"/api/clips/{clip_id}/annotations/validate", json=payload)
+    assert r.status_code == 200, r.text
+    assert corpus_copy.read_bytes() == pre_bytes
+
+
+def test_validate_endpoint_works_in_read_only_mode(corpus_copy: Path) -> None:
+    """Validation must work when the server is read-only — it never writes."""
+    bundle = load_file(corpus_copy)
+    clip_id = bundle.video.clip_id
+    payload = bundle.model_dump(by_alias=True, exclude_unset=True, mode="json")
+
+    client = _client(corpus_copy.parent, read_only=True)
+    r = client.post(f"/api/clips/{clip_id}/annotations/validate", json=payload)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "ok" in body
+    assert "issues" in body
