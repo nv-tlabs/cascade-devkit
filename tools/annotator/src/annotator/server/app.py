@@ -7,6 +7,7 @@ Routes:
   - GET  /api/clips
   - GET  /api/clips/{clip_id}/annotations
   - PUT  /api/clips/{clip_id}/annotations
+  - POST /api/clips/{clip_id}/annotations/validate
   - GET  /api/clips/{clip_id}/video           (Phase 3)
   - GET  /api/clips/{clip_id}/video/status    (Phase 3 progress probe)
 
@@ -39,6 +40,7 @@ from annotator.server.video import (
     VideoResolver,
     VideoToolsMissing,
 )
+from cascade_av.validate import validate as validate_bundle
 
 LOG = logging.getLogger(__name__)
 
@@ -122,6 +124,31 @@ def create_app(
             content={
                 "saved_to": str(saved_path),
                 "bundle": bundle_to_wire(bundle),
+            },
+        )
+
+    @app.post("/api/clips/{clip_id}/annotations/validate")
+    async def validate_annotations(clip_id: str, request: Request) -> JSONResponse:
+        """Run the bundle through ``cascade_av.validate`` without saving.
+
+        Body shape mirrors PUT (bundle + ``_extensions`` envelope). Response:
+        ``{"ok": bool, "issues": [{"severity": ..., ...}]}``. Read-only by
+        design; does NOT honour ``read_only`` mode (validation never writes).
+        """
+        if clip_id not in clip_index:
+            raise HTTPException(status_code=404, detail=f"unknown clip_id: {clip_id}")
+        payload = await request.json()
+        try:
+            bundle = bundle_from_wire(payload)
+        except ValidationError as exc:
+            return JSONResponse(status_code=422, content={"errors": exc.errors()})
+        issues = validate_bundle(bundle)
+        ok = not any(i.severity == "error" for i in issues)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": ok,
+                "issues": [i.to_dict() for i in issues],
             },
         )
 
