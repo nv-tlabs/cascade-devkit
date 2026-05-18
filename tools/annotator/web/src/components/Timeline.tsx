@@ -438,8 +438,12 @@ export function Timeline() {
     curT1: number
     targetTrackId?: string
   } | null>(null)
+  // Drag state mirror — keeps event handlers (registered in the drag
+  // useEffect below) seeing the latest dragState without re-attaching
+  // listeners on every move. Sync via useEffect because writing to
+  // ref.current during render is illegal under React 19's compiler.
   const dragRef = useRef(dragState)
-  dragRef.current = dragState
+  useEffect(() => { dragRef.current = dragState }, [dragState])
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
   const [verticalScroll, setVerticalScroll] = useState(0)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -452,7 +456,11 @@ export function Timeline() {
     }
     return segs
   }, [bundle?.annotation, bundle?.video?.duration_s])
-  const baseSegmentsRef = useRef(baseSegments); baseSegmentsRef.current = baseSegments
+  // baseSegmentsRef — read by event handlers (drag-resolve, hit-test)
+  // that need the current segment list without re-binding on every
+  // render. Sync via useEffect to satisfy react-hooks/refs.
+  const baseSegmentsRef = useRef(baseSegments)
+  useEffect(() => { baseSegmentsRef.current = baseSegments }, [baseSegments])
 
   const segments = useMemo(() => {
     if (dragState) {
@@ -1429,6 +1437,14 @@ export function Timeline() {
   }, [duration, playheadTime, selectedPath, trackList, tracks, zoomLevel, getLiveScrollOffset, mousePos, segments, arrowTypes, verticalScroll, lightLaneCounts, keypointsVisible, bundle, canvasColors])
 
   // --- Mouse down ---
+  // The deps array deliberately omits `playheadTime` and `persistBundle`:
+  // including them would re-create this callback every render (playheadTime
+  // ticks on every frame during playback; persistBundle is closed over from
+  // a parent store action). Re-creation cascades into the mousemove/mouseup
+  // useEffect attachment loop. The omissions are stable-reference reads via
+  // the existing ref-mirrors and the latest store snapshot. React Compiler
+  // can't preserve this manual memoization, but the manual version is
+  // intentional — see #60 for the cleanup plan.
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (e.button !== 0) return // only left-click for drag/select
@@ -1902,10 +1918,18 @@ export function Timeline() {
     [bundle, duration, getLiveScrollOffset, commitNativeScroll, scrubTo, segments, updateBundle, setPlayhead, selectPath, selectedPath, tracks, trackList, zoomLevel, verticalScroll, lightLaneCounts, toggleGroupCollapse, keypointsVisible]
   )
 
-  const bundleRef = useRef(bundle); bundleRef.current = bundle
-  const selectedClipIdRef = useRef(selectedClipId); selectedClipIdRef.current = selectedClipId
-  const trackListRef = useRef(trackList); trackListRef.current = trackList
-  const verticalScrollRef = useRef(verticalScroll); verticalScrollRef.current = verticalScroll
+  // Latest-value mirrors for the drag/edit event handlers below. Each
+  // handler reads `*Ref.current` so it can act on the freshest store /
+  // prop state without re-binding when those change. Sync via useEffect
+  // — writing to ref.current during render trips React 19's compiler.
+  const bundleRef = useRef(bundle)
+  const selectedClipIdRef = useRef(selectedClipId)
+  const trackListRef = useRef(trackList)
+  const verticalScrollRef = useRef(verticalScroll)
+  useEffect(() => { bundleRef.current = bundle }, [bundle])
+  useEffect(() => { selectedClipIdRef.current = selectedClipId }, [selectedClipId])
+  useEffect(() => { trackListRef.current = trackList }, [trackList])
+  useEffect(() => { verticalScrollRef.current = verticalScroll }, [verticalScroll])
 
   // --- Drag effect ---
   useEffect(() => {
@@ -2333,6 +2357,12 @@ export function Timeline() {
   }, [dragState, duration, updateBundle, zoomLevel])
 
   // --- Right-click to create ---
+  // The deps omit `bundle?.annotation?.eventful` and `guardedSave`: the
+  // eventful guard is read via `useStore.getState()` (a fresh snapshot, not
+  // the React closure) right inside the callback, and `guardedSave` is the
+  // intentionally-stable stub defined above. React Compiler can't preserve
+  // this manual memoization; the manual version stays until the deeper
+  // refactor in #60 lands.
   const handleRightClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       e.preventDefault()
