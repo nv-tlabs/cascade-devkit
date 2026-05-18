@@ -419,7 +419,10 @@ uv run cascade-annotate /path/to/json_annotations
 ```
 
 Lock-by-default, explicit Save (with `.bak` on first save), HEVC→H.264
-transcode pipeline for browser playback. Two docs cover the rest:
+transcode pipeline for browser playback. Annotators mark a clip complete
+via the right panel; the server validates against the rule set in
+`cascade_av.validate` before accepting `status="complete"`. Two docs cover
+the rest:
 
 - [`docs/user/annotator.md`](docs/user/annotator.md) — UI walkthrough
   end-to-end: mouse, keyboard, lock model, arrows, troubleshooting.

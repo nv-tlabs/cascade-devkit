@@ -600,6 +600,298 @@ def timestamps_in_video_range(bundle: AnnotationBundle) -> list[Issue]:
     return issues
 
 
+# -----------------------------------------------------------------------------
+# Soft rules — emit `warning`s that surface in the UI without blocking completion
+# -----------------------------------------------------------------------------
+
+def _emit_blank_reference(
+    issues: list[Issue],
+    refs: list[str],
+    *,
+    entity_path: str,
+    entity_id: str | None,
+    field: str,
+) -> None:
+    """Emit one ``id_references_have_value`` warning per blank entry in `refs`."""
+    for idx, ref in enumerate(refs):
+        if not _is_blank(ref):
+            continue
+        issues.append(
+            Issue(
+                severity="warning",
+                entity_path=entity_path,
+                entity_id=entity_id,
+                field=field,
+                rule="id_references_have_value",
+                message=(
+                    f"Reference at {entity_path}.{field}[{idx}] is empty — "
+                    "pick a target or delete the row."
+                ),
+            )
+        )
+
+
+def id_references_have_value(bundle: AnnotationBundle) -> list[Issue]:
+    """Every reference-list slot should name a real id (warning if blank).
+
+    Companion to :func:`id_references_resolve`: that hard rule fires when a
+    populated id fails to resolve; this soft rule fires when the slot is
+    *empty* — almost always a half-finished UI row the annotator forgot to
+    delete or fill in. Walks the same set of reference fields as the hard
+    rule (``because_of`` / ``link_to`` / ``action_target`` / ``influencers``,
+    plus ``SignalingDetails.link_to`` and ``SignalHead.influenced_agent_ids``).
+    """
+    issues: list[Issue] = []
+    ann = bundle.annotation
+
+    for i, action in enumerate(ann.ego_vehicle.actions):
+        base = f"annotation.ego_vehicle.actions[{i}]"
+        _emit_blank_reference(
+            issues, action.because_of, entity_path=base, entity_id=action.id or None, field="because_of"
+        )
+        _emit_blank_reference(
+            issues, action.link_to, entity_path=base, entity_id=action.id or None, field="link_to"
+        )
+        _emit_blank_reference(
+            issues, action.action_target, entity_path=base, entity_id=action.id or None, field="action_target"
+        )
+    for i, prop in enumerate(ann.ego_vehicle.properties):
+        if prop.signaling_details is not None:
+            _emit_blank_reference(
+                issues,
+                prop.signaling_details.link_to,
+                entity_path=f"annotation.ego_vehicle.properties[{i}].signaling_details",
+                entity_id=prop.id or None,
+                field="link_to",
+            )
+    for i, inf in enumerate(ann.ego_vehicle.influenced_by):
+        _emit_blank_reference(
+            issues,
+            inf.influencers,
+            entity_path=f"annotation.ego_vehicle.influenced_by[{i}]",
+            entity_id=inf.id or None,
+            field="influencers",
+        )
+    for ai, agent in enumerate(ann.agents):
+        for j, action in enumerate(agent.actions):
+            base = f"annotation.agents[{ai}].actions[{j}]"
+            _emit_blank_reference(
+                issues, action.because_of, entity_path=base, entity_id=action.id or None, field="because_of"
+            )
+            _emit_blank_reference(
+                issues, action.link_to, entity_path=base, entity_id=action.id or None, field="link_to"
+            )
+            _emit_blank_reference(
+                issues, action.action_target, entity_path=base, entity_id=action.id or None, field="action_target"
+            )
+            if action.signaling_details is not None:
+                _emit_blank_reference(
+                    issues,
+                    action.signaling_details.link_to,
+                    entity_path=f"{base}.signaling_details",
+                    entity_id=action.id or None,
+                    field="link_to",
+                )
+        for j, prop in enumerate(agent.properties):
+            if prop.signaling_details is not None:
+                _emit_blank_reference(
+                    issues,
+                    prop.signaling_details.link_to,
+                    entity_path=f"annotation.agents[{ai}].properties[{j}].signaling_details",
+                    entity_id=prop.id or None,
+                    field="link_to",
+                )
+        for j, inf in enumerate(agent.influenced_by):
+            _emit_blank_reference(
+                issues,
+                inf.influencers,
+                entity_path=f"annotation.agents[{ai}].influenced_by[{j}]",
+                entity_id=inf.id or None,
+                field="influencers",
+            )
+    for ti, tl in enumerate(ann.traffic_lights):
+        for hi, head in enumerate(tl.signal_heads):
+            _emit_blank_reference(
+                issues,
+                head.influenced_agent_ids,
+                entity_path=f"annotation.traffic_lights[{ti}].signal_heads[{hi}]",
+                entity_id=head.id or None,
+                field="influenced_agent_ids",
+            )
+
+    return issues
+
+
+def _emit_blank_timestamp(
+    issues: list[Issue],
+    raw: str | None,
+    *,
+    entity_path: str,
+    entity_id: str | None,
+    field: str,
+) -> None:
+    """Emit one ``timestamps_have_value`` warning if `raw` is empty/whitespace.
+
+    None values are ignored — Pydantic models omit unset optional fields, so
+    None means "field not present" rather than "user blanked the input."
+    """
+    if raw is None:
+        return
+    if not _is_blank(raw):
+        return
+    issues.append(
+        Issue(
+            severity="warning",
+            entity_path=entity_path,
+            entity_id=entity_id,
+            field=field,
+            rule="timestamps_have_value",
+            message=(
+                f"Timestamp `{field}` at {entity_path} is empty — fill it in or "
+                "delete the row."
+            ),
+        )
+    )
+
+
+def timestamps_have_value(bundle: AnnotationBundle) -> list[Issue]:
+    """Every interval-bearing entity's timestamps should be populated (warning).
+
+    Companion to :func:`timestamps_in_video_range`: that hard rule fires on
+    unparseable / out-of-range / inverted intervals; this soft rule fires on
+    *empty* timestamps that the UI left as placeholder fill-state. Walks the
+    same entity surface so the two rules' coverage stays in lockstep.
+    """
+    issues: list[Issue] = []
+    ann = bundle.annotation
+
+    def _check_window(
+        start_ts: str | None,
+        end_ts: str | None,
+        *,
+        entity_path: str,
+        entity_id: str | None,
+        start_field: str = "start_timestamp",
+        end_field: str = "end_timestamp",
+    ) -> None:
+        _emit_blank_timestamp(issues, start_ts, entity_path=entity_path, entity_id=entity_id, field=start_field)
+        _emit_blank_timestamp(issues, end_ts, entity_path=entity_path, entity_id=entity_id, field=end_field)
+
+    for i, env in enumerate(ann.environments):
+        _check_window(
+            env.start_timestamp, env.end_timestamp,
+            entity_path=f"annotation.environments[{i}]", entity_id=env.id or None,
+        )
+    for i, cond in enumerate(ann.conditions):
+        _check_window(
+            cond.start_timestamp, cond.end_timestamp,
+            entity_path=f"annotation.conditions[{i}]", entity_id=cond.id or None,
+        )
+    for i, obj in enumerate(ann.traffic_objects):
+        _check_window(
+            obj.visibility_start_timestamp, obj.visibility_end_timestamp,
+            entity_path=f"annotation.traffic_objects[{i}]", entity_id=obj.id or None,
+            start_field="visibility_start_timestamp", end_field="visibility_end_timestamp",
+        )
+        for j, c in enumerate(obj.containment):
+            _check_window(
+                c.start_timestamp, c.end_timestamp,
+                entity_path=f"annotation.traffic_objects[{i}].containment[{j}]", entity_id=c.id or None,
+            )
+        for j, s in enumerate(obj.state_sequence):
+            _check_window(
+                s.start_timestamp, s.end_timestamp,
+                entity_path=f"annotation.traffic_objects[{i}].state_sequence[{j}]", entity_id=s.id or None,
+            )
+    for i, tl in enumerate(ann.traffic_lights):
+        _check_window(
+            tl.visibility_start_timestamp, tl.visibility_end_timestamp,
+            entity_path=f"annotation.traffic_lights[{i}]", entity_id=tl.id or None,
+            start_field="visibility_start_timestamp", end_field="visibility_end_timestamp",
+        )
+        for j, c in enumerate(tl.containment):
+            _check_window(
+                c.start_timestamp, c.end_timestamp,
+                entity_path=f"annotation.traffic_lights[{i}].containment[{j}]", entity_id=c.id or None,
+            )
+        for j, head in enumerate(tl.signal_heads):
+            _check_window(
+                head.start_timestamp, head.end_timestamp,
+                entity_path=f"annotation.traffic_lights[{i}].signal_heads[{j}]", entity_id=head.id or None,
+            )
+            for k, state in enumerate(head.state_sequence):
+                _check_window(
+                    state.start_timestamp, state.end_timestamp,
+                    entity_path=(
+                        f"annotation.traffic_lights[{i}].signal_heads[{j}]"
+                        f".state_sequence[{k}]"
+                    ),
+                    entity_id=state.id or None,
+                )
+            for k, c in enumerate(head.env_controlled):
+                _check_window(
+                    c.start_timestamp, c.end_timestamp,
+                    entity_path=(
+                        f"annotation.traffic_lights[{i}].signal_heads[{j}]"
+                        f".env_controlled[{k}]"
+                    ),
+                    entity_id=c.id or None,
+                )
+    for i, agent in enumerate(ann.agents):
+        _check_window(
+            agent.visibility_start_timestamp, agent.visibility_end_timestamp,
+            entity_path=f"annotation.agents[{i}]", entity_id=agent.id or None,
+            start_field="visibility_start_timestamp", end_field="visibility_end_timestamp",
+        )
+        for j, action in enumerate(agent.actions):
+            _check_window(
+                action.start_timestamp, action.end_timestamp,
+                entity_path=f"annotation.agents[{i}].actions[{j}]", entity_id=action.id or None,
+            )
+        for j, prop in enumerate(agent.properties):
+            _check_window(
+                prop.start_timestamp, prop.end_timestamp,
+                entity_path=f"annotation.agents[{i}].properties[{j}]", entity_id=prop.id or None,
+            )
+        for j, pose in enumerate(agent.ego_relative_pose):
+            _check_window(
+                pose.start_timestamp, pose.end_timestamp,
+                entity_path=f"annotation.agents[{i}].ego_relative_pose[{j}]", entity_id=None,
+            )
+        for j, c in enumerate(agent.containment):
+            _check_window(
+                c.start_timestamp, c.end_timestamp,
+                entity_path=f"annotation.agents[{i}].containment[{j}]", entity_id=c.id or None,
+            )
+        for j, inf in enumerate(agent.influenced_by):
+            _check_window(
+                inf.start_timestamp, inf.end_timestamp,
+                entity_path=f"annotation.agents[{i}].influenced_by[{j}]", entity_id=inf.id or None,
+            )
+    for i, action in enumerate(ann.ego_vehicle.actions):
+        _check_window(
+            action.start_timestamp, action.end_timestamp,
+            entity_path=f"annotation.ego_vehicle.actions[{i}]", entity_id=action.id or None,
+        )
+    for i, prop in enumerate(ann.ego_vehicle.properties):
+        _check_window(
+            prop.start_timestamp, prop.end_timestamp,
+            entity_path=f"annotation.ego_vehicle.properties[{i}]", entity_id=prop.id or None,
+        )
+    for i, c in enumerate(ann.ego_vehicle.containment):
+        _check_window(
+            c.start_timestamp, c.end_timestamp,
+            entity_path=f"annotation.ego_vehicle.containment[{i}]", entity_id=c.id or None,
+        )
+    for i, inf in enumerate(ann.ego_vehicle.influenced_by):
+        _check_window(
+            inf.start_timestamp, inf.end_timestamp,
+            entity_path=f"annotation.ego_vehicle.influenced_by[{i}]", entity_id=inf.id or None,
+        )
+
+    return issues
+
+
 HARD_RULES: tuple[Rule, ...] = (
     environment_requires_type,
     condition_requires_type,
@@ -610,10 +902,13 @@ HARD_RULES: tuple[Rule, ...] = (
     timestamps_in_video_range,
 )
 
-# Soft rules are warnings that surface to the UI but do not block completion.
-# Empty for now; populate as classification rules emerge from real annotator
-# usage.
-SOFT_RULES: tuple[Rule, ...] = ()
+# Soft rules surface to the UI as warnings without blocking completion.
+# Catch the "half-filled placeholder" UI artefacts the hard rules silently
+# tolerate (blank reference rows, empty timestamp inputs).
+SOFT_RULES: tuple[Rule, ...] = (
+    id_references_have_value,
+    timestamps_have_value,
+)
 
 
 def validate(bundle: AnnotationBundle) -> list[Issue]:
@@ -640,7 +935,9 @@ __all__ = [
     "condition_requires_type",
     "ego_has_at_least_one_action",
     "environment_requires_type",
+    "id_references_have_value",
     "id_references_resolve",
+    "timestamps_have_value",
     "timestamps_in_video_range",
     "traffic_object_requires_type",
     "validate",

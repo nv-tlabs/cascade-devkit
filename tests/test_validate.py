@@ -37,7 +37,9 @@ from cascade_av.validate import (
     condition_requires_type,
     ego_has_at_least_one_action,
     environment_requires_type,
+    id_references_have_value,
     id_references_resolve,
+    timestamps_have_value,
     timestamps_in_video_range,
     traffic_object_requires_type,
     validate,
@@ -47,15 +49,25 @@ from cascade_av.validate import (
 def _clean_bundle() -> AnnotationBundle:
     """A fully-valid bundle: one ego action, no other entities.
 
-    The minimum bundle that satisfies every HARD_RULE. Tests that want to
-    exercise one rule's negative path mutate a copy of this fixture so the
-    other rules stay quiet.
+    The minimum bundle that satisfies every HARD_RULE *and* every SOFT_RULE.
+    Tests that want to exercise one rule's negative path mutate a copy of
+    this fixture so the other rules stay quiet. The ego action's timestamps
+    are populated explicitly because :func:`timestamps_have_value` warns
+    on blank intervals; leaving them at the schema default
+    (empty strings) would emit two stray warnings from every test.
     """
     return AnnotationBundle(
         video=VideoMeta(clip_id="clip-xyz", duration_s=10.0),
         annotation=SilAvAnnotation(
             ego_vehicle=EgoVehicle(
-                actions=[EgoAction(id="EA1", type="Drive Straight")],
+                actions=[
+                    EgoAction(
+                        id="EA1",
+                        type="Drive Straight",
+                        start_timestamp="0:0.0",
+                        end_timestamp="0:5.0",
+                    )
+                ],
             ),
         ),
     )
@@ -465,6 +477,152 @@ def test_timestamps_in_video_range_blank_intervals_ignored() -> None:
 
 
 # -----------------------------------------------------------------------------
+# id_references_have_value (soft)
+# -----------------------------------------------------------------------------
+
+def test_id_references_have_value_clean_bundle_returns_no_issues() -> None:
+    """A bundle with no empty reference slots emits no warnings."""
+    bundle = _clean_bundle()
+    bundle.annotation.ego_vehicle.actions[0].because_of = ["Ego"]
+    assert id_references_have_value(bundle) == []
+
+
+def test_id_references_have_value_blank_because_of_warns() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.ego_vehicle.actions[0].because_of = [""]
+    issues = id_references_have_value(bundle)
+    assert len(issues) == 1
+    assert issues[0].severity == "warning"
+    assert issues[0].rule == "id_references_have_value"
+    assert issues[0].field == "because_of"
+    assert issues[0].entity_path == "annotation.ego_vehicle.actions[0]"
+    assert "because_of[0]" in issues[0].message
+
+
+def test_id_references_have_value_whitespace_warns() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.ego_vehicle.actions[0].link_to = ["   "]
+    issues = id_references_have_value(bundle)
+    assert len(issues) == 1
+    assert issues[0].field == "link_to"
+
+
+def test_id_references_have_value_multiple_blanks_one_warning_each() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.agents.append(
+        Agent(
+            id="A1",
+            type="oxd:Car",
+            actions=[
+                AgentAction(
+                    id="AA1",
+                    action_type="Drive",
+                    because_of=["", "Ego", ""],
+                )
+            ],
+        )
+    )
+    issues = id_references_have_value(bundle)
+    assert len(issues) == 2
+    # Index annotations differ — locks ordering and per-slot identification.
+    assert "because_of[0]" in issues[0].message
+    assert "because_of[2]" in issues[1].message
+
+
+def test_id_references_have_value_signaling_link_to_blank_warns() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.agents.append(
+        Agent(
+            id="A1",
+            type="oxd:Car",
+            actions=[
+                AgentAction(
+                    id="AA1",
+                    action_type="Signal",
+                    signaling_details=SignalingDetails(link_to=[""]),
+                )
+            ],
+        )
+    )
+    issues = id_references_have_value(bundle)
+    assert any(
+        i.field == "link_to" and "signaling_details" in i.entity_path for i in issues
+    )
+
+
+def test_id_references_have_value_signal_head_influenced_agent_ids_blank_warns() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.traffic_lights.append(
+        TrafficLight(
+            id="TL1",
+            signal_heads=[SignalHead(id="SH1", influenced_agent_ids=[""])],
+        )
+    )
+    issues = id_references_have_value(bundle)
+    assert any(i.field == "influenced_agent_ids" for i in issues)
+
+
+# -----------------------------------------------------------------------------
+# timestamps_have_value (soft)
+# -----------------------------------------------------------------------------
+
+def test_timestamps_have_value_clean_bundle_returns_no_issues() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.environments.append(
+        Environment(id="Env1", type="Road", start_timestamp="0:0.0", end_timestamp="0:5.0")
+    )
+    assert timestamps_have_value(bundle) == []
+
+
+def test_timestamps_have_value_blank_start_warns() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.environments.append(
+        Environment(id="Env1", type="Road", start_timestamp="", end_timestamp="0:5.0")
+    )
+    issues = timestamps_have_value(bundle)
+    assert len(issues) == 1
+    assert issues[0].severity == "warning"
+    assert issues[0].rule == "timestamps_have_value"
+    assert issues[0].field == "start_timestamp"
+    assert issues[0].entity_id == "Env1"
+
+
+def test_timestamps_have_value_blank_both_emits_two_warnings() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.environments.append(
+        Environment(id="Env1", type="Road", start_timestamp="", end_timestamp="   ")
+    )
+    issues = timestamps_have_value(bundle)
+    assert len(issues) == 2
+    fields = {i.field for i in issues}
+    assert fields == {"start_timestamp", "end_timestamp"}
+
+
+def test_timestamps_have_value_visibility_window_uses_field_names() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.traffic_objects.append(
+        TrafficObject(id="T1", type="oxd:Cone", visibility_start_timestamp="", visibility_end_timestamp="0:5.0")
+    )
+    issues = timestamps_have_value(bundle)
+    assert len(issues) == 1
+    assert issues[0].field == "visibility_start_timestamp"
+
+
+def test_timestamps_have_value_agent_action_blank_warns() -> None:
+    bundle = _clean_bundle()
+    bundle.annotation.agents.append(
+        Agent(
+            id="A1",
+            type="oxd:Car",
+            actions=[AgentAction(id="AA1", action_type="Drive", start_timestamp="", end_timestamp="")],
+        )
+    )
+    issues = timestamps_have_value(bundle)
+    paths = {i.entity_path for i in issues}
+    assert "annotation.agents[0].actions[0]" in paths
+
+
+# -----------------------------------------------------------------------------
 # validate aggregator
 # -----------------------------------------------------------------------------
 
@@ -505,10 +663,15 @@ def test_validate_aggregates_all_rules() -> None:
     expected = {r.__name__ for r in HARD_RULES}
     assert expected.issubset(rule_ids), f"missing rules: {expected - rule_ids}"
 
-    # Every emitted issue is an Issue instance with severity=error here.
+    # Every emitted issue is an Issue instance. Hard rules emit `error`,
+    # soft rules emit `warning`.
+    hard_names = {r.__name__ for r in HARD_RULES}
     for i in issues:
         assert isinstance(i, Issue)
-        assert i.severity == "error"
+        if i.rule in hard_names:
+            assert i.severity == "error", f"hard rule {i.rule} emitted non-error"
+        else:
+            assert i.severity == "warning", f"soft rule {i.rule} emitted non-warning"
 
     # Stable order: the rule-id sequence (with duplicates removed in
     # first-seen order) matches the HARD_RULES + SOFT_RULES rule names.
@@ -523,18 +686,33 @@ def test_validate_aggregates_all_rules() -> None:
 
 
 def test_validate_orders_hard_rules_before_soft_rules() -> None:
-    """Stable order: hard rules first (in HARD_RULES order), then soft rules."""
+    """Stable order: hard rules first (in HARD_RULES order), then soft rules.
+
+    Trips one hard rule (`environment_requires_type`) AND one soft rule
+    (`id_references_have_value`) to lock the hard-before-soft contract.
+    """
     bundle = AnnotationBundle(
         video=VideoMeta(clip_id="c", duration_s=10.0),
         annotation=SilAvAnnotation(
             environments=[Environment(id="Env1", type="")],
-            ego_vehicle=EgoVehicle(actions=[EgoAction(id="EA1", type="Drive")]),
+            ego_vehicle=EgoVehicle(
+                actions=[EgoAction(id="EA1", type="Drive", because_of=[""])],
+            ),
         ),
     )
     issues = validate(bundle)
-    # Only environment_requires_type trips here.
-    assert len(issues) == 1
-    assert issues[0].rule == "environment_requires_type"
+    rules = [i.rule for i in issues]
+    # Hard rule fires first, soft rule after.
+    assert rules.index("environment_requires_type") < rules.index(
+        "id_references_have_value"
+    )
+    # Severity ordering follows: every hard-rule issue is `error`, every
+    # soft-rule issue is `warning`. The UI groups by severity so this matters.
+    severities = [i.severity for i in issues]
+    err_count = severities.count("error")
+    warn_count = severities.count("warning")
+    assert severities[:err_count] == ["error"] * err_count
+    assert severities[err_count:] == ["warning"] * warn_count
 
 
 def test_issue_is_frozen_dataclass() -> None:

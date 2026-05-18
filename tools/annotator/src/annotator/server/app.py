@@ -79,6 +79,11 @@ def create_app(
                 "clip_id": clip_id,
                 "kind": entry.kind,
                 "has_video": entry.video_path is not None,
+                # `status` is `None` for unlabelled clips (no JSON on disk)
+                # and for annotated clips whose JSON omits the field. The
+                # frontend sidebar renders both as "in progress" once the
+                # clip is annotated; unlabelled stays "unlabelled".
+                "status": entry.status,
             })
         return out
 
@@ -114,6 +119,24 @@ def create_app(
                     ),
                 },
             )
+        # Server-side defense-in-depth for the "Mark complete" flow: when the
+        # client submits a bundle with `status="complete"`, re-run the rule set
+        # and refuse the save if any hard-error issue is present. Progress
+        # saves (any other status, including unset / "annotating") bypass the
+        # gate so annotators can stash partial work freely. The body shape
+        # mirrors `POST /annotations/validate` so the frontend renders both
+        # paths with the same issues panel.
+        if bundle.status == "complete":
+            issues = validate_bundle(bundle)
+            error_issues = [i for i in issues if i.severity == "error"]
+            if error_issues:
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "error": "validation failed",
+                        "issues": [i.to_dict() for i in issues],
+                    },
+                )
         try:
             saved_path = save_bundle(clip_index[clip_id], bundle, destination_dir)
         except OSError as exc:

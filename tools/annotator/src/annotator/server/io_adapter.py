@@ -9,6 +9,7 @@ It owns clip-index construction, fresh-bundle creation for unlabelled clips
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -40,12 +41,19 @@ class ClipEntry:
 
     `path` is `None` for fresh (unlabelled) clips that have a video but no
     annotation JSON yet — until the first save mutates the entry in-place.
+
+    `status` mirrors ``AnnotationBundle.status`` and is read lazily from disk
+    via ``json.load`` during ``build_clip_index`` so the sidebar can render a
+    per-clip badge ("in progress" / "complete") without instantiating the
+    full Pydantic tree for every entry. ``None`` means "no annotation file"
+    (unlabelled) or "annotation file has no `status` key" (legacy bundles).
     """
 
     clip_id: str
     path: Path | None = None
     video_path: Path | None = None
     kind: ClipKind = "unlabelled"
+    status: str | None = None
     # Internal: list of duplicate JSON paths dropped during indexing.
     _dropped_paths: list[Path] = field(default_factory=list)
     # Internal: True after the server has taken a `.bak` snapshot of `path`
@@ -97,8 +105,10 @@ def build_clip_index(sources: list[Path]) -> dict[str, ClipEntry]:
     """
     paths = _iter_paths(sources)
 
-    # First pass: collect annotations and videos by clip_id.
-    annotations: dict[str, list[Path]] = {}
+    # First pass: collect annotations and videos by clip_id. The status field
+    # is captured alongside clip_id so the second pass can populate
+    # `ClipEntry.status` without re-reading the file.
+    annotations: dict[str, list[tuple[Path, str | None]]] = {}
     videos: dict[str, Path] = {}
     for path in paths:
         kind = _classify(path)
@@ -108,7 +118,20 @@ def build_clip_index(sources: list[Path]) -> dict[str, ClipEntry]:
             except Exception as exc:  # noqa: BLE001
                 LOG.warning("failed to parse %s: %s", path, exc)
                 continue
-            annotations.setdefault(bundle.video.clip_id, []).append(path)
+            # Pluck status straight from the on-disk JSON without going
+            # through Pydantic again — keeps the sidebar load O(small) for
+            # large corpora. Errors silently degrade to `status=None`, which
+            # the sidebar treats as "in progress" for annotated clips.
+            status: str | None = None
+            try:
+                raw = json.loads(path.read_text())
+                if isinstance(raw, dict):
+                    val = raw.get("status")
+                    if isinstance(val, str):
+                        status = val
+            except Exception:  # noqa: BLE001
+                pass
+            annotations.setdefault(bundle.video.clip_id, []).append((path, status))
         elif kind == "video":
             clip_id = path.stem
             # Only the first video wins (videos with the same stem in
@@ -119,15 +142,16 @@ def build_clip_index(sources: list[Path]) -> dict[str, ClipEntry]:
     index: dict[str, ClipEntry] = {}
     duplicate_summary: list[tuple[str, Path, list[Path]]] = []
     for clip_id, ann_paths in annotations.items():
-        kept = ann_paths[0]
-        dropped = ann_paths[1:]
+        kept_path, kept_status = ann_paths[0]
+        dropped = [p for p, _ in ann_paths[1:]]
         if dropped:
-            duplicate_summary.append((clip_id, kept, dropped))
+            duplicate_summary.append((clip_id, kept_path, dropped))
         index[clip_id] = ClipEntry(
             clip_id=clip_id,
-            path=kept,
+            path=kept_path,
             video_path=videos.get(clip_id),
             kind="annotated",
+            status=kept_status,
             _dropped_paths=dropped,
         )
     for clip_id, video_path in videos.items():
@@ -282,6 +306,9 @@ def save_bundle(
         assert entry.path is not None
         _maybe_write_bak(entry)
         save_file(bundle, entry.path)
+        # Refresh cached status so the sidebar badge reflects this save without
+        # re-scanning every JSON on disk.
+        entry.status = bundle.status
         return entry.path
 
     # Fresh save for an unlabelled clip. Prefer destination_dir; fall back to
@@ -299,6 +326,7 @@ def save_bundle(
     save_file(bundle, target_path)
     entry.path = target_path
     entry.kind = "annotated"
+    entry.status = bundle.status
     # Fresh clips have no prior content to back up — mark _bak_written so a
     # later save in this same session also skips the .bak step.
     entry._bak_written = True
