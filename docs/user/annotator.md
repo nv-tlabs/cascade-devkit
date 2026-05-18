@@ -612,7 +612,7 @@ At the very bottom of the right panel:
 If you point the CLI at a directory of *videos* with no JSONs:
 
 1. Each video appears as **unlabelled** in the sidebar.
-2. Selecting it loads an empty bundle (schema `2.0.0`,
+2. Selecting it loads an empty bundle (schema `2.1.0`,
    `status="annotating"`).
 3. Annotate as normal. On the **first save**, the tool creates
    `<dir>/<clip_id>.json`. The sidebar badge flips from amber
