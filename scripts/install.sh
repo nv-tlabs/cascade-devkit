@@ -28,10 +28,16 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Pretty output. Single-source the color codes so a tty-less run (e.g.
 # piped to less / tee / CI logs) still reads cleanly.
+#
+# Use `$'\033…'` (bash ANSI-C quoting) rather than `"\033…"` (regular
+# double-quoting) so the variables hold the actual ESC byte, not the four
+# literal characters `\`, `0`, `3`, `3`. `printf` interprets the latter
+# for us, but the closing `cat <<EOF` heredoc does not — without this,
+# the "Next steps" block prints `\033[1m1.\033[0m` instead of a bold "1."
 # ---------------------------------------------------------------------------
 if [ -t 1 ]; then
-    BOLD="\033[1m"; DIM="\033[2m"; RED="\033[31m"; GREEN="\033[32m"
-    YELLOW="\033[33m"; BLUE="\033[34m"; RESET="\033[0m"
+    BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'
+    YELLOW=$'\033[33m'; BLUE=$'\033[34m'; RESET=$'\033[0m'
 else
     BOLD=""; DIM=""; RED=""; GREEN=""; YELLOW=""; BLUE=""; RESET=""
 fi
