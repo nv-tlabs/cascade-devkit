@@ -19,7 +19,12 @@ from typing import Literal
 
 from annotator.server.video import probe_video_meta
 from cascade_av.io import load_file, save_file
-from cascade_av.spec import AnnotationBundle, SilAvAnnotation, VideoMeta
+from cascade_av.spec import (
+    CURRENT_SCHEMA_VERSION,
+    AnnotationBundle,
+    SilAvAnnotation,
+    VideoMeta,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -174,7 +179,7 @@ def make_empty_bundle(
             fps_val, duration_val = probed
             probe_kwargs = {"fps": fps_val, "duration_s": duration_val}
     return AnnotationBundle(
-        schema_version="2.0.0",
+        schema_version=CURRENT_SCHEMA_VERSION,
         video=VideoMeta(clip_id=clip_id, **probe_kwargs),
         annotation=SilAvAnnotation(),
         status="annotating",
