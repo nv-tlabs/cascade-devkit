@@ -66,48 +66,10 @@ Already cloned, run from the repo root:
 
 ### Option B: manual install
 
-For non-Debian hosts, hardened environments where piping a script
-into a shell isn't acceptable, or CI runners with custom apt mirrors.
-You need these on PATH before `make install`:
-
-| Tool | Why |
-|------|-----|
-| **Python ≥ 3.11** | DevKit baseline. Ships with Ubuntu 22.04+ and Debian Bookworm; older releases need [deadsnakes](https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa) or `pyenv`. |
-| **`make`** | All documented install / test / run targets are make recipes. |
-| **Node ≥ 18 (LTS) + npm** | Only used by the annotator frontend (Vite bundle). |
-| **`ffmpeg` + `ffprobe`** | Only used by the annotator (HEVC → H.264 transcode + codec detection). See [`tools/annotator/README.md`](tools/annotator/README.md) for which features degrade if missing. |
-| **`uv`** | Manages your Python environments. Not a Python package — installed separately. |
-
-On Ubuntu 22.04+ / Debian Bookworm the recipe below installs every
-prerequisite and then the project itself:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y make build-essential ffmpeg
-
-# Node 20 LTS via NodeSource
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# uv via the official installer
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Project deps — Python (all extras) + the annotator's npm deps.
-make install
-```
-
-For finer-grained control over the Python side:
-
-```bash
-uv sync                                    # core install
-uv sync --extra hf                         # + parent-dataset integration (video loading)
-uv sync --all-extras --group notebooks     # + notebook tooling (JupyterLab, matplotlib, pandas)
-```
-
-**Container alternative.** A [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json)
-ships with the repo and installs all of the above automatically — open
-the folder in VS Code Dev Containers, GitHub Codespaces, or any
-compatible host. No host-side setup needed beyond the IDE.
+For non-Debian hosts, hardened environments, devcontainers, or
+finer-grained control over Python extras: see
+[`docs/user/install.md`](docs/user/install.md) for the prerequisites
+table, the apt + Node + uv recipe, and the `uv sync` variants.
 
 ## Getting the data
 
