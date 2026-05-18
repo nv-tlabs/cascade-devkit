@@ -160,10 +160,21 @@ def main(argv: list[str] | None = None) -> int:
     # the environment (HuggingFace, VideoResolver, etc.). `override=False`
     # so a shell `export HF_TOKEN=…` or a CI secret beats a stale file.
     dotenv_path = _load_dotenv()
-    if dotenv_path is not None:
-        logging.info("loaded environment from %s", dotenv_path)
-    else:
-        logging.info("no .env file found in working tree; using shell environment only")
+
+    # Preflight: print a ✓/✗ report of ffmpeg / ffprobe / HF auth / .env /
+    # video-source state before any pipeline code runs, so the user knows
+    # what the launcher saw instead of debugging a 401 inside a video
+    # overlay later. Pre-import so the report shows even if app/video
+    # imports go on to crash.
+    from annotator.server.preflight import log_preflight, run_preflight
+
+    log_preflight(
+        run_preflight(
+            video_source=args.video_source,
+            video_dir=args.video_dir,
+            dotenv_path=dotenv_path,
+        )
+    )
 
     # Defer heavy imports until past argparse so `--help` stays snappy.
     from annotator.server.app import create_app
