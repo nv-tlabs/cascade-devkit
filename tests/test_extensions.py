@@ -41,7 +41,7 @@ class _EchoExtension(Extension):
     """
 
     key = "echo/1.0"
-    schema_versions = ("2.0.0",)
+    schema_versions = ("2.1.0",)
 
     def load(self, bundle: AnnotationBundle, ext_data: dict[str, Any]) -> None:
         bundle._extensions[self.key] = dict(ext_data)
@@ -52,7 +52,7 @@ class _EchoExtension(Extension):
 
 def _new_bundle() -> AnnotationBundle:
     return AnnotationBundle.model_validate({
-        "schema_version": "2.0.0",
+        "schema_version": "2.1.0",
         "video": {"clip_id": "test-clip", "fps": 30.0, "duration_s": 1.0},
     })
 
@@ -86,7 +86,7 @@ def test_registered_extension_round_trips_payload(tmp_path: Path) -> None:
     assert sidecar.exists(), "sidecar should be written when an extension dumps data"
     sidecar_data = json.loads(sidecar.read_text())
     assert sidecar_data["main_file"] == "round.json"
-    assert sidecar_data["schema_version"] == "2.0.0"
+    assert sidecar_data["schema_version"] == "2.1.0"
     assert sidecar_data["extensions"] == {"echo/1.0": {"hello": "world", "n": 7}}
 
     reloaded = load_file(main)
@@ -110,7 +110,7 @@ def test_unknown_sidecar_key_round_trips_and_warns_once(tmp_path: Path) -> None:
     sidecar = _sidecar_path_for(main)
     save_file(_new_bundle(), main)
     sidecar.write_text(json.dumps({
-        "schema_version": "2.0.0",
+        "schema_version": "2.1.0",
         "main_file": main.name,
         "extensions": {"future_ext/1.0": {"opaque": [1, 2, 3]}},
     }))
@@ -140,7 +140,7 @@ def test_registered_extension_overwrites_unknown_key_on_save(tmp_path: Path) -> 
     sidecar = _sidecar_path_for(main)
     save_file(_new_bundle(), main)
     sidecar.write_text(json.dumps({
-        "schema_version": "2.0.0",
+        "schema_version": "2.1.0",
         "main_file": main.name,
         "extensions": {"echo/1.0": {"old": True}},
     }))
@@ -165,7 +165,7 @@ def test_sidecar_unknown_payload_preserved_when_extension_dumps_alongside(
     sidecar = _sidecar_path_for(main)
     save_file(_new_bundle(), main)
     sidecar.write_text(json.dumps({
-        "schema_version": "2.0.0",
+        "schema_version": "2.1.0",
         "main_file": main.name,
         "extensions": {
             "echo/1.0": {"a": 1},

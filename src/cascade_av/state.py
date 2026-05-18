@@ -15,13 +15,16 @@ implementation):
 - Actions, properties, containments, influences, conditions, environments,
   agent visibility, traffic-object visibility, traffic-light visibility:
   `Interval.from_strings(start, end).contains(t)`.
-- bbox is strict: a `BoundingBoxFrame` matches iff
-  `|parse_timestamp(frame.timestamp) - t| < 1/fps`.
 - Triplets: a triplet is active at `t` when its subject-action interval
   contains `t`.
 
 Range counterparts use `Interval.overlaps(Interval(t1, t2))` instead of
-`contains`, and pull all bbox frames whose timestamp falls inside `[t1, t2]`.
+`contains`.
+
+Bounding-box geometry is no longer part of the base schema (schema_version
+2.1.0+). When a future bbox extension lands, its per-frame data will be
+attached to the bundle via :meth:`AnnotationBundle.ext` rather than being
+mirrored on these snapshot dataclasses.
 """
 
 from __future__ import annotations
@@ -34,8 +37,6 @@ from cascade_av.spec import (
     Agent,
     AgentAction,
     AgentProperty,
-    BoundingBox,
-    BoundingBoxFrame,
     Condition,
     Containment,
     EgoAction,
@@ -68,7 +69,6 @@ class ActorState:
     agent: Agent
     actions: list[AgentAction]               # actions whose [start, end] contains t
     pose_rel_to_ego: EgoRelativePose | None  # pose entry whose interval contains t
-    bbox: BoundingBox | None                 # strict-match box for this agent at t
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +108,6 @@ class ActorStateRange:
     agent: Agent
     actions: list[AgentAction]               # interval overlaps [t1, t2]
     pose_rel_to_ego: list[EgoRelativePose]   # entries whose interval overlaps [t1, t2]
-    bboxes: list[BoundingBoxFrame]           # frames whose timestamp ∈ [t1, t2]
 
 
 @dataclass(frozen=True, slots=True)

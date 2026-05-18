@@ -196,38 +196,10 @@ def test_put_annotations_url_clip_id_mismatch_422(corpus_copy: Path) -> None:
     assert r.status_code == 422
 
 
-def test_get_bbox_round_trip(bbox_corpus_copy: Path) -> None:
-    """Regression: ensure bbox frames survive load → dump → reload.
-
-    The upstream tool's frontend had a `stripLegacyBboxes` step that
-    silently dropped bbox lists; we deliberately do not carry that bug. If
-    a future change reintroduces stripping, this test catches it.
-
-    The `bbox_corpus_copy` fixture guarantees a bbox-bearing source file —
-    no skip path — so a regression that drops bboxes will fail loudly.
-    """
-    bundle = load_file(bbox_corpus_copy)
-    clip_id = bundle.video.clip_id
-
-    bbox_agents = [a for a in bundle.annotation.agents if a.bounding_boxes]
-    assert bbox_agents, "bbox fixture invariant violated: no agent has bboxes"
-    sample_agent = bbox_agents[0]
-    expected_bbox_count = sum(len(f.bounding_boxes) for f in sample_agent.bounding_boxes)
-    assert expected_bbox_count > 0
-
-    client = _client(bbox_corpus_copy.parent)
-    r = client.get(f"/api/clips/{clip_id}/annotations")
-    assert r.status_code == 200
-    payload = r.json()
-
-    # Round-trip: PUT it back, then reload from disk.
-    put = client.put(f"/api/clips/{clip_id}/annotations", json=payload)
-    assert put.status_code == 200, put.text
-
-    reloaded = load_file(bbox_corpus_copy)
-    reloaded_agent = next(a for a in reloaded.annotation.agents if a.id == sample_agent.id)
-    actual_bbox_count = sum(len(f.bounding_boxes) for f in reloaded_agent.bounding_boxes)
-    assert actual_bbox_count == expected_bbox_count
+# NOTE: `test_get_bbox_round_trip` was removed in schema 2.1.0 along with the
+# typed bbox fields. Round-trip coverage for bbox-as-extension data will land
+# alongside the bbox extension itself (deferred PR; see plan
+# `/home/horde/.claude/plans/regarding-the-boundingboxes-my-woolly-plum.md`).
 
 
 # -----------------------------------------------------------------------------
@@ -300,8 +272,10 @@ def test_make_empty_bundle_includes_schema_and_status(tmp_path: Path) -> None:
     app = create_app(index, read_only=False, destination_dir=tmp_path)
     client = TestClient(app)
 
+    from cascade_av.spec import CURRENT_SCHEMA_VERSION
+
     seed = client.get("/api/clips/newclip/annotations").json()
-    assert seed.get("schema_version") == "2.0.0"
+    assert seed.get("schema_version") == CURRENT_SCHEMA_VERSION
     assert seed.get("status") == "annotating"
 
     r = client.put("/api/clips/newclip/annotations", json=seed)
@@ -309,7 +283,7 @@ def test_make_empty_bundle_includes_schema_and_status(tmp_path: Path) -> None:
 
     saved_path = tmp_path / "newclip.json"
     on_disk = _json.loads(saved_path.read_text())
-    assert on_disk.get("schema_version") == "2.0.0"
+    assert on_disk.get("schema_version") == CURRENT_SCHEMA_VERSION
     assert on_disk.get("status") == "annotating"
 
 
