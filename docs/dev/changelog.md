@@ -12,6 +12,7 @@ Types match the commit convention in [`contrib.md`](./contrib.md): `feat`,
 ## Entries
 
 <!-- Add new entries above this line -->
+- 2026-05-18 feat(extensions): schema-extension scaffolding — `cascade_av.extensions` package (Extension ABC + lazy-discover registry via `cascade_av.extensions` entry points); `_extensions` + `_sidecar_raw` PrivateAttrs and `ext()` accessor on AnnotationBundle; `cascade_av.io.local` reads/writes `<stem>.extra.json` sidecars (sidecar-first then main, warn-once on unclaimed keys); no on-disk format change, no schema version bump (#72)
 - 2026-05-14 chore(annotator): npm audit fix — vite 7.3.1 → 7.3.3 (3 CVEs: GHSA-4w7w-66w2-5vf9, GHSA-v2wj-q39q-566r, GHSA-p9ff-h696-f583) + postcss 8.5.8 → 8.5.14 (GHSA-qx2v-qp2m-jg93); package-lock.json only, package.json semver caret already allowed (#71)
 - 2026-05-14 feat(io.hf): auto-detect `data/` path + split-aware loaders (`available_splits`, `iter_split`, `load_split`) backed by `dataset_split.yaml`; README "Fetching from HuggingFace" subsection; `pyyaml` pinned on the `[hf]` extra (#70)
 - 2026-05-14 feat(install): curl-pipe one-liner — `scripts/install.sh` clones the repo when run outside a checkout (auto-`apt install git` if missing), making the README's `curl -LsSf … | bash` form actually work end-to-end (#69)
