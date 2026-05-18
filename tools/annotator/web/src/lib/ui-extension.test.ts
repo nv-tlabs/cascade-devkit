@@ -93,8 +93,14 @@ describe('hydrateUiExtension', () => {
       },
     }
     const result = hydrateUiExtension(bundle)
-    expect(result.annotation.agents![0].containment![0]._cont_track_index).toBe(0)
-    expect(result.annotation.agents![0].containment![1]._cont_track_index).toBe(1)
+    // `_cont_track_index` is a runtime field attached by the wire-adapter; the
+    // schema's `Containment` type intentionally doesn't declare it (2.2.0
+    // moved layout indices to the sidecar). Cast to read it the same way the
+    // adapter writes it.
+    const containment = result.annotation.agents![0].containment! as unknown as
+      Array<{ _cont_track_index?: number }>
+    expect(containment[0]._cont_track_index).toBe(0)
+    expect(containment[1]._cont_track_index).toBe(1)
   })
 
   it('skips ids that have no matching entity (no errors on stale keys)', () => {
@@ -181,8 +187,10 @@ describe('extractUiExtension', () => {
           properties: [{
             id: 'P1', property_type: 'Parked',
             start_timestamp: '0:0.0', end_timestamp: '0:1.0',
+            // `_prop_track_index` is a runtime field; AgentProperty's TS type
+            // doesn't declare it. Mirror the wire-adapter and attach via cast.
             _prop_track_index: 1,
-          }],
+          } as unknown as import('./types').AgentProperty],
           _track_index: 1,
         }],
         brief_description: '',

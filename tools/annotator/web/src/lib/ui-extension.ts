@@ -164,7 +164,12 @@ export function hydrateUiExtension(bundle: WireBundle): AnnotationBundle {
       if (!map) continue
       const value = map[id]
       if (typeof value === 'number') {
-        entity[INDEX_KEY_TO_FIELD[key]] = value
+        // `INDEX_KEY_TO_FIELD[key]` has type `keyof EntityWithIndices`, but
+        // TS narrows the indexed-access target on `entity` to `undefined`
+        // (the intersection of every possible field's value type) and rejects
+        // a `number` assignment. Widen the entity reference to a plain
+        // string-keyed record so the runtime mutation is well-typed.
+        ;(entity as Record<string, number | undefined>)[INDEX_KEY_TO_FIELD[key]] = value
       }
     }
   }
