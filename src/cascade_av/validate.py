@@ -739,6 +739,12 @@ def _emit_blank_timestamp(
         return
     if not _is_blank(raw):
         return
+    # Many Pydantic models default these fields to "", so an empty timestamp
+    # often means the entity itself was added without populating its window —
+    # the user can't "delete a row" inside a defaulted field, but they can
+    # remove the entity. Name it when we have an id; fall back to "this entry"
+    # for anonymous sub-rows.
+    referent = entity_id if entity_id else "this entry"
     issues.append(
         Issue(
             severity="warning",
@@ -747,8 +753,8 @@ def _emit_blank_timestamp(
             field=field,
             rule="timestamps_have_value",
             message=(
-                f"Timestamp `{field}` at {entity_path} is empty — fill it in or "
-                "delete the row."
+                f"Timestamp `{field}` at {entity_path} is not set — fill it in, "
+                f"or remove {referent} if it shouldn't be in the bundle."
             ),
         )
     )

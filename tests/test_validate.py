@@ -622,6 +622,33 @@ def test_timestamps_have_value_agent_action_blank_warns() -> None:
     assert "annotation.agents[0].actions[0]" in paths
 
 
+def test_timestamps_have_value_message_names_entity_id_when_present() -> None:
+    """An entity with an id is named in the removal suggestion."""
+    bundle = _clean_bundle()
+    bundle.annotation.environments.append(
+        Environment(id="Env1", type="Road", start_timestamp="", end_timestamp="0:5.0")
+    )
+    issue = timestamps_have_value(bundle)[0]
+    # "delete the row" was misleading for default-empty fields on a named entity
+    assert "delete the row" not in issue.message
+    assert "remove Env1" in issue.message
+
+
+def test_timestamps_have_value_message_falls_back_for_anonymous_entries() -> None:
+    """An entry with a blank id gets the neutral 'this entry' wording.
+
+    The validators normalize empty-string ids to ``None`` (``env.id or None``),
+    which routes through the anonymous branch of the wording split.
+    """
+    bundle = _clean_bundle()
+    bundle.annotation.environments.append(
+        Environment(id="", type="Road", start_timestamp="", end_timestamp="0:5.0")
+    )
+    issue = timestamps_have_value(bundle)[0]
+    assert "remove this entry" in issue.message
+    assert "remove Env" not in issue.message
+
+
 # -----------------------------------------------------------------------------
 # validate aggregator
 # -----------------------------------------------------------------------------
