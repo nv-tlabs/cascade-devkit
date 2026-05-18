@@ -28,6 +28,8 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -171,9 +173,16 @@ def probe_video_meta(path: Path) -> tuple[float, float] | None:
 
 
 def _transcode_to_h264(src: Path, dst: Path) -> None:
-    """Run ffmpeg `src` → `dst.tmp.mp4` → rename to `dst` on success."""
+    """Run ffmpeg ``src`` → unique tmp file → rename to ``dst`` on success.
+
+    The tmp filename embeds a fresh UUID so two transcodes that race on the
+    same destination cannot stomp on each other's output. The per-clip lock
+    in :class:`VideoResolver` is the primary serializer; this is the
+    belt-and-suspenders backstop — worst case is wasted ffmpeg CPU, never
+    a corrupt cache file.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dst.with_suffix(".tmp.mp4")
+    tmp = dst.with_suffix(f".tmp.{uuid.uuid4().hex}.mp4")
     cmd = [
         "ffmpeg", "-y", "-i", str(src),
         "-c:v", "libx264", "-preset", "fast", "-crf", "23",
@@ -218,6 +227,23 @@ class VideoResolver:
         # Whether HF mode is usable in this env. Decided eagerly so `auto`
         # collapses to `local` without paying the import cost per request.
         self._hf_available = self._check_hf_available(mode)
+        # Per-clip transcode/extract serialization. FastAPI dispatches sync
+        # routes through a thread pool, so two concurrent GET /video requests
+        # for the same clip would otherwise both transcode (or both extract
+        # from the HF zip) into the same cache path. Followers re-check the
+        # cache after acquiring the lock and skip the heavy work when the
+        # leader has already populated it.
+        self._clip_locks: dict[str, threading.Lock] = {}
+        self._clip_locks_guard = threading.Lock()
+
+    def _clip_lock(self, clip_id: str) -> threading.Lock:
+        """Return the lock for ``clip_id``, lazily creating it on first use."""
+        with self._clip_locks_guard:
+            lock = self._clip_locks.get(clip_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._clip_locks[clip_id] = lock
+            return lock
 
     @staticmethod
     def _check_hf_available(mode: VideoSourceMode) -> bool:
@@ -324,16 +350,28 @@ class VideoResolver:
                     (c for c in candidates if Path(c).stem == clip_id),
                     candidates[0],
                 )
-                tmp = extracted_mp4.with_suffix(".tmp.mp4")
-                with zf.open(match) as src, tmp.open("wb") as out:
-                    shutil.copyfileobj(src, out)
-                os.replace(tmp, extracted_mp4)
+                # Unique tmp suffix per call so two concurrent extractions
+                # cannot stomp on each other's output; the per-clip lock in
+                # ``resolve()`` is the primary serializer.
+                tmp = extracted_mp4.with_suffix(f".tmp.{uuid.uuid4().hex}.mp4")
+                try:
+                    with zf.open(match) as src, tmp.open("wb") as out:
+                        shutil.copyfileobj(src, out)
+                    os.replace(tmp, extracted_mp4)
+                except BaseException:
+                    tmp.unlink(missing_ok=True)
+                    raise
         return extracted_mp4
 
     # ----- public entry point ------------------------------------------------
 
     def resolve(self, clip_id: str) -> Path:
         """Return a playable H.264 MP4 path for `clip_id`.
+
+        Concurrent calls for the same ``clip_id`` are serialised by a
+        per-clip lock so two requests do not both transcode (HEVC source)
+        or both extract from the HF zip into the same destination. Calls
+        for *different* clip_ids run in parallel.
 
         Raises:
             VideoNotFound: clip_id cannot be located in any configured source.
@@ -345,7 +383,13 @@ class VideoResolver:
         # before discovering ffmpeg/ffprobe are missing.
         _require_tools()
 
-        # 1. Locate the source file.
+        with self._clip_lock(clip_id):
+            return self._resolve_locked(clip_id)
+
+    def _resolve_locked(self, clip_id: str) -> Path:
+        """Same contract as :meth:`resolve`, executed under the per-clip lock."""
+        # 1. Locate the source file. HF mode performs zip extraction with
+        #    its own cache check; re-running under the lock is idempotent.
         if self.mode == "local":
             src = self._resolve_local(clip_id)
         elif self.mode == "hf":

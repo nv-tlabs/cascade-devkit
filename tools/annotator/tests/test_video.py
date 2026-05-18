@@ -473,3 +473,261 @@ def test_probe_video_meta_returns_none_on_malformed_json(
 
     monkeypatch.setattr("annotator.server.video.subprocess.run", _bad_json)
     assert probe_video_meta(tmp_path / "garbled.mp4") is None
+
+
+# -----------------------------------------------------------------------------
+# Race-condition fixes — per-clip lock + unique tmp suffix
+# -----------------------------------------------------------------------------
+
+def test_clip_lock_returns_same_instance_for_same_clip_id(tmp_path: Path) -> None:
+    """Lock-table identity: two queries for the same clip_id return the
+    same Lock so concurrent transcodes actually serialize."""
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    resolver = VideoResolver(mode="local", video_dir=video_dir)
+    a = resolver._clip_lock("clip-1")
+    b = resolver._clip_lock("clip-1")
+    assert a is b
+
+
+def test_clip_lock_returns_distinct_instance_for_different_clip_ids(
+    tmp_path: Path,
+) -> None:
+    """Different clip_ids get independent Locks so they do not block each other."""
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    resolver = VideoResolver(mode="local", video_dir=video_dir)
+    a = resolver._clip_lock("clip-1")
+    b = resolver._clip_lock("clip-2")
+    assert a is not b
+
+
+def test_transcode_tmp_path_uses_unique_uuid_suffix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_transcode_to_h264`` writes to a unique-per-call tmp file so two
+    racing transcodes cannot stomp on each other's output."""
+    src = tmp_path / "src.mp4"
+    src.write_bytes(b"x")
+    dst = tmp_path / "dst.mp4"
+
+    seen_tmp_paths: list[str] = []
+
+    def fake_run(cmd, **_kwargs):
+        # The last positional arg is the tmp output path the call wrote to.
+        seen_tmp_paths.append(cmd[-1])
+        Path(cmd[-1]).write_bytes(b"transcoded")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", fake_run)
+    _transcode_to_h264(src, dst)
+    _transcode_to_h264(src, dst)
+
+    assert len(seen_tmp_paths) == 2
+    assert seen_tmp_paths[0] != seen_tmp_paths[1], (
+        "two transcodes must use distinct tmp files; otherwise concurrent "
+        "ffmpeg processes would corrupt each other's output"
+    )
+    # Both tmp paths follow the documented ``.tmp.<hex>.mp4`` shape and live
+    # next to the destination.
+    for p in seen_tmp_paths:
+        name = Path(p).name
+        assert name.startswith("dst.tmp.")
+        assert name.endswith(".mp4")
+        assert Path(p).parent == dst.parent
+
+
+def test_transcode_cleans_up_unique_tmp_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed transcode must remove its specific tmp file. The earlier
+    fixed ``.tmp.mp4`` name made cleanup trivial; with per-call uuids we
+    have to confirm the right file gets unlinked."""
+    from annotator.server.video import TranscodeError
+
+    src = tmp_path / "src.mp4"
+    src.write_bytes(b"x")
+    dst = tmp_path / "dst.mp4"
+
+    created_tmp_paths: list[Path] = []
+
+    def fake_run(cmd, **_kwargs):
+        tmp_path_for_call = Path(cmd[-1])
+        # Simulate ffmpeg starting to write before crashing.
+        tmp_path_for_call.write_bytes(b"partial")
+        created_tmp_paths.append(tmp_path_for_call)
+        raise subprocess.CalledProcessError(1, cmd, output="", stderr="boom")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", fake_run)
+    with pytest.raises(TranscodeError):
+        _transcode_to_h264(src, dst)
+
+    assert len(created_tmp_paths) == 1
+    assert not created_tmp_paths[0].exists(), (
+        "the partial tmp file for this call must be cleaned up"
+    )
+
+
+def test_concurrent_resolve_same_clip_transcodes_only_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two concurrent ``resolve(same_clip_id)`` calls serialize: ffmpeg
+    runs once (leader), the second call (follower) re-checks the cache
+    under the lock and returns the same path without re-transcoding.
+
+    Regression for `_transcode_to_h264` race at
+    `tools/annotator/src/annotator/server/video.py` (pre-fix:
+    two ffmpeg processes shared the same `.tmp.mp4` output path, one
+    truncated the other, and the cached MP4 was left corrupt).
+    """
+    import threading
+    import time
+
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    src = video_dir / "raceclip.mp4"
+    src.write_bytes(b"hevc-source")
+
+    cache_dir = tmp_path / "cache"
+
+    ffmpeg_calls: list[list[str]] = []
+    ffmpeg_started = threading.Event()
+    ffmpeg_release = threading.Event()
+
+    def fake_run(cmd, **_kwargs):
+        if cmd[0] == "ffprobe":
+            return _fake_hevc_probe(cmd)
+        # ffmpeg path — hold here long enough that any concurrent caller
+        # would have a chance to start a second transcode if the lock were
+        # broken.
+        ffmpeg_calls.append(list(cmd))
+        ffmpeg_started.set()
+        if not ffmpeg_release.wait(timeout=2.0):
+            raise TimeoutError("test never released the simulated ffmpeg")
+        Path(cmd[-1]).write_bytes(b"transcoded")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "annotator.server.video.shutil.which", lambda name: f"/usr/bin/{name}",
+    )
+
+    resolver = VideoResolver(mode="local", video_dir=video_dir, cache_dir=cache_dir)
+
+    results: dict[str, Path] = {}
+    errors: dict[str, BaseException] = {}
+
+    def worker(tag: str) -> None:
+        try:
+            results[tag] = resolver.resolve("raceclip")
+        except BaseException as exc:  # noqa: BLE001
+            errors[tag] = exc
+
+    leader = threading.Thread(target=worker, args=("leader",))
+    follower = threading.Thread(target=worker, args=("follower",))
+
+    leader.start()
+    # Wait for the leader to be inside ffmpeg before kicking the follower —
+    # we need the follower to actually contend on the lock, not arrive
+    # after the leader released it.
+    assert ffmpeg_started.wait(timeout=2.0), "leader never reached ffmpeg"
+    follower.start()
+    # Give the follower a moment to hit the lock.
+    time.sleep(0.1)
+    ffmpeg_release.set()
+
+    leader.join(timeout=2.0)
+    follower.join(timeout=2.0)
+
+    assert not errors, errors
+    assert len(ffmpeg_calls) == 1, (
+        f"expected exactly one ffmpeg invocation under contention, got "
+        f"{len(ffmpeg_calls)}"
+    )
+    assert results["leader"] == cache_dir / "raceclip.mp4"
+    assert results["follower"] == cache_dir / "raceclip.mp4"
+
+
+def test_concurrent_resolve_different_clips_runs_in_parallel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The per-clip lock must not block ``resolve`` calls for *different*
+    clips — each clip_id has its own lock, and two transcodes for two
+    different clips should run concurrently."""
+    import threading
+
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    (video_dir / "clipA.mp4").write_bytes(b"hevc-A")
+    (video_dir / "clipB.mp4").write_bytes(b"hevc-B")
+    cache_dir = tmp_path / "cache"
+
+    started = threading.Barrier(2, timeout=2.0)
+    release = threading.Event()
+    ffmpeg_calls: list[str] = []
+
+    def fake_run(cmd, **_kwargs):
+        if cmd[0] == "ffprobe":
+            return _fake_hevc_probe(cmd)
+        # Both ffmpeg invocations must hit this barrier together, proving
+        # neither blocked the other.
+        ffmpeg_calls.append(cmd[-1])
+        started.wait()
+        release.wait(timeout=2.0)
+        Path(cmd[-1]).write_bytes(b"transcoded")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", fake_run)
+    monkeypatch.setattr(
+        "annotator.server.video.shutil.which", lambda name: f"/usr/bin/{name}",
+    )
+
+    resolver = VideoResolver(mode="local", video_dir=video_dir, cache_dir=cache_dir)
+    errors: list[BaseException] = []
+
+    def worker(clip_id: str) -> None:
+        try:
+            resolver.resolve(clip_id)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=worker, args=("clipA",)),
+        threading.Thread(target=worker, args=("clipB",)),
+    ]
+    for t in threads:
+        t.start()
+
+    # If the lock spanned all clips, the second worker would never reach
+    # ffmpeg and the barrier would time out below.
+    try:
+        # Give both threads time to reach the barrier inside fake_run.
+        deadline = 2.0
+        import time as _time
+        t0 = _time.monotonic()
+        while len(ffmpeg_calls) < 2 and _time.monotonic() - t0 < deadline:
+            _time.sleep(0.02)
+        assert len(ffmpeg_calls) == 2, (
+            "different clips must transcode concurrently; the second clip "
+            "never reached ffmpeg, suggesting the lock is process-wide "
+            "instead of per-clip"
+        )
+    finally:
+        release.set()
+        for t in threads:
+            t.join(timeout=2.0)
+
+    assert not errors, errors
+
+
+def test_clip_lock_table_grows_lazily(tmp_path: Path) -> None:
+    """The lock table must not hold an entry for a clip_id that nothing
+    has resolved yet — confirms `_clip_lock` is on-demand."""
+    video_dir = tmp_path / "videos"
+    video_dir.mkdir()
+    resolver = VideoResolver(mode="local", video_dir=video_dir)
+    assert resolver._clip_locks == {}
+    resolver._clip_lock("first")
+    assert list(resolver._clip_locks) == ["first"]
+    resolver._clip_lock("second")
+    assert set(resolver._clip_locks) == {"first", "second"}
