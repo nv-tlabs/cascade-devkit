@@ -65,6 +65,14 @@ class ClipEntry:
 def _classify(path: Path) -> Literal["annotation", "video"] | None:
     suffix = path.suffix.lower()
     if suffix == ".json":
+        # Sidecar files (`<stem>.extra.json`) end in `.json` too — Path.suffix
+        # only looks at the final dot-segment. Skip them: they carry extension
+        # payload (the ``ui/1.0`` track indices, etc.) and aren't standalone
+        # annotation bundles. Without this, `load_file` would try to parse one
+        # as an AnnotationBundle and log a noisy `WARNING ... validation
+        # error: 'video' Field required` per sidecar on every launch.
+        if path.name.lower().endswith(".extra.json"):
+            return None
         return "annotation"
     if suffix in VIDEO_EXTS:
         return "video"

@@ -387,6 +387,47 @@ def test_build_clip_index_missing_source_raises(tmp_path: Path) -> None:
         build_clip_index([tmp_path / "does-not-exist"])
 
 
+def test_build_clip_index_skips_extra_json_sidecars(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`<stem>.extra.json` sidecar files must not be treated as main bundles.
+
+    They share the `.json` suffix (Path.suffix only sees the last
+    dot-segment), so the naive `_classify` would route them through
+    `load_file`, which then fails because the sidecar has no top-level
+    `video` field. Before this fix every sidecar logged a
+    `WARNING ... validation error for AnnotationBundle: video Field required`
+    on annotator launch against a migrated corpus.
+    """
+    from cascade_av.spec import AnnotationBundle, VideoMeta
+
+    main = tmp_path / "clip1.json"
+    main.write_text(
+        AnnotationBundle(video=VideoMeta(clip_id="clip1")).model_dump_json(
+            by_alias=True
+        )
+    )
+    sidecar = tmp_path / "clip1.extra.json"
+    sidecar.write_text(
+        '{"schema_version": "2.2.0", "main_file": "clip1.json", '
+        '"extensions": {"ui/1.0": {"track_index": {}}}}'
+    )
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="annotator.server.io_adapter"):
+        index = build_clip_index([tmp_path])
+
+    assert set(index.keys()) == {"clip1"}
+    assert index["clip1"].path == main
+    # The noisy "failed to parse ... validation error" warning is the
+    # signature of the bug — its absence is the contract.
+    assert not any(
+        "failed to parse" in r.message and "extra.json" in r.message
+        for r in caplog.records
+    )
+
+
 # -----------------------------------------------------------------------------
 # POST /annotations/validate — server-side validation contract
 # -----------------------------------------------------------------------------
