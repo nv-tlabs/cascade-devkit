@@ -282,7 +282,18 @@ def _check_window(
     start_field: str = "start_timestamp",
     end_field: str = "end_timestamp",
 ) -> None:
-    """Append timestamp issues for one (start, end) window in place."""
+    """Append timestamp issues for one (start, end) window in place.
+
+    Upper-bound semantics: when ``duration_s <= 0.0`` the clip's true length
+    is unknown (e.g. ffprobe missing or failed in
+    :func:`annotator.server.io_adapter.make_empty_bundle`). In that case we
+    skip the ``timestamp > duration_s`` check entirely — flagging every
+    populated interval would block "Mark complete" on every clip with a
+    failed probe, which is a real production scenario. Parseability and
+    start ≤ end checks still run; the lower bound (``0``) is enforced by
+    the ``M:S.D`` regex (it rejects negative input at parse time).
+    """
+    check_upper = duration_s > 0.0
     max_t = duration_s + _DURATION_EPS
 
     def _check_one(raw: str | None, field: str) -> float | None:
@@ -303,7 +314,11 @@ def _check_window(
                 )
             )
             return None
-        if parsed < 0 or parsed > max_t:
+        # `parsed < 0` is unreachable: `_TS_RE` in cascade_av.query.time only
+        # matches `^\d+:\d+(?:\.\d+)?$`, i.e. non-negative integers/decimals.
+        # We rely on that rather than asserting it here so future regex
+        # tweaks would surface as a test failure rather than a silent gap.
+        if check_upper and parsed > max_t:
             issues.append(
                 Issue(
                     severity="error",

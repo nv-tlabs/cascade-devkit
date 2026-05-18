@@ -253,12 +253,14 @@ def test_timestamps_in_video_range_clean_passes() -> None:
     assert timestamps_in_video_range(bundle) == []
 
 
-def test_timestamps_in_video_range_negative_start_errors() -> None:
-    """A negative timestamp (e.g. ``-1:0.0``) parses fine but is out of range."""
-    bundle = _clean_bundle()
-    # `M:S.D` regex requires non-negative integers; emit via a containment row
-    # with `0:0.0` and a duration_s=0 clip whose end_timestamp lands above.
-    # Simpler: rebuild with a small clip and a window that overshoots.
+def test_timestamps_in_video_range_zero_duration_skips_upper_bound() -> None:
+    """`duration_s <= 0.0` (failed/missing ffprobe) disables the upper bound.
+
+    Otherwise every populated timestamp on a probe-failed clip floods the
+    issues panel and blocks "Mark complete" — see `_check_window` docstring.
+    Start ≤ end and parseability checks still run; this asserts only the
+    upper-bound check is skipped.
+    """
     bundle = AnnotationBundle(
         video=VideoMeta(clip_id="c", duration_s=0.0),
         annotation=SilAvAnnotation(
@@ -267,7 +269,8 @@ def test_timestamps_in_video_range_negative_start_errors() -> None:
                     EgoAction(
                         id="EA1",
                         type="Drive",
-                        start_timestamp="0:5.0",  # past duration
+                        # Both well past the (unknown) duration; must NOT error.
+                        start_timestamp="0:5.0",
                         end_timestamp="0:6.0",
                     )
                 ]
@@ -275,10 +278,28 @@ def test_timestamps_in_video_range_negative_start_errors() -> None:
         ),
     )
     issues = timestamps_in_video_range(bundle)
-    assert any(
-        i.rule == "timestamps_in_video_range" and "outside the clip range" in i.message
-        for i in issues
+    assert not [i for i in issues if "outside the clip range" in i.message]
+
+
+def test_timestamps_in_video_range_zero_duration_still_checks_start_le_end() -> None:
+    """Zero-duration only relaxes the upper bound, not the ordering check."""
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="c", duration_s=0.0),
+        annotation=SilAvAnnotation(
+            ego_vehicle=EgoVehicle(
+                actions=[
+                    EgoAction(
+                        id="EA1",
+                        type="Drive",
+                        start_timestamp="0:6.0",
+                        end_timestamp="0:5.0",  # before start
+                    )
+                ]
+            )
+        ),
     )
+    issues = timestamps_in_video_range(bundle)
+    assert any("is after" in i.message for i in issues)
 
 
 def test_timestamps_in_video_range_past_duration_errors() -> None:
