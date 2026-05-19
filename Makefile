@@ -29,12 +29,17 @@ lint:  ## Lint Python (ruff) and the annotator frontend (eslint).
 fmt:  ## Format Python with ruff.
 	uv run ruff format .
 
-annotator-dev:  ## Launch the annotator backend. Pass DATA=<path>. Optional: PORT=<n>.
-	@if [ -z "$(DATA)" ]; then \
-	  echo "error: set DATA=<path>. example: make annotator-dev DATA=~/01_json_annotations"; \
+annotator-dev:  ## Launch the annotator backend. Optional: DATA=<path> (falls back to CASCADE_AV_DATASET_ROOT from .env), PORT=<n>.
+	@DATA="$(DATA)"; \
+	if [ -z "$$DATA" ] && [ -f .env ]; then \
+	  set -a; . ./.env; set +a; \
+	  DATA="$$CASCADE_AV_DATASET_ROOT"; \
+	fi; \
+	if [ -z "$$DATA" ]; then \
+	  echo "error: no DATA path. Pass DATA=<path>, or set CASCADE_AV_DATASET_ROOT in .env (see .env.example)" >&2; \
 	  exit 2; \
-	fi
-	uv run cascade-annotate $(DATA) $(if $(PORT),--port $(PORT))
+	fi; \
+	uv run cascade-annotate "$$DATA" $(if $(PORT),--port $(PORT))
 
 annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/dist).
 	cd tools/annotator/web && npm run build
