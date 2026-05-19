@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import plotly.graph_objects as go
 import pytest
 
@@ -258,6 +259,44 @@ def test_seek_outside_window_raises() -> None:
         player.seek(0.5)
     with pytest.raises(ValueError):
         player.seek(4.5)
+
+
+def test_decode_frame_clamps_to_video_timestamp_range() -> None:
+    """Regression for the carousel crash on whole-clip matches.
+
+    `matches.visualize(...)` builds a `ClipPlayer` with `t_start=0.0`
+    when the match has `interval=None`. Real HEVC clips report their
+    first frame at ~16ms in (not 0us), so the underlying reader's
+    `decode_images_from_timestamps` raises a `ValueError` for
+    out-of-range requests. The widget clamps to the reader's actual
+    range and falls back to the nearest available frame.
+    """
+    # `_seq_with_fake_video()` builds a sequence with `duration_s=10.0`.
+    # Configure the fake reader so the first frame is ~16ms in (real
+    # HEVC GOP offset, mirroring the live-corpus crash report) and the
+    # last frame sits 100ms below the reported duration. The widget's
+    # default `t_start=0.0` / `t_end=10.0` then falls outside the
+    # reader's range on both ends.
+    seq = _seq_with_fake_video()
+    first_us = 16_389
+    last_us = 9_900_000
+    fake_timestamps = np.arange(first_us, last_us + 1, 33_333, dtype=np.int64)
+    seq._cameras = {  # type: ignore[assignment]
+        seq.annotation_camera: _FakeVideoReader(timestamps=fake_timestamps),
+    }
+    reader = seq._cameras[seq.annotation_camera]
+
+    # Construction at t=0.0 would have crashed pre-fix; the clamped
+    # decode lands on the reader's first available frame instead.
+    player = ClipPlayer(seq)
+    assert reader.calls[0].tolist() == [int(fake_timestamps[0])]
+
+    # Seeking to t_end past the last available frame must also clamp,
+    # so end-of-clip whole-clip matches don't crash. The sequence's
+    # `duration_s=10.0` is the default `t_end`; 10s ↔ 10_000_000us is
+    # outside the fake reader's range (last frame at 9_900_000us).
+    player.seek(10.0)
+    assert reader.calls[-1].tolist() == [int(fake_timestamps[-1])]
 
 
 # ---------------------------------------------------------------------------
@@ -594,6 +633,9 @@ class _NoisyFakeVideoReader:
         self.calls: list = []
         rng = np.random.default_rng(seed)
         self._frame = rng.integers(0, 256, size=(height, width, 3), dtype=np.uint8)
+        # `_decode_frame` clamps requested timestamps to this range; a
+        # 0-to-10s default at 30fps keeps every existing test green.
+        self.timestamps = np.arange(0, 10 * 30, dtype=np.int64) * 33333
 
     def decode_images_from_timestamps(self, t_us):  # type: ignore[no-untyped-def]
         import numpy as np
