@@ -91,8 +91,8 @@ truth; this table mirrors `make help`. If you add a new verb, update
 | `make test` | Run Python (pytest) and annotator frontend (vitest) test suites |
 | `make lint` | `ruff check` on Python + `npm run lint` on the annotator frontend |
 | `make fmt` | `ruff format` on Python |
-| `make annotator-dev [DATA=<path>] [PORT=<n>]` | Launch the annotator backend pointed at a directory of clips or videos. `DATA` defaults to `CASCADE_AV_DATASET_ROOT` from `.env`; `PORT` defaults to `8765`. Builds the frontend bundle automatically when missing. |
-| `make annotator-build` | Force-rebuild the annotator frontend bundle (`tools/annotator/web/dist`). Use after UI source changes; not needed for first launch (`annotator-dev` builds on demand). |
+| `make annotator-dev [DATA=<path>] [PORT=<n>]` | Build the frontend bundle, then launch the annotator backend pointed at a directory of clips or videos. `DATA` defaults to `CASCADE_AV_DATASET_ROOT` from `.env`; `PORT` defaults to `8765`. Always rebuilds the bundle (~2-3s) — stale `dist/` no longer silently serves an old UI. |
+| `make annotator-build` | Build the annotator frontend bundle (`tools/annotator/web/dist`) without launching the server. Same recipe `annotator-dev` runs as its first step; reach for it when you want to verify the bundle compiles without booting the backend. |
 | `make notebooks [DATA=<path>]` | Launch JupyterLab against `./notebooks/`. `CASCADE_AV_DATASET_ROOT` is sourced from `.env` so notebooks that iterate the corpus "just work"; pass `DATA=<path>` to override. |
 | `make migrate INPUT=<path> [OUTPUT=<path>]` | Run `cascade-migrate` on a file or directory; in-place when `OUTPUT` is omitted |
 | `make help` | Print every target with its description |
