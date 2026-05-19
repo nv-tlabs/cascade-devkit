@@ -23,7 +23,9 @@ frontend. Source under `tools/annotator/`; conventions in
    ```bash
    make annotator-dev DATA=~/01_json_annotations
    ```
-   (`DATA` is required; the target exits 2 if unset.)
+   `DATA` is optional when `CASCADE_AV_DATASET_ROOT` is set in `.env`
+   (Makefile sources `.env` and falls back to that var). The target
+   exits 2 only if neither is supplied.
 4. Open <http://127.0.0.1:8765/>. The page loads without flicker
    because theme hydration runs synchronously in `main.tsx` before
    React mounts.

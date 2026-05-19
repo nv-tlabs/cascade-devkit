@@ -74,6 +74,10 @@ one yet, the annotator can also start against a directory of videos
 make annotator-dev DATA=/path/to/your/json_annotations
 ```
 
+If you set `CASCADE_AV_DATASET_ROOT` in your `.env` during step 2 (or
+already had it set), you can drop the `DATA=` argument — `make
+annotator-dev` will pick the path up from there.
+
 The server defaults to port `8765`. Override with `PORT=9000` if it
 clashes with something else. The launcher tries to open a browser tab
 at `http://127.0.0.1:8765/` automatically; pass `--no-browser` to the

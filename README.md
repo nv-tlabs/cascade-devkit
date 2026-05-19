@@ -277,6 +277,10 @@ make install                                              # Python + npm deps (o
 make annotator-dev DATA=/path/to/json_annotations         # launches on :8765
 ```
 
+`DATA` is optional if `CASCADE_AV_DATASET_ROOT` is set in `.env` (see
+[`.env.example`](.env.example)) — `make annotator-dev` (no args) will
+pick it up. Override per-invocation by passing `DATA=...` explicitly.
+
 If you want the explicit steps without `make`:
 
 ```bash

@@ -91,7 +91,7 @@ truth; this table mirrors `make help`. If you add a new verb, update
 | `make test` | Run Python (pytest) and annotator frontend (vitest) test suites |
 | `make lint` | `ruff check` on Python + `npm run lint` on the annotator frontend |
 | `make fmt` | `ruff format` on Python |
-| `make annotator-dev DATA=<path> [PORT=<n>]` | Launch the annotator backend pointed at a directory of clips or videos; `PORT` is optional (default `8765`) |
+| `make annotator-dev [DATA=<path>] [PORT=<n>]` | Launch the annotator backend pointed at a directory of clips or videos. `DATA` defaults to `CASCADE_AV_DATASET_ROOT` from `.env`; `PORT` defaults to `8765`. |
 | `make annotator-build` | Build the annotator frontend bundle (`tools/annotator/web/dist`) |
 | `make migrate INPUT=<path> [OUTPUT=<path>]` | Run `cascade-migrate` on a file or directory; in-place when `OUTPUT` is omitted |
 | `make help` | Print every target with its description |
