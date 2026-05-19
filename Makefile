@@ -8,7 +8,7 @@
 # implementation change without churning every doc that quotes a
 # command.
 
-.PHONY: help install test lint fmt annotator-dev annotator-build migrate
+.PHONY: help install test lint fmt annotator-dev annotator-build migrate notebooks
 
 # Sentinel file emitted by `npm run build` (vite). Used as a prerequisite
 # of `annotator-dev` so the bundle is built on first launch; the explicit
@@ -56,6 +56,19 @@ annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/di
 $(WEB_DIST_INDEX):
 	@echo "==> Frontend bundle missing — running 'npm run build' first..."
 	cd tools/annotator/web && npm run build
+
+notebooks:  ## Launch JupyterLab against ./notebooks. Optional: DATA=<path> (falls back to CASCADE_AV_DATASET_ROOT from .env).
+	@DATA="$(DATA)"; \
+	if [ -z "$$DATA" ] && [ -f .env ]; then \
+	  set -a; . ./.env; set +a; \
+	  DATA="$$CASCADE_AV_DATASET_ROOT"; \
+	fi; \
+	if [ -z "$$DATA" ]; then \
+	  echo "warning: no dataset root (DATA= unset, CASCADE_AV_DATASET_ROOT unset in .env) — notebooks that iterate the corpus will fail. Continuing anyway." >&2; \
+	else \
+	  export CASCADE_AV_DATASET_ROOT="$$DATA"; \
+	fi; \
+	uv run --all-extras --group notebooks jupyter lab notebooks/
 
 migrate:  ## Migrate annotations to the current schema. Pass INPUT=<path>. Optional OUTPUT=<path>.
 	@if [ -z "$(INPUT)" ]; then \
