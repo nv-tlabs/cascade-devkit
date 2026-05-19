@@ -81,7 +81,14 @@ def _seq_with_fake_video(
     """
     bundle = _make_bundle(duration=duration, clip_id=clip_id)
     seq = Sequence.from_annotation(bundle)
-    seq._cameras = {seq.annotation_camera: FakeVideoReader()}  # type: ignore[assignment]
+    # ``Sequence.visualize`` clamps the requested ``[t_start, t_end]``
+    # window to the video's actual timestamp coverage. Match the fake
+    # reader's timestamps to the bundle duration so the clamp is a
+    # no-op and assertions like ``_t_end == 10.0`` still hold.
+    fake_ts = np.arange(0, int(duration * 1_000_000) + 1, 1_000, dtype=np.int64)
+    seq._cameras = {  # type: ignore[assignment]
+        seq.annotation_camera: FakeVideoReader(timestamps=fake_ts),
+    }
     return seq
 
 

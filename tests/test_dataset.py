@@ -99,6 +99,8 @@ def test_visualize_smoke_returns_clipplayer() -> None:
     smoke test only pins that the call now produces a ``ClipPlayer``
     via the lazy ``viz`` import.
     """
+    import numpy as np
+
     from cascade_av.viz import ClipPlayer
 
     path = max(CORPUS.glob("*.json"), key=lambda p: p.stat().st_size)
@@ -106,13 +108,21 @@ def test_visualize_smoke_returns_clipplayer() -> None:
     # ``Sequence.video`` would normally require a parent dataset; the
     # widget tests stub the lazy ``_cameras`` slot to inject a fake
     # reader. Same trick here so ClipPlayer's initial decode succeeds.
-    seq._cameras = {seq.annotation_camera: FakeVideoReader()}  # type: ignore[assignment]
+    # ``Sequence.visualize`` clamps ``[t_start, t_end]`` to the video's
+    # actual timestamp coverage; configure the fake's timestamps to
+    # span the full ``seq.duration_s`` so the clamp is a no-op and the
+    # "whole-clip" assertion below stays meaningful.
+    fake_ts = np.arange(0, int(seq.duration_s * 1_000_000), 33_333, dtype=np.int64)
+    seq._cameras = {  # type: ignore[assignment]
+        seq.annotation_camera: FakeVideoReader(timestamps=fake_ts),
+    }
 
     player = seq.visualize()
     assert isinstance(player, ClipPlayer)
-    # The "no args" path opens over the whole clip.
+    # The "no args" path opens over the whole clip (within the fake's
+    # configured coverage, which we set to span the full duration).
     assert player._t_start == 0.0
-    assert player._t_end == seq.duration_s
+    assert player._t_end == pytest.approx(fake_ts[-1] / 1_000_000, abs=1e-3)
 
 
 # -----------------------------------------------------------------------------

@@ -29,10 +29,24 @@ class FakeVideoReader:
     ``_FakeVideoReader`` via a module-level alias.
     """
 
-    def __init__(self, height: int = 8, width: int = 12) -> None:
+    def __init__(
+        self,
+        height: int = 8,
+        width: int = 12,
+        timestamps: np.ndarray | None = None,
+    ) -> None:
         self.height = height
         self.width = width
         self.calls: list[np.ndarray] = []
+        # Frame timestamps the reader "exposes" — drives the widget's
+        # range-clamping in `_decode_frame`. Default mirrors a 30fps,
+        # 10s clip that starts at exactly 0us, which keeps every
+        # pre-existing test that constructs a bare `FakeVideoReader()`
+        # green. Pass an explicit array (e.g., starting at `16389us`)
+        # to exercise the GOP-offset path.
+        if timestamps is None:
+            timestamps = np.arange(0, 10 * 30, dtype=np.int64) * 33333
+        self.timestamps = np.asarray(timestamps, dtype=np.int64)
 
     def decode_images_from_timestamps(
         self, t_us: np.ndarray

@@ -717,11 +717,26 @@ class ClipPlayer:
     def _decode_frame(self, t: float) -> np.ndarray:
         """Decode a single video frame at `t` (seconds) → uint8 RGB array.
 
-        Delegates straight to `seq.video.decode_images_from_timestamps`.
-        Tests substitute a fake reader so this never touches real
-        ffmpeg / mp4 decode.
+        Delegates to `seq.video.decode_images_from_timestamps`. Tests
+        substitute a fake reader so this never touches real ffmpeg /
+        mp4 decode.
+
+        The requested timestamp is clamped to the reader's actual frame
+        timestamp range. The first frame is rarely at exactly `0us` —
+        HEVC GOP boundaries and variable-frame-rate captures leave the
+        first frame ~16–33ms in for typical 30/60fps footage — and the
+        last frame can sit just before the dataset's reported duration.
+        `decode_images_from_timestamps` raises if the request falls
+        outside that range, which crashed `matches.visualize(...)` for
+        any whole-clip match (`interval=None`, computed as
+        `t_start=0.0`). Clamping shows the nearest available frame
+        instead.
         """
-        t_us = np.array([int(round(t * 1_000_000))], dtype=np.int64)
+        timestamps = self._sequence.video.timestamps
+        t_us_int = int(round(t * 1_000_000))
+        t_us_int = max(t_us_int, int(timestamps[0]))
+        t_us_int = min(t_us_int, int(timestamps[-1]))
+        t_us = np.array([t_us_int], dtype=np.int64)
         images, _ = self._sequence.video.decode_images_from_timestamps(t_us)
         if images is None or len(images) == 0:
             raise RuntimeError(
