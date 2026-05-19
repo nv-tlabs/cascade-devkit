@@ -15,25 +15,33 @@ frontend. Source under `tools/annotator/`; conventions in
    ```bash
    make install
    ```
-2. Build the frontend bundle (one-time, or after any UI change):
-   ```bash
-   make annotator-build
-   ```
-3. Launch the backend pointed at a data directory:
+2. Launch the backend pointed at a data directory:
    ```bash
    make annotator-dev DATA=~/01_json_annotations
    ```
    `DATA` is optional when `CASCADE_AV_DATASET_ROOT` is set in `.env`
    (Makefile sources `.env` and falls back to that var). The target
-   exits 2 only if neither is supplied.
-4. Open <http://127.0.0.1:8765/>. The page loads without flicker
+   exits 2 only if neither is supplied. If the frontend bundle is
+   missing (`tools/annotator/web/dist/index.html`), `annotator-dev`
+   builds it automatically before launching uvicorn.
+3. Open <http://127.0.0.1:8765/>. The page loads without flicker
    because theme hydration runs synchronously in `main.tsx` before
    React mounts.
+4. After editing UI source files, force a fresh bundle:
+   ```bash
+   make annotator-build
+   ```
+   The auto-build in step 2 only triggers when `dist/index.html` is
+   absent — it does not detect stale bundles. `annotator-build` is
+   the always-rebuild verb.
 
 ## Troubleshooting
 
 - **Page is blank / "Frontend dist not found" in logs** — the React
-  bundle isn't built. Run `make annotator-build`.
+  bundle isn't built. Should not happen on a fresh
+  `make annotator-dev` (it auto-builds when `dist/index.html` is
+  missing); only fires if the user explicitly invoked
+  `uv run cascade-annotate` directly. Run `make annotator-build`.
 - **Port 8765 already in use** — another process owns the default
   port. Override via the target's optional `PORT=` variable:
   `make annotator-dev DATA=~/01_json_annotations PORT=20000`
