@@ -209,9 +209,15 @@ through the interactive viz API (clip player + timeline + match
 carousel). Launch JupyterLab with:
 
 ```bash
-CASCADE_AV_DATASET_ROOT=/path/to/json_annotations \
-    uv run --all-extras --group notebooks jupyter lab notebooks/
+make notebooks
 ```
+
+`make notebooks` sources `.env` and exports `CASCADE_AV_DATASET_ROOT`
+into the kernel, so notebooks that iterate the corpus just work.
+Override the path per-invocation with `make notebooks DATA=/some/other/dir`.
+The underlying command (`uv run --all-extras --group notebooks
+jupyter lab notebooks/`) still works if you'd rather invoke it
+directly.
 
 ## Working with the sensor data
 
