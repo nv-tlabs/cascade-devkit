@@ -3298,11 +3298,11 @@ export function Timeline() {
   return (
     <div className="h-full flex flex-col">
       <Tooltip.Provider delayDuration={200}>
-        <div className="flex-shrink-0 h-9 px-4 flex items-center gap-2 border-b border-border-default bg-surface-sunken">
+        <div className="flex-shrink-0 min-h-9 px-4 py-1 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border-default bg-surface-sunken">
           <ZoomButton onClick={zoomIn} icon={ZoomIn} label="Zoom in" />
           <ZoomButton onClick={zoomOut} icon={ZoomOut} label="Zoom out" />
           <ZoomButton onClick={zoomFit} icon={Maximize2} label="Fill timeline" />
-          <div className="flex items-center gap-3 ml-auto min-w-0">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ml-auto">
             <Kb keys="Del" desc="Delete" />
             <Kb keys={'← →'} desc="Frame step" />
             <Kb keys="Space" desc="Play/Pause" />
