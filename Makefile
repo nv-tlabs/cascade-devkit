@@ -10,6 +10,11 @@
 
 .PHONY: help install test lint fmt annotator-dev annotator-build migrate
 
+# Sentinel file emitted by `npm run build` (vite). Used as a prerequisite
+# of `annotator-dev` so the bundle is built on first launch; the explicit
+# `annotator-build` verb remains the always-rebuild path.
+WEB_DIST_INDEX := tools/annotator/web/dist/index.html
+
 help:  ## Show this help and exit.
 	@echo "Usage: make <target>"
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-22s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -29,7 +34,7 @@ lint:  ## Lint Python (ruff) and the annotator frontend (eslint).
 fmt:  ## Format Python with ruff.
 	uv run ruff format .
 
-annotator-dev:  ## Launch the annotator backend. Optional: DATA=<path> (falls back to CASCADE_AV_DATASET_ROOT from .env), PORT=<n>.
+annotator-dev: $(WEB_DIST_INDEX)  ## Launch the annotator backend. Optional: DATA=<path> (falls back to CASCADE_AV_DATASET_ROOT from .env), PORT=<n>. Builds the frontend bundle automatically when missing.
 	@DATA="$(DATA)"; \
 	if [ -z "$$DATA" ] && [ -f .env ]; then \
 	  set -a; . ./.env; set +a; \
@@ -41,7 +46,15 @@ annotator-dev:  ## Launch the annotator backend. Optional: DATA=<path> (falls ba
 	fi; \
 	uv run cascade-annotate "$$DATA" $(if $(PORT),--port $(PORT))
 
-annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/dist).
+annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/dist). Always rebuilds.
+	cd tools/annotator/web && npm run build
+
+# File-target that runs the build only when the bundle is missing — this
+# is what gives `annotator-dev` its "first launch builds, subsequent
+# launches skip" behavior. The explicit `annotator-build` verb above is
+# the always-rebuild path users reach for after editing UI source.
+$(WEB_DIST_INDEX):
+	@echo "==> Frontend bundle missing — running 'npm run build' first..."
 	cd tools/annotator/web && npm run build
 
 migrate:  ## Migrate annotations to the current schema. Pass INPUT=<path>. Optional OUTPUT=<path>.
