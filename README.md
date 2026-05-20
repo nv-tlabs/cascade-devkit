@@ -146,7 +146,7 @@ The DSL composes over entities and their attributes. Full grammar in
 [`docs/user/query_language.md`](docs/user/query_language.md). A taste:
 
 ```text
-agent(type = ped, action(jaywalk = true)) and ego.action in (stop, yield, decel)
+agent(type = ped, action.type = "oxd:Walk (jaywalk)") and ego.action in (stop, yield, decel)
 light.color = yellow then(3) ego.action = stop
 within light.color = red: not ego.action = stop
 ego.action = decel because_of agent.type = ped
