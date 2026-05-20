@@ -51,7 +51,6 @@ def smoke_corpus(tmp_path: Path) -> Path:
     """One bundle saved as JSON under tmp_path."""
     clip_id = "smoke-clip-001"
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id=clip_id),
         status="annotating",
     )
