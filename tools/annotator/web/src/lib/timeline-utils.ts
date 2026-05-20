@@ -380,102 +380,6 @@ export const TRACK_CONFIG: TrackConfig[] = [
   { id: 'ego_act', name: 'Ego Actions', color: ENTITY_DEFAULTS.ego, group: 'Ego' },
 ]
 
-/** Migrate legacy ego action types to new enum values (in-place). */
-function migrateEgoActions(ann: SilAvAnnotation): void {
-  for (const act of ann.ego_vehicle?.actions || []) {
-    const legacy = act as unknown as Record<string, unknown>
-    if (act.type === 'oxd:ChangeLane') {
-      act.type = legacy.change_where === 'Right' ? 'oxd:ChangeLane (right)' : 'oxd:ChangeLane (left)'
-      delete legacy.change_where
-    }
-    if (act.type === 'oxd:MakeALeftTurn' || act.type === 'oxd:MakeARightTurn' || act.type === 'fst:MakeAUTurn' || act.type === 'Other oxd:MakeATurn') {
-      const suffix = legacy.turn_protected ? ' (protected)' : ' (unprotected)'
-      act.type = act.type + suffix
-      delete legacy.turn_protected
-    }
-  }
-}
-
-/** Migrate legacy agent action types to new enum values (in-place). */
-function migrateAgentActions(ann: SilAvAnnotation): void {
-  for (const agent of ann.agents || []) {
-    const existingPropIds = new Set((agent.properties || []).map(p => p.id).filter(Boolean) as string[])
-    const addProp = (property_type: string, start_timestamp: string, end_timestamp: string) => {
-      const alreadyHas = (agent.properties || []).some(
-        p => p.property_type === property_type && p.start_timestamp === start_timestamp && p.end_timestamp === end_timestamp
-      )
-      if (alreadyHas) return
-      const id = nextStringId('AgentProperty', [...existingPropIds])
-      existingPropIds.add(id)
-      agent.properties = agent.properties || []
-      agent.properties.push({ id, property_type, start_timestamp, end_timestamp })
-    }
-
-    for (const act of agent.actions || []) {
-      const at = act.action_type
-      // Decompose compound Stop variants → base type + create properties directly
-      if (at === 'oxd:Stop (emergency situation)') {
-        act.action_type = 'oxd:Stop'; addProp('Emergency', act.start_timestamp, act.end_timestamp)
-      } else if (at === 'oxd:Stop (double-parked)') {
-        act.action_type = 'oxd:Stop'; addProp('Double Parked', act.start_timestamp, act.end_timestamp)
-      } else if (at === 'oxd:Stop (emergency situation, double-parked)') {
-        act.action_type = 'oxd:Stop'; addProp('Emergency', act.start_timestamp, act.end_timestamp); addProp('Double Parked', act.start_timestamp, act.end_timestamp)
-      }
-      // Decompose compound NotMove variants
-      if (at === 'oxd:NotMove (emergency situation)') {
-        act.action_type = 'oxd:NotMove'; addProp('Emergency', act.start_timestamp, act.end_timestamp)
-      } else if (at === 'oxd:NotMove (double-parked)') {
-        act.action_type = 'oxd:NotMove'; addProp('Double Parked', act.start_timestamp, act.end_timestamp)
-      } else if (at === 'oxd:NotMove (emergency situation, double-parked)') {
-        act.action_type = 'oxd:NotMove'; addProp('Emergency', act.start_timestamp, act.end_timestamp); addProp('Double Parked', act.start_timestamp, act.end_timestamp)
-      }
-      // Decompose compound Park variant
-      if (at === 'fst:Park (double-parked)') {
-        act.action_type = 'fst:Park'; addProp('Double Parked', act.start_timestamp, act.end_timestamp)
-      }
-      // Walk/Run variants
-      if (at === 'oxd:Walk' || at === 'oxd:Run') {
-        const parts: string[] = []
-        if (act.jaywalk_flag) parts.push('jaywalk')
-        if (act.erratic_flag) parts.push('erratic')
-        if (parts.length > 0) {
-          act.action_type = `${at} (${parts.join(', ')})`
-          delete act.jaywalk_flag; delete act.erratic_flag
-        }
-      }
-      // Decompose compound Stand variant
-      if (at === 'oxd:Stand (emergency situation)') {
-        act.action_type = 'oxd:Stand'; addProp('Emergency', act.start_timestamp, act.end_timestamp)
-      }
-      // Nudge variants
-      if (at === 'fst:Nudge') {
-        if (act.nudge_magnitude === 'Out-of-Lane') {
-          act.action_type = act.ego_lane_flag ? 'fst:Nudge (out of lane: into ego lane)' : 'fst:Nudge (out of lane: not into ego lane)'
-        } else {
-          act.action_type = 'fst:Nudge (in lane)'
-        }
-        delete act.nudge_magnitude; delete act.ego_lane_flag
-      }
-      // Overtake variants
-      if (at === 'oxd:Overtake') {
-        act.action_type = act.ego_lane_flag ? 'oxd:Overtake (using ego lane)' : 'oxd:Overtake (not using ego lane)'
-        delete act.ego_lane_flag
-      }
-      // ChangeLane
-      if (at === 'oxd:ChangeLane') {
-        act.action_type = act.change_where === 'Right' ? 'oxd:ChangeLane (right)' : 'oxd:ChangeLane (left)'
-        delete act.change_where
-      }
-      // Turns
-      if (at === 'oxd:MakeALeftTurn' || at === 'oxd:MakeARightTurn' || at === 'fst:MakeAUTurn') {
-        const suffix = act.turn_protected ? ' (protected)' : ' (unprotected)'
-        act.action_type = at + suffix
-        delete act.turn_protected
-      }
-    }
-  }
-}
-
 /** Migrate legacy Environment.lanes_obscured_or_unmarked flag into a
  * Condition of the new "Lanes obscured / unmarked" type. */
 function migrateLanesObscuredToCondition(ann: SilAvAnnotation): void {
@@ -733,7 +637,16 @@ function migrateTrafficLightSignalHeads(ann: SilAvAnnotation): void {
   }
 }
 
-/** Migrate legacy Signals actions and boolean flags on actions to properties subtrack. Mutates in place. */
+/** Migrate legacy `Signals` actions to a `Signal` property on the agent.
+ *
+ * The schema 2.0.0 reboot dropped the `*_flag` side-channel fields on
+ * AgentAction / EgoAction (jaywalk_flag, erratic_flag, turn_protected, …)
+ * — those are encoded in the action type's parenthesized suffix now and
+ * the corpus is reconverted upstream, so no flag-to-property migration is
+ * needed at load time. The one remaining legacy shape we still see in
+ * older bundles is the standalone `Signals` action, which we lift onto
+ * the agent's `properties` subtrack so the UI renders it on the right row.
+ */
 function migrateActionFlagsToProperties(ann: SilAvAnnotation): void {
   // Collect existing property IDs to avoid duplicates
   const existingPropIds = new Set<string>()
@@ -770,32 +683,6 @@ function migrateActionFlagsToProperties(ann: SilAvAnnotation): void {
         actionsToRemove.push(i)
         continue
       }
-
-      // Migrate is_aggressive_or_cut_in flag → Aggressive property
-      if (act.is_aggressive_or_cut_in) {
-        const propId = nextPropId('AgentProperty')
-        existingPropIds.add(propId)
-        newProps.push({
-          id: propId,
-          property_type: 'Aggressive',
-          start_timestamp: act.start_timestamp,
-          end_timestamp: act.end_timestamp,
-        })
-        delete act.is_aggressive_or_cut_in
-      }
-
-      // Migrate erratic_flag → Erratic property
-      if (act.erratic_flag) {
-        const propId = nextPropId('AgentProperty')
-        existingPropIds.add(propId)
-        newProps.push({
-          id: propId,
-          property_type: 'Erratic',
-          start_timestamp: act.start_timestamp,
-          end_timestamp: act.end_timestamp,
-        })
-        delete act.erratic_flag
-      }
     }
 
     // Remove migrated Signals actions (reverse order to preserve indices)
@@ -807,34 +694,14 @@ function migrateActionFlagsToProperties(ann: SilAvAnnotation): void {
       agent.properties = newProps
     }
   }
-
-  // Migrate ego actions
-  if (ann.ego_vehicle && !(ann.ego_vehicle.properties && ann.ego_vehicle.properties.length > 0)) {
-    const newProps: AgentProperty[] = []
-    for (const act of ann.ego_vehicle.actions || []) {
-      if (act.is_aggressive_or_cut_in) {
-        const propId = nextPropId('EgoProperty')
-        existingPropIds.add(propId)
-        newProps.push({
-          id: propId,
-          property_type: 'Aggressive',
-          start_timestamp: act.start_timestamp,
-          end_timestamp: act.end_timestamp,
-        })
-        delete act.is_aggressive_or_cut_in
-      }
-    }
-    if (newProps.length > 0) {
-      ann.ego_vehicle.properties = newProps
-    }
-  }
 }
 
 export function annotationToSegments(ann: SilAvAnnotation | undefined): TimelineSegment[] {
   if (!ann) return []
-  // Run migrations on first access
-  migrateEgoActions(ann)
-  migrateAgentActions(ann)
+  // Run migrations on first access. Schema 2.0.0 ships combined-suffix
+  // action types as the single source of truth — the 8 legacy *_flag
+  // side-channel fields are gone from the schema, and the corpus is
+  // reconverted upstream, so no load-time flag migration is needed.
   migrateLanesObscuredToCondition(ann)
   migrateConditionTypes(ann)
   migrateTrafficLightSignalHeads(ann)

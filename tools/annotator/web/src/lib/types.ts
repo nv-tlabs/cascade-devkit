@@ -139,7 +139,6 @@ export interface EgoAction {
   link_to?: string[]
   action_target?: string[]
   illegal_flag?: boolean
-  is_aggressive_or_cut_in?: boolean
   start_timestamp: string
   end_timestamp: string
 }
@@ -189,13 +188,6 @@ export interface AgentAction {
   action_target?: string[]
   start_timestamp: string
   end_timestamp: string
-  turn_protected?: boolean
-  change_where?: string
-  jaywalk_flag?: boolean
-  erratic_flag?: boolean
-  ego_lane_flag?: boolean
-  nudge_magnitude?: string
-  is_aggressive_or_cut_in?: boolean
   illegal_flag?: boolean
   signaling_details?: SignalingDetails
 }
