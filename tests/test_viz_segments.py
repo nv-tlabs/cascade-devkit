@@ -116,7 +116,6 @@ def _make_bundle() -> AnnotationBundle:
         agents=[agent],
     )
     return AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="test_clip", duration_s=10.0),
         annotation=ann,
     )
@@ -313,7 +312,6 @@ def test_segment_carries_family_for_lights() -> None:
         signal_heads=[sh],
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="light_clip", duration_s=10.0),
         annotation=SilAvAnnotation(environments=[env], traffic_lights=[light]),
     )
@@ -369,7 +367,6 @@ def test_segment_carries_family_for_traffic_objects() -> None:
         containment=[obj_cont],
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="obj_clip", duration_s=10.0),
         annotation=SilAvAnnotation(environments=[env], traffic_objects=[obj]),
     )
@@ -388,7 +385,6 @@ def test_segment_carries_family_for_traffic_objects() -> None:
 def test_segments_on_empty_bundle() -> None:
     """No environments / agents / ego actions → empty list, no exception."""
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="empty_clip"),
     )
     assert annotation_to_segments(bundle) == []
