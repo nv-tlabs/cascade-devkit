@@ -72,9 +72,11 @@ def _reset_for_tests() -> None:
 
     Intended for use by test fixtures that want a known starting state. After
     this call, the registry contains exactly the in-tree first-party
-    extensions (e.g. :class:`~cascade_av.extensions.ui.UiExtension`) — same
-    as immediately after ``import cascade_av.extensions`` at startup. Tests
-    that need a *completely* empty registry can clear it again themselves.
+    extensions — same as immediately after ``import cascade_av.extensions``
+    at startup. As of the 2.0.0 schema reboot no first-party defaults ship
+    in-tree, so the post-reset registry is empty; tests that need a
+    *completely* empty registry can rely on that, and tests that want to
+    install a stub can do so on top.
     """
     global _discovered
     _registry.clear()

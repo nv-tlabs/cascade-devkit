@@ -148,7 +148,8 @@ class Environment(BaseModel):
 
 class Condition(BaseModel):
     """An environmental state. `type` is a list because a single window may
-    carry multiple condition labels (e.g. ["Construction Zone", "Clear"])."""
+    carry multiple condition labels
+    (e.g. ``["Construction Zone", "Lanes obscured / unmarked"]``)."""
 
     model_config = _MC
 
@@ -499,7 +500,6 @@ class AgentTypeVocab:
     PEDESTRIAN_KID_TEEN = "Pedestrian (Kid/Teen)"
     PEDESTRIAN_STROLLER = "Pedestrian (Stroller)"
     PEDESTRIAN_WHEELCHAIR = "Pedestrian (oxd:Wheelchair)"
-    WHEELCHAIR = "Pedestrian (oxd:Wheelchair)"  # alias
     PEDESTRIAN_OTHER = "Pedestrian (Other)"
     ANIMAL = "oxd:Animal"
     OTHER = "Other"

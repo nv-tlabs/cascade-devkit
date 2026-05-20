@@ -152,6 +152,15 @@ ACTION_TYPE: Mapping[str, frozenset[str]] = {
     **ACTION_TYPE_PARENTS,
 }
 
+# Backward-compatibility stub. The 2.0.0 schema reboot removed every
+# parallel ``*_flag`` field on AgentAction / EgoAction (jaywalk_flag,
+# erratic_flag, turn_protected, ...), so this mapping is intentionally
+# empty — there are no schema fields left to map. The name is preserved
+# only so ``cascade_av.query.entities`` keeps importing on this branch;
+# Phase 3a rewrites entities.py to drop the import and the for-loop that
+# iterates it, at which point this stub goes away too.
+ACTION_FLAG_SCHEMA_FIELDS: Mapping[str, str | None] = {}
+
 # Action-type flags — these are tokens that appear inside parenthesized
 # suffixes. The 2.0.0 schema reboot removed the parallel ``*_flag`` fields
 # on AgentAction / EgoAction (jaywalk_flag, erratic_flag, turn_protected,
@@ -421,9 +430,6 @@ DRIVING_JUDGMENT: Mapping[str, frozenset[str]] = {
     "good": frozenset({DrivingJudgmentVocab.GOOD}),
     "neutral": frozenset({DrivingJudgmentVocab.NEUTRAL}),
     "bad": frozenset({DrivingJudgmentVocab.BAD}),
-    # Future-proofing: an older corpus may still carry the literal
-    # "acceptable" string. Cheap to leave in.
-    "acceptable": frozenset({"acceptable"}),
 }
 
 # ---------------------------------------------------------------------------
