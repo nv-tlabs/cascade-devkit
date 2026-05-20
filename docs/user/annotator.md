@@ -640,22 +640,23 @@ on the action — the suffix is the only source of truth.
 
 | In the editor… | …on disk |
 |---|---|
-| Pedestrian, *Walk*, *Jaywalk* toggled on | `"action_type": "oxd:Walk (jaywalk)"` |
-| Pedestrian, *Walk*, *Jaywalk* and *Erratic* on | `"action_type": "oxd:Walk (jaywalk, erratic)"` |
-| Pedestrian, *Run*, *Jaywalk* on | `"action_type": "oxd:Run (jaywalk)"` |
-| Vehicle, *ChangeLane*, *Left* selected | `"action_type": "oxd:ChangeLane (left)"` |
-| Vehicle, *Nudge*, *Out of lane: into ego lane* | `"action_type": "fst:Nudge (out of lane: into ego lane)"` |
-| Vehicle, *Overtake*, *Using ego lane* | `"action_type": "fst:Overtake (using ego lane)"` |
-| Ego, *MakeALeftTurn*, *Unprotected* | `"type": "oxd:MakeALeftTurn (unprotected)"` |
+| Pedestrian agent, *Walk (jaywalk)* selected in the action-type dropdown | `"action_type": "oxd:Walk (jaywalk)"` |
+| Pedestrian agent, *Walk (jaywalk, erratic)* selected | `"action_type": "oxd:Walk (jaywalk, erratic)"` |
+| Pedestrian agent, *Run (jaywalk)* selected | `"action_type": "oxd:Run (jaywalk)"` |
+| Vehicle agent, *ChangeLane (left)* selected | `"action_type": "oxd:ChangeLane (left)"` |
+| Vehicle agent, *Nudge (out of lane: into ego lane)* selected | `"action_type": "fst:Nudge (out of lane: into ego lane)"` |
+| Vehicle agent, *Overtake (using ego lane)* selected | `"action_type": "oxd:Overtake (using ego lane)"` |
+| Ego, *MakeALeftTurn (unprotected)* selected | `"type": "oxd:MakeALeftTurn (unprotected)"` |
 
-Only **two scalar flags** survive on `AgentAction` / `EgoAction`:
+Only **two scalar fields** survive on `AgentAction` / `EgoAction`:
 `illegal_flag` (the *Mark as Illegal* toggle in §6.4) and, on
-`AgentAction`, `signaling_details` (set indirectly via the *Signal*
-property's link-to widget — see §5.3). The pre-2.0.0 side-channel
-fields (`jaywalk_flag`, `erratic_flag`, `ego_lane_flag`,
-`turn_protected`, `change_where`, `nudge_magnitude`,
-`is_aggressive_or_cut_in`, `maneuver_aborted_flag`) are gone — the
-editor no longer exposes them and the writer no longer emits them.
+`AgentAction`, `signaling_details` (no direct UI surface yet — record
+signalling intent on the agent's *Signal* property instead; see
+§5.3). The pre-2.0.0 side-channel fields (`jaywalk_flag`,
+`erratic_flag`, `ego_lane_flag`, `turn_protected`, `change_where`,
+`nudge_magnitude`, `is_aggressive_or_cut_in`, `maneuver_aborted_flag`)
+are gone — the editor no longer exposes them and the writer no longer
+emits them.
 
 ### 12.2 Aggression is a property, not an action flag
 

@@ -316,7 +316,7 @@ The full set of suffixed values the corpus emits:
 | `oxd:Run` | `(jaywalk)`, `(erratic)`, `(jaywalk, erratic)` |
 | `fst:Nudge` | `(in lane)`, `(out of lane: not into ego lane)`, `(out of lane: into ego lane)` |
 | `oxd:ChangeLane` | `(left)`, `(right)` |
-| `fst:Overtake` | `(using ego lane)`, `(not using ego lane)` |
+| `oxd:Overtake` | `(using ego lane)`, `(not using ego lane)` |
 | `oxd:MakeALeftTurn` | `(protected)`, `(unprotected)` |
 | `oxd:MakeARightTurn` | `(protected)`, `(unprotected)` |
 | `fst:MakeAUTurn` | `(protected)`, `(unprotected)` |
