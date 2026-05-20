@@ -16,7 +16,6 @@ import plotly.graph_objects as go
 import pytest
 
 from cascade_av.dataset import Sequence
-from cascade_av.extensions.ui import UiIndexes
 from cascade_av.spec import (
     Agent,
     AgentAction,
@@ -130,7 +129,6 @@ def _make_full_bundle() -> AnnotationBundle:
         agents=[agent],
     )
     return AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="test_clip", duration_s=10.0),
         annotation=ann,
     )
@@ -211,7 +209,6 @@ def _make_all_categories_bundle() -> AnnotationBundle:
         ego_vehicle=ego, agents=[agent],
     )
     return AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="all_cats", duration_s=10.0),
         annotation=ann,
     )
@@ -459,7 +456,6 @@ def test_arrows_unknown_keys_are_ignored() -> None:
 def test_render_timeline_on_empty_bundle() -> None:
     """No entities at all → Figure returns cleanly with no segment/arrow shapes."""
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="empty_clip", duration_s=5.0),
     )
     fig = render_timeline(_seq(bundle))
@@ -479,7 +475,6 @@ def test_render_timeline_on_empty_bundle() -> None:
 def test_render_timeline_zero_duration_does_not_crash() -> None:
     """Bundles with no declared duration should still produce a Figure."""
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="no_dur"),
     )
     fig = render_timeline(_seq(bundle))
@@ -578,7 +573,6 @@ def _make_two_overlapping_agent_actions_bundle() -> AnnotationBundle:
     )
     ann = SilAvAnnotation(agents=[agent])
     return AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="overlap", duration_s=10.0),
         annotation=ann,
     )
@@ -620,7 +614,6 @@ def test_non_overlapping_subtracks_share_lane_zero() -> None:
         actions=[a1, a2],
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="no_overlap", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[agent]),
     )
@@ -672,7 +665,6 @@ def test_inline_label_present_on_long_segments_suppressed_on_short_ones() -> Non
         actions=[long_action, short_action],
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="labels", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[agent]),
     )
@@ -733,7 +725,6 @@ def test_inline_label_thresholds_match_current_constants() -> None:
         actions=[short_action, long_action],
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="thresholds", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[agent]),
     )
@@ -1043,7 +1034,6 @@ def test_empty_bands_dropped() -> None:
     )
     ann = SilAvAnnotation(environments=[env])
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="env_only", duration_s=10.0),
         annotation=ann,
     )
@@ -1090,8 +1080,7 @@ def test_proportional_label_suppression() -> None:
             actions=[act],
         )
         return AnnotationBundle(
-            schema_version="2.1.0",
-            video=VideoMeta(clip_id=f"prop_{duration}", duration_s=duration),
+                video=VideoMeta(clip_id=f"prop_{duration}", duration_s=duration),
             annotation=SilAvAnnotation(agents=[agent]),
         )
 
@@ -1162,19 +1151,20 @@ def test_arrows_target_new_band_y() -> None:
     )
     # agent_1 on its own track (track_index=1) so the painter emits a
     # distinct per-entity block for it — that's the layout the arrow
-    # test exercises. The index lives in the ui/1.0 sidecar (schema 2.2.0+).
+    # test exercises. Track index is an inline `_track_index` field on
+    # the Agent (post-reboot schema 2.0.0).
     a1 = Agent(
         id="agent_1",
         type="oxd:Car",
         visibility_start_timestamp="0:3.5",
         visibility_end_timestamp="0:6.5",
         actions=[a1_act],
+        track_index=1,
     )
     bundle = AnnotationBundle(
         video=VideoMeta(clip_id="arrow", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[a0, a1]),
     )
-    UiIndexes.get_or_create(bundle).set("agent_1", "track_index", 1)
     fig = render_timeline(_seq(bundle))
     yticks_text = _yticks(fig)
     yticks_vals = list(fig.layout.yaxis.tickvals or ())
@@ -1253,15 +1243,13 @@ def test_per_entity_bands() -> None:
                     end_timestamp="0:2.0",
                 )
             ],
+            track_index=idx,
         )
 
     bundle = AnnotationBundle(
         video=VideoMeta(clip_id="per_entity", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1), _agent(2)]),
     )
-    ui = UiIndexes.get_or_create(bundle)
-    for idx in (0, 1, 2):
-        ui.set(f"agent_{idx}", "track_index", idx)
     fig = render_timeline(_seq(bundle))
     yticks = _yticks(fig)
     # Three "Agent Track N" parents must show up.
@@ -1322,10 +1310,12 @@ def test_multi_track_index_produces_multiple_sub_rows() -> None:
     cont1 = Containment(
         id="cont1", env_id="env_0", lane_number="2",
         start_timestamp="0:0.0", end_timestamp="0:2.0",
+        track_index=1,
     )
     cont2 = Containment(
         id="cont2", env_id="env_0", lane_number="3",
         start_timestamp="0:0.0", end_timestamp="0:2.0",
+        track_index=2,
     )
     env = Environment(
         id="env_0", type="fst:Road",
@@ -1340,9 +1330,6 @@ def test_multi_track_index_produces_multiple_sub_rows() -> None:
         video=VideoMeta(clip_id="sub_rows", duration_s=10.0),
         annotation=SilAvAnnotation(environments=[env], agents=[agent]),
     )
-    ui = UiIndexes.get_or_create(bundle)
-    ui.set("cont1", "cont_track_index", 1)
-    ui.set("cont2", "cont_track_index", 2)
     fig = render_timeline(_seq(bundle))
     yticks = _yticks(fig)
     # Find the index of the first labeled "containment" row under
@@ -1373,6 +1360,7 @@ def test_trailing_sub_row_labels_are_blank() -> None:
     cond1 = Condition(
         id="c1", env_id="env_0", type=["Construction Zone"],
         start_timestamp="0:0.0", end_timestamp="0:2.0",
+        cond_track_index=1,
     )
     env = Environment(
         id="env_0", type="fst:Road",
@@ -1384,7 +1372,6 @@ def test_trailing_sub_row_labels_are_blank() -> None:
             environments=[env], conditions=[cond0, cond1],
         ),
     )
-    UiIndexes.get_or_create(bundle).set("c1", "cond_track_index", 1)
     fig = render_timeline(_seq(bundle))
     yticks = _yticks(fig)
     # Two condition sub-rows under Env Track 1: first labeled
@@ -1539,7 +1526,6 @@ def test_band_tick_text_matches_annotator_terse_style() -> None:
         agents=[agent],
     )
     bundle = AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id="terse", duration_s=10.0),
         annotation=ann,
     )
@@ -1674,15 +1660,13 @@ def test_entity_block_tint_alternates_within_category() -> None:
                     end_timestamp="0:2.0",
                 )
             ],
+            track_index=idx,
         )
 
     bundle = AnnotationBundle(
         video=VideoMeta(clip_id="alt_tint", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1)]),
     )
-    ui = UiIndexes.get_or_create(bundle)
-    for idx in (0, 1):
-        ui.set(f"agent_{idx}", "track_index", idx)
     fig = render_timeline(_seq(bundle))
     a0 = next(
         s for s in _entity_block_shapes(fig)
@@ -2260,15 +2244,13 @@ def test_entity_block_gap_between_adjacent_blocks() -> None:
                     end_timestamp="0:2.0",
                 )
             ],
+            track_index=idx,
         )
 
     bundle = AnnotationBundle(
         video=VideoMeta(clip_id="gap", duration_s=10.0),
         annotation=SilAvAnnotation(agents=[_agent(0), _agent(1)]),
     )
-    ui = UiIndexes.get_or_create(bundle)
-    for idx in (0, 1):
-        ui.set(f"agent_{idx}", "track_index", idx)
     fig = render_timeline(_seq(bundle))
     blocks = _entity_block_shapes(fig)
     # Sort by y0 so adjacent-in-y blocks are adjacent in the list.
