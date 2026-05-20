@@ -23,10 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
-from cascade_av.query.constants import (
-    ACTION_FLAG_SCHEMA_FIELDS,
-    ACTION_FLAG_TOKENS,
-)
+from cascade_av.query.constants import ACTION_FLAG_TOKENS
 from cascade_av.query.time import Interval
 from cascade_av.query.spatial import (
     agent_visibility_interval,
@@ -409,34 +406,16 @@ def _action_type_attr(action: AgentAction | EgoAction, _bundle: AnnotationBundle
     return action.type
 
 
-def _action_flag_reader(flag: str) -> Callable[[Any, AnnotationBundle], bool]:
-    """Reader for a parenthesized-suffix flag like `jaywalk` on actions.
+def _action_illegal(action: AgentAction | EgoAction, _bundle: AnnotationBundle) -> bool:
+    """Reader for the ``illegal`` DSL attribute on actions.
 
-    Returns True if (a) the schema flag field is True, OR (b) the
-    parenthesized-suffix of the type string contains the flag token.
+    The 2.0.0 schema reboot collapsed every parenthesized-suffix flag
+    (``jaywalk``, ``erratic``, ``protected``, ...) into the
+    ``action_type`` string itself; the only standalone boolean field
+    left on AgentAction / EgoAction is ``illegal_flag``. Suffix-based
+    matching is handled by ``action_type_matches`` in ``engine.py``.
     """
-    schema_field = ACTION_FLAG_SCHEMA_FIELDS.get(flag)
-
-    def _read(action: Any, _bundle: AnnotationBundle) -> bool:
-        type_str = _action_type_attr(action, _bundle)
-        if schema_field is not None:
-            val = getattr(action, schema_field, None)
-            if val is True:
-                return True
-        tokens = _suffix_tokens(type_str)
-        # Suffix tokens are e.g. {"jaywalk"}, {"out of lane: into ego lane"}.
-        # Match by membership or by canonicalized DSL token name.
-        dsl_token = flag.replace("_", " ")
-        if dsl_token in tokens or flag in tokens:
-            return True
-        # Special-case: some action type strings carry suffixes like
-        # `(out of lane: into ego lane)` — keep loose containment.
-        for tok in tokens:
-            if dsl_token in tok:
-                return True
-        return False
-
-    return _read
+    return bool(action.illegal_flag)
 
 
 def _prop_type_attr(p: AgentProperty, _bundle: AnnotationBundle) -> str:
@@ -450,12 +429,6 @@ def _prop_type_attr(p: AgentProperty, _bundle: AnnotationBundle) -> str:
 
 # Build the sub-entity descriptors first; they're referenced by the
 # parent descriptors via name.
-
-_action_flag_attrs: dict[str, Attribute] = {}
-for _flag in ACTION_FLAG_SCHEMA_FIELDS:
-    _action_flag_attrs[_flag] = Attribute(
-        reader=_action_flag_reader(_flag), alias_family=None, kind="scalar"
-    )
 
 
 def _action_interval_reader(a: AgentAction | EgoAction, bundle: AnnotationBundle) -> Interval:
@@ -472,7 +445,7 @@ AGENT_ACTION_DESCRIPTOR = EntityDescriptor(
     interval=_action_interval_reader,
     attributes={
         "type": Attribute(reader=_action_type_attr, alias_family="action_type"),
-        **_action_flag_attrs,
+        "illegal": Attribute(reader=_action_illegal),
     },
 )
 
@@ -483,7 +456,7 @@ EGO_ACTION_DESCRIPTOR = EntityDescriptor(
     interval=_action_interval_reader,
     attributes={
         "type": Attribute(reader=_action_type_attr, alias_family="action_type"),
-        **_action_flag_attrs,
+        "illegal": Attribute(reader=_action_illegal),
     },
 )
 

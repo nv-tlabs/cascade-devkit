@@ -728,7 +728,6 @@ _LANE_HINT_KEYS: tuple[str, ...] = (
     "_cond_track_index",
     "_cont_track_index",
     "_influence_track_index",
-    "_prop_track_index",
     "_track_index",
 )
 
@@ -754,8 +753,8 @@ def assign_lanes(segments: list[Segment]) -> dict[str, int]:
 
     Per `track_id`, sort segments by `(t0, t1)`. For each segment: if it
     carries a producer-supplied lane hint (`_cond_track_index`,
-    `_cont_track_index`, `_influence_track_index`, `_prop_track_index`,
-    `_track_index`) and that lane is free at this `t0`, keep it.
+    `_cont_track_index`, `_influence_track_index`, `_track_index`) and
+    that lane is free at this `t0`, keep it.
     Otherwise, place the segment on the lowest-index lane whose last
     segment's `t1` is `<= t0` (no overlap). The output is the smallest
     lane count that accommodates the worst-case overlap stack.
