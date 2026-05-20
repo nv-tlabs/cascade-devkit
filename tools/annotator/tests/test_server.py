@@ -25,6 +25,32 @@ def _client(corpus_dir: Path, *, read_only: bool = False) -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture
+def mock_ffprobe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub ffprobe with a fixed (fps, duration_s) result.
+
+    Tests that exercise the fresh-clip path (`make_empty_bundle` → probe)
+    only care that a bundle materialises; they do not assert on probe
+    output. Per AGENTS.md ("the annotator's video tests mock
+    `subprocess.run` / `shutil.which`, so real ffmpeg is never invoked"),
+    we patch at the ``subprocess.run`` boundary inside ``annotator.server.video``
+    so the real probe logic runs end-to-end and hosts without ffmpeg on
+    PATH still pass.
+    """
+    import json as _json
+    import subprocess
+
+    probe_payload = _json.dumps({
+        "streams": [{"avg_frame_rate": "30/1"}],
+        "format": {"duration": "10.0"},
+    })
+
+    def _fake_probe(cmd: list[str], **_kwargs):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(cmd, 0, stdout=probe_payload, stderr="")
+
+    monkeypatch.setattr("annotator.server.video.subprocess.run", _fake_probe)
+
+
 # -----------------------------------------------------------------------------
 # Health / listing
 # -----------------------------------------------------------------------------
@@ -154,7 +180,9 @@ def test_put_annotations_read_only_409(corpus_copy: Path) -> None:
     assert r.json() == {"error": "server is read-only"}
 
 
-def test_put_annotations_fresh_clip_creates_file(tmp_path: Path) -> None:
+def test_put_annotations_fresh_clip_creates_file(
+    tmp_path: Path, mock_ffprobe: None
+) -> None:
     # Video-only "source" — no JSON yet.
     video = tmp_path / "freshclip.mp4"
     video.touch()
@@ -235,7 +263,9 @@ def test_put_creates_bak_on_first_save_in_session(corpus_copy: Path) -> None:
     assert bak_path.read_bytes() == sentinel, ".bak should only stamp once per session"
 
 
-def test_put_fresh_clip_does_not_write_bak(tmp_path: Path) -> None:
+def test_put_fresh_clip_does_not_write_bak(
+    tmp_path: Path, mock_ffprobe: None
+) -> None:
     """An unlabelled clip's first save creates the new file; no `.bak` to write."""
     video = tmp_path / "freshclip.mp4"
     video.touch()
@@ -256,7 +286,9 @@ def test_put_fresh_clip_does_not_write_bak(tmp_path: Path) -> None:
 # make_empty_bundle self-descriptive on disk
 # -----------------------------------------------------------------------------
 
-def test_make_empty_bundle_includes_schema_and_status(tmp_path: Path) -> None:
+def test_make_empty_bundle_includes_schema_and_status(
+    tmp_path: Path, mock_ffprobe: None
+) -> None:
     """A fresh-clip JSON written through the server keeps schema_version + status.
 
     `exclude_unset=True` in save_file would otherwise drop the defaults, so
