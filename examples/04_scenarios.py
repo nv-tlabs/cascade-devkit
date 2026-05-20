@@ -154,20 +154,87 @@ SCENARIOS: list[Scenario] = [
     ),
 
     # ===== Causal queries (DSL distinguishing feature) =====
+    # `because_of` walks `action.because_of`, which holds the IDs of *actions,
+    # signal states, properties, and traffic objects* that caused this action —
+    # never agent IDs directly. So `because_of agent.type = X` never matches;
+    # point at the agent's *action* instead, or at a signal state / object /
+    # property. The RHS can be any parenthesized expression — boolean
+    # combinations, `in (...)`, and cross-modal compounds are all valid.
     Scenario(
         id="ego-decel-because-ped",
-        title="Ego decelerates BECAUSE OF a pedestrian (causal edge)",
-        query="ego.action = decel because_of agent.type = ped",
+        title="Ego decelerates because a pedestrian was walking/running",
+        query='ego.action = decel because_of agent.action.type in ("oxd:Walk", "oxd:Run")',
     ),
     Scenario(
-        id="ego-drive-because-ped",
-        title="Ego drives BECAUSE OF a pedestrian (causal edge — pedestrian-aware nominal)",
-        query="ego.action = drive because_of agent.type = ped",
+        id="ego-decel-because-vehicle-in-lane",
+        title="Ego decelerates because a vehicle was driving in lane",
+        query="ego.action = decel because_of agent.action.type = fst:DrivingInLane",
     ),
     Scenario(
-        id="ego-yield-because-vehicle",
-        title="Ego yields BECAUSE OF another vehicle",
-        query="ego.action = yield because_of agent.type = vehicle",
+        id="ego-decel-because-vehicle-stopped-or-driving",
+        title="Ego decelerates because another vehicle was stopped or driving in lane",
+        query="ego.action = decel because_of agent.action.type in (fst:Stop, fst:DrivingInLane)",
+    ),
+    Scenario(
+        id="ego-decel-because-vehicle-changing-lane",
+        title="Ego decelerates because a vehicle was changing lane",
+        query="ego.action = decel because_of agent.action.type = oxd:ChangeLane",
+    ),
+    Scenario(
+        id="ego-decel-because-vehicle-turning",
+        title="Ego decelerates because a vehicle was turning",
+        query="ego.action = decel because_of "
+              "agent.action.type in (oxd:MakeARightTurn, oxd:MakeALeftTurn)",
+    ),
+    Scenario(
+        id="ego-stop-because-red",
+        title="Ego stops because of a red light (causal edge into signal state)",
+        query="ego.action = stop because_of light.color = red",
+    ),
+    Scenario(
+        id="ego-stop-because-stop-sign",
+        title="Ego stops because of a stop sign (causal edge into traffic object)",
+        query="ego.action = stop because_of obj.type = stop_sign",
+    ),
+    Scenario(
+        id="ego-yield-because-yield-sign",
+        title="Ego yields because of a yield sign",
+        query="ego.action = yield because_of obj.type = yield_sign",
+    ),
+    Scenario(
+        id="ego-stop-because-any-control",
+        title="Ego stops because of ANY traffic control (cross-modal RHS)",
+        query="ego.action = stop because_of "
+              "(light.color = red or obj.type = stop_sign or obj.type = yield_sign)",
+    ),
+    Scenario(
+        id="ego-defensive-because-red",
+        title="Ego stops OR decelerates because of red light (compound LHS + single RHS)",
+        query="(ego.action = stop or ego.action = decel) because_of light.color = red",
+    ),
+    Scenario(
+        id="ego-defensive-because-red-or-stop-sign",
+        title="Ego stops OR decels because of red OR stop sign (compound LHS + compound RHS)",
+        query="(ego.action = stop or ego.action = decel) because_of "
+              "(light.color = red or obj.type = stop_sign)",
+    ),
+    Scenario(
+        id="ego-decel-because-debris",
+        title="Ego decelerates because of cone / barrier / debris",
+        query="ego.action = decel because_of obj.type in (cone, barrier, debris)",
+    ),
+    Scenario(
+        id="crosswalk-ped-causes-ego-decel",
+        title="Ego decels because of ped walk/run AND pedestrian is in a crosswalk "
+              "(combines causal edge with entity predicate)",
+        query='ego.action = decel because_of agent.action.type in ("oxd:Walk", "oxd:Run") '
+              "and agent.type = ped and env.type = crosswalk",
+    ),
+    Scenario(
+        id="while-ped-ego-decel-causal",
+        title="During a window where a pedestrian is present, ego decels because of an agent action",
+        query="within agent.type = ped: ego.action = decel because_of "
+              'agent.action.type in ("oxd:Walk", "oxd:Run", fst:Stop, fst:DrivingInLane)',
     ),
 
     # ===== Temporal queries =====

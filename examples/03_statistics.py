@@ -25,9 +25,16 @@ def print_bar_chart(title: str, counts: dict[object, int], width: int = 40) -> N
         print("  (no matches)")
         return
     max_n = max(counts.values())
+    # Schema 2.0.0 combined-suffix `action_type` strings can run long
+    # (e.g. `oxd:MakeARightTurn (unprotected)`). Use a label column wide
+    # enough to fit them, and ellipsize anything longer.
+    label_width = 36
     for key, n in sorted(counts.items(), key=lambda kv: -kv[1]):
         bar = "█" * int(width * n / max_n) if max_n else ""
-        print(f"  {str(key)[:30]:>30}  {n:>5}  {bar}")
+        label = str(key)
+        if len(label) > label_width:
+            label = label[: label_width - 1] + "…"
+        print(f"  {label:>{label_width}}  {n:>5}  {bar}")
 
 
 def entity_count(ds: CascadeDataset, query: str) -> int:
