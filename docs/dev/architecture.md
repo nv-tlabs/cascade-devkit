@@ -11,7 +11,7 @@ Design decisions, system shape, and rationale for `av-causal-dataset-tools`.
 `cascade_av` is a Python DevKit plus a local annotation tool, layered on
 NVIDIA's *Physical AI AV Dataset*. The library reads per-clip annotation
 JSONs into a typed Pydantic tree (current schema is
-[2.1.0](./schema-history.md)), joins them to the parent dataset's
+[2.0.0](./schema-history.md)), joins them to the parent dataset's
 egomotion and video, and exposes a small DSL for querying the corpus by
 entity, attribute, time, and cause. A visualization surface turns matches
 into static figures or interactive widgets in notebooks. Schema-extension
@@ -45,7 +45,7 @@ and how it talks to its neighbours.
 Single Python package: `cascade_av`. Sub-packages mirror the data flow.
 
 - **`spec/`** — Pydantic v2 models for the annotation format. The current
-  schema version is [2.1.0](./schema-history.md); the registry of all
+  schema version is [2.0.0](./schema-history.md); the registry of all
   known versions lives in `cascade_av.spec.versions`. `AnnotationBundle` is
   the single entry point; every other model is reachable from it. Two
   intentional invariants:
