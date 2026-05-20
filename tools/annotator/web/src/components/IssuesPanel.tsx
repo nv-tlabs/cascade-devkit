@@ -33,7 +33,15 @@ export interface IssuesPanelProps {
    * or `null` if the last request succeeded (or none has been made).
    */
   transportError?: string | null
-  onSelect?: (entityId: string) => void
+  /**
+   * Callback fired when the user clicks a clickable issue row. `field` is
+   * the wire `Issue.field` value verbatim — the host (`RightPanel`) runs it
+   * through `resolveFocus` to derive a `data-issue-target` and, after
+   * selecting the parent entity, focuses the matching form control. We pass
+   * the raw field instead of pre-resolving here so this component stays
+   * presentation-only (no knowledge of the rule → control mapping).
+   */
+  onSelect?: (entityId: string, field?: string) => void
   /**
    * Optional human-readable name lookup. When set, the row title prefers
    * `nameForEntity(entity_id)` over the raw id; falls back to entity_path
@@ -148,7 +156,7 @@ export function IssuesPanel({
                     {clickable ? (
                       <button
                         type="button"
-                        onClick={() => onSelect?.(issue.entity_id!)}
+                        onClick={() => onSelect?.(issue.entity_id!, issue.field ?? undefined)}
                         className={`${baseCls} ${interactionCls} ${severityCls}`}
                       >
                         {content}

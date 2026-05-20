@@ -23,6 +23,7 @@ import { AlertTriangle, Trash2, Link2, BarChart3, FileText, Download, Upload, Sa
 import { checkSegmentCompleteness } from '../lib/completeness'
 import { validateBundle, type ValidateIssue } from '../lib/validate-api'
 import { IssuesPanel } from './IssuesPanel'
+import { resolveFocus } from '../lib/issue-focus'
 
 // --- Shared UI helpers ---
 const inputCls = 'w-full px-3 py-2 text-sm bg-surface-overlay text-text-primary rounded-md border border-border-default focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30'
@@ -38,11 +39,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 import type { OptionGroupEntry } from '../lib/attribute-cycling'
 
-function SelectField({ label, value, options, onChange, allowEmpty, displayNames, groups, highlight }: { label: string; value: string; options: readonly string[]; onChange: (v: string) => void; allowEmpty?: boolean; displayNames?: Record<string, string>; groups?: OptionGroupEntry[]; highlight?: boolean }) {
+function SelectField({ label, value, options, onChange, allowEmpty, displayNames, groups, highlight, issueTarget }: { label: string; value: string; options: readonly string[]; onChange: (v: string) => void; allowEmpty?: boolean; displayNames?: Record<string, string>; groups?: OptionGroupEntry[]; highlight?: boolean; issueTarget?: string }) {
   const dn = (v: string) => displayNames?.[v] ?? v
   return (
     <Field label={label}>
-      <select value={value} onChange={e => onChange(e.target.value)} className={fieldCls(highlight)}>
+      <select value={value} onChange={e => onChange(e.target.value)} className={fieldCls(highlight)} data-issue-target={issueTarget}>
         {allowEmpty && <option value="">-- none --</option>}
         {groups
           ? groups.flatMap(entry => {
@@ -66,11 +67,11 @@ function SelectField({ label, value, options, onChange, allowEmpty, displayNames
   )
 }
 
-function TextField({ label, value, onChange, placeholder, highlight }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; highlight?: boolean }) {
-  return <Field label={label}><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={fieldCls(highlight)} /></Field>
+function TextField({ label, value, onChange, placeholder, highlight, issueTarget }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; highlight?: boolean; issueTarget?: string }) {
+  return <Field label={label}><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={fieldCls(highlight)} data-issue-target={issueTarget} /></Field>
 }
 
-function LaneNumberField({ label, value, onChange, step, highlight }: { label: string; value: number | string; onChange: (v: number | string) => void; step?: number; highlight?: boolean }) {
+function LaneNumberField({ label, value, onChange, step, highlight, issueTarget }: { label: string; value: number | string; onChange: (v: number | string) => void; step?: number; highlight?: boolean; issueTarget?: string }) {
   return (
     <Field label={label}>
       <input
@@ -78,6 +79,7 @@ function LaneNumberField({ label, value, onChange, step, highlight }: { label: s
         onChange={e => onChange(e.target.value === "" ? "" : Math.trunc(+e.target.value))}
         onBlur={() => (value === "" || +value < 1) && onChange(1)}
         className={fieldCls(highlight)}
+        data-issue-target={issueTarget}
       />
     </Field>
   );
@@ -117,7 +119,7 @@ function SectionHeader({ color, children }: { color: string; children: React.Rea
   )
 }
 
-function AgentIdPicker({ label, value, onChange, ann }: { label: string; value: string[]; onChange: (v: string[]) => void; ann: SilAvAnnotation | undefined }) {
+function AgentIdPicker({ label, value, onChange, ann, issueTarget }: { label: string; value: string[]; onChange: (v: string[]) => void; ann: SilAvAnnotation | undefined; issueTarget?: string }) {
   const agentMap = new Map((ann?.agents || []).filter(a => a.id).map(a => [a.id, a]))
   const options = ['Ego', ...(ann?.agents || []).map(a => a.id).filter(Boolean)]
   const nameFor = (id: string) => { const a = agentMap.get(id); return a ? `${id} (Agent${a.name ? ` · "${a.name}"` : ''})` : id }
@@ -137,7 +139,7 @@ function AgentIdPicker({ label, value, onChange, ann }: { label: string; value: 
         ))}
         {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
       </div>
-      <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={selectCls} disabled={available.length === 0 && hasUnknown}>
+      <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={selectCls} disabled={available.length === 0 && hasUnknown} data-issue-target={issueTarget}>
         <option value="">+ Add agent&hellip;</option>
         {available.map(o => <option key={o} value={o}>{nameFor(o)}</option>)}
         {!hasUnknown && <option value="Unknown">Unknown</option>}
@@ -146,7 +148,7 @@ function AgentIdPicker({ label, value, onChange, ann }: { label: string; value: 
   )
 }
 
-function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required, highlight }: { label: string; value: string[]; onChange: (v: string[]) => void; ann: SilAvAnnotation | undefined; entityTypes: ('agent' | 'object')[]; required?: boolean; highlight?: boolean }) {
+function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required, highlight, issueTarget }: { label: string; value: string[]; onChange: (v: string[]) => void; ann: SilAvAnnotation | undefined; entityTypes: ('agent' | 'object')[]; required?: boolean; highlight?: boolean; issueTarget?: string }) {
   const existing = new Set(value)
   const includeAgents = entityTypes.includes('agent')
   const includeObjects = entityTypes.includes('object')
@@ -189,7 +191,7 @@ function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required
         ))}
         {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
       </div>
-      <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={fieldCls(highlight)} disabled={!hasOptions && hasUnknown}>
+      <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={fieldCls(highlight)} disabled={!hasOptions && hasUnknown} data-issue-target={issueTarget}>
         <option value="">+ Add&hellip;</option>
         {includeAgents && agentOpts.length > 0 && <optgroup label="Agents">{agentOpts.map(o => <option key={o} value={o}>{nameFor(o)}</option>)}</optgroup>}
         {includeObjects && objectOpts.length > 0 && <optgroup label="Objects">{objectOpts.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}</optgroup>}
@@ -199,7 +201,7 @@ function ActionTargetPicker({ label, value, onChange, ann, entityTypes, required
   )
 }
 
-function InfluencerIdPicker({ label, value, onChange, ann, highlight, showAgents }: { label: string; value: string[]; onChange: (v: string[]) => void; ann: SilAvAnnotation | undefined; highlight?: boolean; showAgents?: boolean }) {
+function InfluencerIdPicker({ label, value, onChange, ann, highlight, showAgents, issueTarget }: { label: string; value: string[]; onChange: (v: string[]) => void; ann: SilAvAnnotation | undefined; highlight?: boolean; showAgents?: boolean; issueTarget?: string }) {
   const existing = new Set(value)
   // Objects grouped
   const objectOpts = (ann?.traffic_objects || [])
@@ -229,7 +231,7 @@ function InfluencerIdPicker({ label, value, onChange, ann, highlight, showAgents
         ))}
         {value.length === 0 && <span className="text-[10px] text-text-disabled italic">None</span>}
       </div>
-      <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={fieldCls(highlight)} disabled={!hasOptions && hasUnknown}>
+      <select value="" onChange={e => { add(e.target.value); e.target.value = '' }} className={fieldCls(highlight)} disabled={!hasOptions && hasUnknown} data-issue-target={issueTarget}>
         <option value="">+ Add entity&hellip;</option>
         {agentOpts.length > 0 && <optgroup label="Agents">{agentOpts.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}</optgroup>}
         {objectOpts.length > 0 && <optgroup label="Objects">{objectOpts.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}</optgroup>}
@@ -289,6 +291,17 @@ export function RightPanel() {
 
   useEffect(() => { setBecauseOtherMode(false); setBecauseOtherText('') }, [sel?.id, selectedClipId])
 
+  // Issue-row → field focus. When the user clicks an IssuesPanel row, we
+  // first `selectPath(...)` to bring the entity's editor into view. The
+  // matching `data-issue-target="<field>"` control inside the right panel
+  // may not exist on the DOM yet (the new section renders on the next
+  // commit), so we stash the desired field in this ref and the effect below
+  // — keyed on the selected segment id — picks it up after the re-render
+  // and runs `.focus()` + `.scrollIntoView()`. Stored as a ref (not state)
+  // because we never want to render based on it; one-shot side-effect only.
+  const panelRootRef = useRef<HTMLElement | null>(null)
+  const pendingFocusFieldRef = useRef<string | null>(null)
+
   // Auto-follow playhead: when playhead leaves the selected segment, switch to
   // the segment on the same track that contains the playhead time.
   const lastManualSelRef = useRef<string | null>(null)
@@ -333,6 +346,32 @@ export function RightPanel() {
       selectPath(atTime.id)
     }
   }, [playheadTime]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Drain the pending issue-row focus once the selected segment changes.
+  // We only act when `pendingFocusFieldRef.current` was set by an issue-row
+  // click; under any other path the ref stays null and this effect is a
+  // no-op. Scoped to the panel root so we never grab a stray element
+  // elsewhere on the page (defence against future-target id collisions).
+  useEffect(() => {
+    const field = pendingFocusFieldRef.current
+    if (!field) return
+    pendingFocusFieldRef.current = null
+    const root = panelRootRef.current
+    if (!root) return
+    const el = root.querySelector<HTMLElement>(`[data-issue-target="${CSS.escape(field)}"]`)
+    if (!el) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    // Only call focus() on elements that can actually receive it — otherwise
+    // we just rely on the scrollIntoView() to bring the control into view.
+    if (typeof (el as HTMLElement & { focus?: () => void }).focus === 'function') {
+      try {
+        el.focus({ preventScroll: true })
+      } catch {
+        /* old browsers without options arg — ignore */
+      }
+    }
+  }, [selectedPath])
+
   const dur = bundle?.video?.duration_s ?? 0
   const status = bundle?.status ?? 'pending'
 
@@ -1012,7 +1051,7 @@ export function RightPanel() {
           <SectionHeader color="#92400e">Ego Influence</SectionHeader>
           <Field label="ID"><span className="text-sm text-gray-300">{(m.id as string) || ''}</span></Field>
           <InfluencerIdPicker label="Influencers (Shift+click on timeline)" value={(m.influencers as string[]) || []}
-            onChange={v => updateField('influencers', v)} ann={ann} highlight={missing('influencers')} />
+            onChange={v => updateField('influencers', v)} ann={ann} highlight={missing('influencers')} issueTarget="influencers" />
           <TextField label="Comment (optional)" value={(m.comment as string) || ''} onChange={v => updateField('comment', v)} />
         </>
       )
@@ -1025,7 +1064,7 @@ export function RightPanel() {
           <SectionHeader color="#92400e">Agent Influence</SectionHeader>
           <Field label="ID"><span className="text-sm text-gray-300">{(m.id as string) || ''}</span></Field>
           <InfluencerIdPicker label="Influencers (Shift+click on timeline)" value={(m.influencers as string[]) || []}
-            onChange={v => updateField('influencers', v)} ann={ann} highlight={missing('influencers')} showAgents />
+            onChange={v => updateField('influencers', v)} ann={ann} highlight={missing('influencers')} showAgents issueTarget="influencers" />
           <TextField label="Comment (optional)" value={(m.comment as string) || ''} onChange={v => updateField('comment', v)} />
         </>
       )
@@ -1105,7 +1144,7 @@ export function RightPanel() {
           <SectionHeader color="#06b6d4">Special condition ({condId})</SectionHeader>
           <Field label="ID"><span className="text-sm text-gray-300">{String(condId ?? '')}</span></Field>
           <Field label="Environment ID"><span className="text-sm text-gray-300">{String(m.env_id ?? '')}{(() => { const env = envOptions.find(e => e.id === m.env_id); return env ? ` · ${envDisplayName(env.type)}${env.name ? ` ("${env.name}")` : ''}` : '' })()}</span></Field>
-          <SelectField label="Type" value={typeStr} options={CONDITION_TYPES} onChange={v => updateField('type', v)} allowEmpty displayNames={CONDITION_DISPLAY_NAMES} highlight={missing('type')} />
+          <SelectField label="Type" value={typeStr} options={CONDITION_TYPES} onChange={v => updateField('type', v)} allowEmpty displayNames={CONDITION_DISPLAY_NAMES} highlight={missing('type')} issueTarget="type" />
           {typeStr === 'Other' && <TextField label="Other description" value={(m.condition_other_description as string) || ''} onChange={v => updateField('condition_other_description', v)} highlight={missing('other condition description')} />}
         </>
       )
@@ -1153,7 +1192,7 @@ export function RightPanel() {
         <>
           <SectionHeader color="#dc2626">Light State</SectionHeader>
           <Field label="ID"><span className="text-sm text-gray-300">{(m.id as string) || ''}</span></Field>
-          <SelectField label="Type" value={(m.type as string) || ''} options={LIGHT_STATE_TYPES} onChange={handleLightStateTypeChange} allowEmpty highlight={missing('type')} />
+          <SelectField label="Type" value={(m.type as string) || ''} options={LIGHT_STATE_TYPES} onChange={handleLightStateTypeChange} allowEmpty highlight={missing('type')} issueTarget="type" />
           <SelectField label="Color" value={(m.color as string) || ''} options={LIGHT_COLORS} onChange={v => updateField('color', v)} allowEmpty highlight={missing('color')} />
           <SelectField label="Shape" value={(m.shape as string) || ''} options={LIGHT_SHAPES} onChange={v => updateField('shape', v)} allowEmpty highlight={missing('shape')} />
           {((m.shape as string) === 'Other' || (m.color as string) === 'Other') && (
@@ -1199,7 +1238,7 @@ export function RightPanel() {
           <SectionHeader color="#22c55e">Environment ({envId})</SectionHeader>
           <Field label="ID"><span className="text-sm text-gray-300">{String(envId ?? '')}</span></Field>
           <TextField label="Name" value={(m.name as string) || ''} onChange={v => updateField('name', v)} />
-          <SelectField label="Type" value={(m.type as string) || ''} options={ENVIRONMENT_TYPES} groups={ENVIRONMENT_TYPE_GROUPS} onChange={v => updateField('type', v)} allowEmpty displayNames={ENVIRONMENT_DISPLAY_NAMES} highlight={missing('type')} />
+          <SelectField label="Type" value={(m.type as string) || ''} options={ENVIRONMENT_TYPES} groups={ENVIRONMENT_TYPE_GROUPS} onChange={v => updateField('type', v)} allowEmpty displayNames={ENVIRONMENT_DISPLAY_NAMES} highlight={missing('type')} issueTarget="type" />
           {(m.type === 'Other') && <TextField label="Other type description" value={(m.type_other_description as string) || ''} onChange={v => updateField('type_other_description', v)} highlight={missing('other type description')} />}
           {(m.type === 'Other Intersection') && <TextField label="Other intersection description" value={(m.type_other_description as string) || ''} onChange={v => updateField('type_other_description', v)} highlight={missing('other intersection description')} />}
           {SPLIT_LANE_TYPES.has(m.type as string) ? (
@@ -1293,7 +1332,7 @@ export function RightPanel() {
                 </label>
               )}
               <AgentIdPicker label="Signaling To" value={(sd.link_to as string[]) || []}
-                onChange={v => updateField('signal_target_ids', v)} ann={ann} />
+                onChange={v => updateField('signal_target_ids', v)} ann={ann} issueTarget="link_to" />
             </div>
           )}
         </>
@@ -1307,13 +1346,13 @@ export function RightPanel() {
       return (
         <>
           <SectionHeader color="#3b82f6">Ego Action</SectionHeader>
-          <SelectField label="Action Type" value={actType} options={EGO_ACTION_TYPES} groups={EGO_ACTION_TYPE_GROUPS} onChange={v => updateField('type', v)} allowEmpty displayNames={EGO_ACTION_DISPLAY_NAMES} highlight={missing('type')} />
+          <SelectField label="Action Type" value={actType} options={EGO_ACTION_TYPES} groups={EGO_ACTION_TYPE_GROUPS} onChange={v => updateField('type', v)} allowEmpty displayNames={EGO_ACTION_DISPLAY_NAMES} highlight={missing('type')} issueTarget="type" />
           {isTurnOther && <TextField label="Turn Other Description" value={(m.turn_other_description as string) || ''} onChange={v => updateField('turn_other_description', v)} placeholder="Describe the turn" highlight={missing('other turn description')} />}
           {actType === 'Other' && <TextField label="Other Description" value={(m.action_other_description as string) || ''} onChange={v => updateField('action_other_description', v)} placeholder="Describe the action" highlight={missing('other action description')} />}
           {ACTION_LINK_TO_CONFIG[actType] && (
             <ActionTargetPicker label={ACTION_LINK_TO_CONFIG[actType].label} value={(m.action_target as string[]) || []}
               onChange={v => updateField('action_target', v)} ann={ann} entityTypes={ACTION_LINK_TO_CONFIG[actType].entityTypes} required={ACTION_LINK_TO_CONFIG[actType].required}
-              highlight={ACTION_LINK_TO_CONFIG[actType].required && missing(ACTION_LINK_TO_CONFIG[actType].missingLabel)} />
+              highlight={ACTION_LINK_TO_CONFIG[actType].required && missing(ACTION_LINK_TO_CONFIG[actType].missingLabel)} issueTarget="action_target" />
           )}
         </>
       )
@@ -1330,7 +1369,7 @@ export function RightPanel() {
           <SectionHeader color="#f59e0b">Object ({objId})</SectionHeader>
           <Field label="ID"><span className="text-sm text-gray-300">{String(objId ?? '')}</span></Field>
           <TextField label="Name" value={(m.name as string) || ''} onChange={v => updateField('name', v)} />
-          <SelectField label="Type" value={(m.type as string) || ''} options={TRAFFIC_OBJECT_TYPES} groups={TRAFFIC_OBJECT_TYPE_GROUPS} onChange={v => updateField('type', v)} allowEmpty displayNames={TRAFFIC_OBJECT_DISPLAY_NAMES} highlight={missing('type')} />
+          <SelectField label="Type" value={(m.type as string) || ''} options={TRAFFIC_OBJECT_TYPES} groups={TRAFFIC_OBJECT_TYPE_GROUPS} onChange={v => updateField('type', v)} allowEmpty displayNames={TRAFFIC_OBJECT_DISPLAY_NAMES} highlight={missing('type')} issueTarget="type" />
           {(typeof m.type === 'string' && m.type.startsWith('Other')) && <TextField label="Other type description" value={(m.other_type_description as string) || ''} onChange={v => updateField('other_type_description', v)} highlight={missing('other type description')} />}
           {QUANTITY_ELIGIBLE_OBJECT_TYPES.has(m.type as string) && (
             <SelectField
@@ -1397,7 +1436,7 @@ export function RightPanel() {
                 </label>
               )}
               <AgentIdPicker label="Signaling To" value={(sd.link_to as string[]) || []}
-                onChange={v => updateField('signal_target_ids', v)} ann={ann} />
+                onChange={v => updateField('signal_target_ids', v)} ann={ann} issueTarget="link_to" />
             </div>
           )}
         </>
@@ -1414,7 +1453,7 @@ export function RightPanel() {
           <Field label="Agent ID"><span className="text-sm text-gray-300">{agent?.id || ''}</span></Field>
           <TextField label="Name" value={(m.name as string) || ''} onChange={v => updateField('name', v)} />
           <SelectField label="Amount" value={agent?.amount || ''} options={getAllowedAmounts(agent?.type || '')} onChange={v => updateField('agent_amount', v)} allowEmpty highlight={missing('amount')} />
-          <SelectField label="Agent Type" value={agent?.type || ''} options={AGENT_TYPES} groups={AGENT_TYPE_GROUPS} onChange={v => updateField('agent_type_enum', v)} allowEmpty displayNames={AGENT_TYPE_DISPLAY_NAMES} highlight={missing('type')} />
+          <SelectField label="Agent Type" value={agent?.type || ''} options={AGENT_TYPES} groups={AGENT_TYPE_GROUPS} onChange={v => updateField('agent_type_enum', v)} allowEmpty displayNames={AGENT_TYPE_DISPLAY_NAMES} highlight={missing('type')} issueTarget="type" />
           {agent?.type === 'Other' && <TextField label="Other type description" value={agent?.other_type_description || ''} onChange={v => updateField('agent_other_type_description', v)} highlight={missing('other type description')} />}
           {agent?.type === 'Pedestrian (Other)' && <TextField label="Other pedestrian description" value={agent?.other_type_description || ''} onChange={v => updateField('agent_other_type_description', v)} highlight={missing('other pedestrian description')} />}
           {agent?.type === 'oxd:Animal' && <TextField label="Animal description" value={agent?.other_type_description || ''} onChange={v => updateField('agent_other_type_description', v)} highlight={missing('animal description')} />}
@@ -1458,7 +1497,7 @@ export function RightPanel() {
         <>
           <SectionHeader color="#a855f7">Agent ({agent?.id || '...'}) — Action</SectionHeader>
           <Field label="Action ID"><span className="text-sm text-gray-300">{(m.id as string) || ''}</span></Field>
-          <SelectField label="Action Type" value={actionType} options={getAgentActionTypes(agent?.type || '')} groups={getAgentActionTypeGroups(agent?.type || '')} onChange={v => updateField('action_type', v)} allowEmpty displayNames={AGENT_ACTION_DISPLAY_NAMES} highlight={missing('action_type')} />
+          <SelectField label="Action Type" value={actionType} options={getAgentActionTypes(agent?.type || '')} groups={getAgentActionTypeGroups(agent?.type || '')} onChange={v => updateField('action_type', v)} allowEmpty displayNames={AGENT_ACTION_DISPLAY_NAMES} highlight={missing('action_type')} issueTarget="action_type" />
           {actionType === 'Other oxd:MakeATurn' && (
             <TextField label="Turn Other Description" value={(m.other_description as string) || ''} onChange={v => updateField('other_description', v)} placeholder="Describe the turn" highlight={missing('other turn description')} />
           )}
@@ -1468,7 +1507,7 @@ export function RightPanel() {
           {ACTION_LINK_TO_CONFIG[actionType] && (
             <ActionTargetPicker label={ACTION_LINK_TO_CONFIG[actionType].label} value={(m.action_target as string[]) || []}
               onChange={v => updateField('action_target', v)} ann={ann} entityTypes={ACTION_LINK_TO_CONFIG[actionType].entityTypes} required={ACTION_LINK_TO_CONFIG[actionType].required}
-              highlight={ACTION_LINK_TO_CONFIG[actionType].required && missing(ACTION_LINK_TO_CONFIG[actionType].missingLabel)} />
+              highlight={ACTION_LINK_TO_CONFIG[actionType].required && missing(ACTION_LINK_TO_CONFIG[actionType].missingLabel)} issueTarget="action_target" />
           )}
         </>
       )
@@ -1479,7 +1518,11 @@ export function RightPanel() {
 
   // ================= JSX =================
   return (
-    <aside className="h-full flex flex-col bg-surface-raised overflow-y-auto overflow-x-hidden" style={{ scrollbarGutter: 'stable' }}>
+    <aside
+      ref={panelRootRef}
+      className="h-full flex flex-col bg-surface-raised overflow-y-auto overflow-x-hidden"
+      style={{ scrollbarGutter: 'stable' }}
+    >
 
       {/* Status + Save + Mark complete */}
       <div className="px-5 pt-4 pb-5 border-b border-border-subtle">
@@ -1510,7 +1553,7 @@ export function RightPanel() {
         <IssuesPanel
           issues={issues}
           transportError={transportError}
-          onSelect={(entityId) => {
+          onSelect={(entityId, field) => {
             // Find a segment whose entity id matches and select it. We look
             // through the live segment list (regenerated above) so we don't
             // need to maintain a separate entityToSeg map.
@@ -1518,7 +1561,24 @@ export function RightPanel() {
               const meta = s.meta as Record<string, unknown> | undefined
               return meta?.id === entityId
             })
-            if (match) selectPath(match.id)
+            if (!match) return
+            // Resolve `(rule, field)` → `data-issue-target` and stash the
+            // field for the post-render focus effect above. We pass the
+            // wire `field` through `resolveFocus` (not directly through)
+            // so rule-specific rewrites (e.g. visibility_start_timestamp →
+            // start_timestamp) take effect.
+            const target = resolveFocus({
+              // resolveFocus only consumes entity_id + field; the rest of
+              // the ValidateIssue is filled in to satisfy the type.
+              severity: 'warning',
+              entity_path: '',
+              entity_id: entityId,
+              field: field ?? null,
+              rule: '',
+              message: '',
+            })
+            pendingFocusFieldRef.current = target?.field ?? null
+            selectPath(match.id)
           }}
         />
       )}
@@ -1622,11 +1682,11 @@ export function RightPanel() {
             <div className="flex gap-3 pt-4 border-t border-border-subtle">
               <label className="flex-1">
                 <span className={labelCls}>Start (s)</span>
-                <input type="number" step={0.1} value={sel.t0.toFixed(1)} onChange={e => handleTimeChange(+e.target.value, sel.t1)} className={inputCls} />
+                <input type="number" step={0.1} value={sel.t0.toFixed(1)} onChange={e => handleTimeChange(+e.target.value, sel.t1)} className={inputCls} data-issue-target="start_timestamp" />
               </label>
               <label className="flex-1">
                 <span className={labelCls}>End (s)</span>
-                <input type="number" step={0.1} value={sel.t1.toFixed(1)} onChange={e => handleTimeChange(sel.t0, +e.target.value)} className={inputCls} />
+                <input type="number" step={0.1} value={sel.t1.toFixed(1)} onChange={e => handleTimeChange(sel.t0, +e.target.value)} className={inputCls} data-issue-target="end_timestamp" />
               </label>
             </div>
 
@@ -1717,6 +1777,7 @@ export function RightPanel() {
                           else if (val) { handleAddBecauseById(val); setBecauseOtherMode(false); setBecauseOtherText('') }
                         }}
                         className={selectCls}
+                        data-issue-target="because_of"
                       >
                         <option value="">+ Add cause…</option>
                         {agentActionGroups.length > 0 && <option disabled>· · · Actions · · ·</option>}
@@ -1790,7 +1851,7 @@ export function RightPanel() {
               <div className="pt-3 border-t border-border-subtle">
                 <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider block mb-2">Link To <span className="font-normal normal-case">(optional)</span></span>
                 <AgentIdPicker label="Link To (Shift+click on timeline)" value={(selMeta.link_to as string[]) || []}
-                  onChange={v => updateField('link_to', v)} ann={ann} />
+                  onChange={v => updateField('link_to', v)} ann={ann} issueTarget="link_to" />
               </div>
             )}
 
