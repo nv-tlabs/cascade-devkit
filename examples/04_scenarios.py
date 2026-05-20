@@ -50,7 +50,13 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         id="ped-jaywalk-yield",
         title="Pedestrian jaywalks; ego brakes / yields",
-        query="agent(type = ped, action(jaywalk = true)) "
+        # Post schema-2.0.0, `jaywalk` is a parenthesized suffix on
+        # `action_type` rather than a flag — enumerate the four combined
+        # strings (walk/run × with/without erratic). Same canon as
+        # examples/02_query_operators.py.
+        query='agent(type = ped, action.type in ('
+              '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
+              '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)")) '
               "and ego.action in (stop, yield, decel)",
     ),
     Scenario(
@@ -202,7 +208,7 @@ def main() -> None:
 
     print()
     print("# To inspect a scenario's matching clips:")
-    print('# matches = ds.find("agent(type = ped, action(jaywalk = true))")')
+    print('# matches = ds.find(\'agent(type = ped, action.type = "oxd:Walk (jaywalk)")\')')
     print("# print(set(matches.clips()))")
 
 

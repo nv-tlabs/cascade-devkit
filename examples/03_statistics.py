@@ -136,8 +136,17 @@ def main() -> None:
     n_yellow_clear = ds.count("light(color = yellow, could_have_cleared = true)")
     print(f"  yellows ego could have cleared safely: {n_yellow_clear}")
 
-    n_jaywalk_clips = ds.count("agent(type = ped, action(jaywalk = true))")
-    n_jaywalk_entities = entity_count(ds, "agent(type = ped, action(jaywalk = true))")
+    # Flags (jaywalk, erratic, unprotected, …) live as parenthesized
+    # suffixes on `action_type` post schema 2.0.0 — enumerate the four
+    # combined strings to count pedestrians jaywalking with or without
+    # erratic motion. See examples/02_query_operators.py for the canon.
+    jaywalk_query = (
+        'agent(type = ped, action.type in ('
+        '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
+        '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))'
+    )
+    n_jaywalk_clips = ds.count(jaywalk_query)
+    n_jaywalk_entities = entity_count(ds, jaywalk_query)
     print(f"  jaywalking pedestrian: {n_jaywalk_clips} clips, "
           f"{n_jaywalk_entities} pedestrian instances")
 
