@@ -42,7 +42,6 @@ def _make_minimal_bundle(clip_id: str, duration_s: float = 10.0) -> AnnotationBu
     painter inside `ClipPlayer` handles an empty annotation cleanly.
     """
     return AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id=clip_id, duration_s=duration_s),
         annotation=SilAvAnnotation(),
     )

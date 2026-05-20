@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 import type { AnnotationBundle } from './types'
-import { extractUiExtension } from './ui-extension'
 import { ApiError } from './api'
 
 /**
@@ -29,23 +28,22 @@ const BASE = '/api'
 /**
  * Run the server-side rule set against a bundle without persisting it.
  *
- * Mirrors `saveBundle`: the bundle is packed into the ui/1.0 wire envelope
- * via `extractUiExtension` so the server sees the on-disk shape, not the
- * frontend's hydrated form. Throws `ApiError` on non-2xx responses so
- * callers can distinguish "endpoint unavailable" (server down, 503) from
+ * Mirrors `saveBundle`: the bundle is sent as-is — timeline-layout indices
+ * live inline on each entity post-2.0.0 reboot, so no wire-envelope
+ * adapter is needed. Throws `ApiError` on non-2xx responses so callers can
+ * distinguish "endpoint unavailable" (server down, 503) from
  * "validation completed" (200 with `ok=false` and issues).
  */
 export async function validateBundle(
   clipId: string,
   bundle: AnnotationBundle,
 ): Promise<ValidateResponse> {
-  const wireOut = extractUiExtension(bundle)
   const res = await fetch(
     `${BASE}/clips/${encodeURIComponent(clipId)}/annotations/validate`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(wireOut),
+      body: JSON.stringify(bundle),
     },
   )
   if (!res.ok) {

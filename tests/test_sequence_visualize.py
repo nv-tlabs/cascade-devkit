@@ -63,7 +63,6 @@ class _FakeVideoReaderWithTimestamps(FakeVideoReader):
 def _make_bundle(duration: float = 10.0, clip_id: str = "vis_clip") -> AnnotationBundle:
     """Smallest valid bundle — empty annotation, fixed duration."""
     return AnnotationBundle(
-        schema_version="2.1.0",
         video=VideoMeta(clip_id=clip_id, duration_s=duration),
         annotation=SilAvAnnotation(),
     )
