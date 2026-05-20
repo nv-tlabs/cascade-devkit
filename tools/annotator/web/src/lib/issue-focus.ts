@@ -82,6 +82,14 @@ const NO_UI_CONTROL = new Set<string>([
  * Returns `null` when the issue has no `entity_id` (clip-level findings —
  * the IssuesPanel renders these as non-clickable rows, so the host should
  * never reach the resolver for them; we still tolerate the case defensively).
+ *
+ * Note: the implementation currently keys purely on `issue.field`. The
+ * documentation table above groups by `(rule, field)` because that's the
+ * mental model on the backend side (each rule emits a fixed set of fields),
+ * but in practice every rule that targets a given field wants the same UI
+ * control — `rule` carries no extra information for the resolver today.
+ * If a future rule needs rule-specific routing, switch the body to a
+ * `(rule, field)` lookup and update the callers.
  */
 export function resolveFocus(issue: ValidateIssue): FocusTarget | null {
   if (!issue.entity_id) return null

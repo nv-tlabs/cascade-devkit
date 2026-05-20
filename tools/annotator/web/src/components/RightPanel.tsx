@@ -301,6 +301,13 @@ export function RightPanel() {
   // because we never want to render based on it; one-shot side-effect only.
   const panelRootRef = useRef<HTMLElement | null>(null)
   const pendingFocusFieldRef = useRef<string | null>(null)
+  // Nonce bumped by every issue-row click so the drain effect below fires
+  // even when `selectPath(...)` is a no-op (clicking an issue row for the
+  // already-selected entity — Zustand v5 skips updates when the value is
+  // unchanged). Without the nonce the ref would stay populated and the
+  // next unrelated selection (timeline click, playhead-follow) would drain
+  // it onto whatever section happens to render next.
+  const [pendingFocusNonce, setPendingFocusNonce] = useState(0)
 
   // Auto-follow playhead: when playhead leaves the selected segment, switch to
   // the segment on the same track that contains the playhead time.
@@ -347,11 +354,13 @@ export function RightPanel() {
     }
   }, [playheadTime]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drain the pending issue-row focus once the selected segment changes.
-  // We only act when `pendingFocusFieldRef.current` was set by an issue-row
-  // click; under any other path the ref stays null and this effect is a
-  // no-op. Scoped to the panel root so we never grab a stray element
-  // elsewhere on the page (defence against future-target id collisions).
+  // Drain the pending issue-row focus once the selected segment changes,
+  // OR when the user re-clicks an issue row for the already-selected entity
+  // (the nonce dep covers that case). We only act when
+  // `pendingFocusFieldRef.current` was set by an issue-row click; under any
+  // other path the ref stays null and this effect is a no-op. Scoped to the
+  // panel root so we never grab a stray element elsewhere on the page
+  // (defence against future-target id collisions).
   useEffect(() => {
     const field = pendingFocusFieldRef.current
     if (!field) return
@@ -370,7 +379,7 @@ export function RightPanel() {
         /* old browsers without options arg — ignore */
       }
     }
-  }, [selectedPath])
+  }, [selectedPath, pendingFocusNonce])
 
   const dur = bundle?.video?.duration_s ?? 0
   const status = bundle?.status ?? 'pending'
@@ -1578,6 +1587,12 @@ export function RightPanel() {
               message: '',
             })
             pendingFocusFieldRef.current = target?.field ?? null
+            // Bump the nonce so the drain effect fires even if selectPath
+            // is a no-op (Zustand v5 skips emits when the value is
+            // unchanged — re-clicking an issue row for the already-selected
+            // entity would otherwise leave the ref populated and let the
+            // next unrelated selection drain it onto the wrong control).
+            setPendingFocusNonce(n => n + 1)
             selectPath(match.id)
           }}
         />
