@@ -306,12 +306,13 @@ the rest:
 - [`tools/annotator/README.md`](tools/annotator/README.md) — install,
   CLI flags, transcode pipeline, architecture.
 
-**Opening older bundles.** Current schema is **2.2.0**. Files written
-against an older version still load (with a one-shot
-`DeprecationWarning`); run `cascade-migrate <corpus-dir>` first to
-upgrade in place. See
+**Opening older bundles.** Current schema is **2.0.0** (rebooted
+2026-05-20 against the upstream `sil-dense-annotation-tool 0.4.5` shape).
+Files written against an older version still load with a one-shot
+`DeprecationWarning`; there is no in-tree migration path — the corpus is
+being reconverted upstream. See
 [`docs/dev/schema-history.md`](docs/dev/schema-history.md) for the
-version history, sidecar layout, and CLI options.
+version history and sidecar layout.
 
 ## Development
 

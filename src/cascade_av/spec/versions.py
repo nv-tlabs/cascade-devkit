@@ -11,9 +11,11 @@ The companion human-readable changelog lives at
 ``docs/dev/schema-history.md`` and must be updated in the same PR
 that changes :data:`SCHEMA_HISTORY`.
 
-The loader does not (yet) reject unknown versions; an old version
-triggers a one-shot ``DeprecationWarning`` per process that points
-the user at the ``cascade-migrate`` CLI.
+The history was rebooted on 2026-05-20 against the upstream
+``sil-dense-annotation-tool 0.4.5`` shape. There is no in-tree migration
+path from pre-reboot bundles; downstream producers re-export against this
+schema. The loader still tolerates unknown ``schema_version`` strings —
+they trigger a one-shot ``DeprecationWarning`` per process.
 """
 
 from __future__ import annotations
@@ -34,33 +36,9 @@ class SchemaVersion:
 SCHEMA_HISTORY: tuple[SchemaVersion, ...] = (
     SchemaVersion(
         version="2.0.0",
-        released="2026-05-12",
-        summary=(
-            "Initial CASCADE schema; bounding_boxes typed on Agent / "
-            "TrafficObject / TrafficLight."
-        ),
+        released="2026-05-20",
+        summary="Initial CASCADE schema aligned with sil-dense-annotation-tool 0.4.5.",
         breaking=False,
-    ),
-    SchemaVersion(
-        version="2.1.0",
-        released="2026-05-18",
-        summary=(
-            "Removed bounding_boxes from the base schema. Deprecated data "
-            "moves to a sibling <stem>.extra.json sidecar under "
-            "extensions['bbox/1.0']. Run cascade-migrate to convert."
-        ),
-        breaking=True,
-    ),
-    SchemaVersion(
-        version="2.2.0",
-        released="2026-05-18",
-        summary=(
-            "Removed _*_track_index UI-layout fields from every typed model. "
-            "Indices move to a sibling <stem>.extra.json sidecar under "
-            "extensions['ui/1.0'], keyed by entity id. Run cascade-migrate "
-            "to convert; chains 2.0.0 → 2.1.0 → 2.2.0 in one pass."
-        ),
-        breaking=True,
     ),
 )
 

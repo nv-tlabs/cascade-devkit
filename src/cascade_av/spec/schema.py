@@ -3,25 +3,26 @@
 """Canonical Pydantic v2 schema for the CASCADE annotation format.
 
 The current schema version is :data:`cascade_av.spec.versions.CURRENT_SCHEMA_VERSION`
-(2.1.0 as of writing); see :mod:`cascade_av.spec.versions` for the registry and
+(``2.0.0`` — the format was rebooted in May 2026 to align byte-for-byte with the
+upstream ``sil-dense-annotation-tool 0.4.5`` JSON shape). See
+:mod:`cascade_av.spec.versions` for the registry and
 ``docs/dev/schema-history.md`` for the human-readable changelog.
 
 The on-disk corpus is ground truth. Vocabulary-typed fields (action types,
-agent types, etc.) are declared as plain `str` rather than `Enum`, because the
-upstream tool's frontend writes free-form strings and unknown values must
-round-trip rather than fail validation. Advisory `*Vocab` namespace classes
+agent types, etc.) are declared as plain ``str`` rather than ``Enum``, because
+the upstream tool's frontend writes free-form strings and unknown values must
+round-trip rather than fail validation. Advisory ``*Vocab`` namespace classes
 near the bottom of this file enumerate the known values for autocomplete and
 for use in queries.
 
-Annotator timeline-layout indices (`_track_index`, `_cond_track_index`,
-`_state_track_index`, `_influence_track_index`, `_prop_track_index`,
-`_cont_track_index`) lived on these models as typed fields through schema
-``2.1.0``. As of ``2.2.0`` they are no longer part of the main bundle: they
-live in the sibling ``<stem>.extra.json`` sidecar under
-``extensions["ui/1.0"]`` (see :mod:`cascade_av.extensions.ui`). Read and
-mutate them via ``bundle.ext("ui/1.0").get(entity_id, "track_index")``.
+Annotator timeline-layout indices (``_track_index``, ``_cond_track_index``,
+``_state_track_index``, ``_influence_track_index``) live as Pydantic ``Field``
+aliases on the relevant typed models, so they round-trip through
+``model_dump(by_alias=True)`` to the underscore-prefixed on-disk keys. The
+top-level ``_ui_config`` block on :class:`AnnotationBundle` carries
+annotator-only viewport state the same way.
 
-`model_config = ConfigDict(extra="allow")` is set on every model so anything
+``model_config = ConfigDict(extra="allow")`` is set on every model so anything
 new added by the frontend (or any other producer) is preserved on read and
 dump without code change. Schema-extension data lives in a sidecar
 ``<stem>.extra.json`` next to the main file; see :mod:`cascade_av.extensions`.
@@ -64,6 +65,7 @@ class Containment(BaseModel):
     other: str | None = None
     start_timestamp: str = ""
     end_timestamp: str = ""
+    track_index: int | None = Field(default=None, alias="_track_index")
 
 
 class Influence(BaseModel):
@@ -76,6 +78,7 @@ class Influence(BaseModel):
     comment: str = ""
     start_timestamp: str = ""
     end_timestamp: str = ""
+    influence_track_index: int | None = Field(default=None, alias="_influence_track_index")
 
 
 class Keypoint(BaseModel):
@@ -134,6 +137,7 @@ class Environment(BaseModel):
     start_timestamp: str = ""
     end_timestamp: str = ""
     keypoints: list[Keypoint] = Field(default_factory=list)
+    track_index: int | None = Field(default=None, alias="_track_index")
 
     @field_validator("num_lanes", "num_out_lanes", mode="before")
     @classmethod
@@ -144,7 +148,8 @@ class Environment(BaseModel):
 
 class Condition(BaseModel):
     """An environmental state. `type` is a list because a single window may
-    carry multiple condition labels (e.g. ["Construction Zone", "Clear"])."""
+    carry multiple condition labels
+    (e.g. ``["Construction Zone", "Lanes obscured / unmarked"]``)."""
 
     model_config = _MC
 
@@ -154,6 +159,8 @@ class Condition(BaseModel):
     condition_other_description: str = ""
     start_timestamp: str = ""
     end_timestamp: str = ""
+    track_index: int | None = Field(default=None, alias="_track_index")
+    cond_track_index: int | None = Field(default=None, alias="_cond_track_index")
 
     @field_validator("type", mode="before")
     @classmethod
@@ -197,6 +204,7 @@ class TrafficObject(BaseModel):
     containment: list[Containment] = Field(default_factory=list)
     state_sequence: list[ObjectStateEntry] = Field(default_factory=list)
     keypoints: list[Keypoint] = Field(default_factory=list)
+    track_index: int | None = Field(default=None, alias="_track_index")
 
 
 # -----------------------------------------------------------------------------
@@ -218,6 +226,7 @@ class LightStates(BaseModel):
     yellow_on_ego_path: bool | None = None
     ego_in_intersection_on_yellow: bool | None = None
     ego_could_have_cleared_safely: bool | None = None
+    state_track_index: int | None = Field(default=None, alias="_state_track_index")
 
 
 class SignalHead(BaseModel):
@@ -248,6 +257,7 @@ class TrafficLight(BaseModel):
     visibility_end_timestamp: str = ""
     containment: list[Containment] = Field(default_factory=list)
     signal_heads: list[SignalHead] = Field(default_factory=list)
+    track_index: int | None = Field(default=None, alias="_track_index")
 
 
 # -----------------------------------------------------------------------------
@@ -268,29 +278,26 @@ class AgentProperty(BaseModel):
 
 
 class AgentAction(BaseModel):
-    """An action performed by an agent over a time window."""
+    """An action performed by an agent over a time window.
+
+    ``action_type`` is a combined-string suffix carrying both the base verb
+    and any flags — e.g. ``"oxd:Walk (jaywalk, erratic)"`` or
+    ``"oxd:MakeALeftTurn (unprotected)"``. The legacy ``jaywalk_flag`` /
+    ``erratic_flag`` / ``turn_protected`` / etc. side-channel fields are
+    gone in the 2.0.0 reboot — the suffix is now the single source of truth.
+    """
 
     model_config = _MC
 
     id: str = ""
-    action_type: str = ""  # see AgentActionTypeVocab
+    action_type: str = ""  # see AgentActionTypeVocab / AgentActionTypePedestrianVocab
     other_description: str = ""
     because_of: list[str] = Field(default_factory=list)
     link_to: list[str] = Field(default_factory=list)
     action_target: list[str] = Field(default_factory=list)
     start_timestamp: str = ""
     end_timestamp: str = ""
-    # Conditional flags — only set for specific action types. Most are unused
-    # in the current corpus but the producer UI exposes them.
-    turn_protected: bool | None = None
-    change_where: str | None = None  # "Left" | "Right"
-    jaywalk_flag: bool | None = None
-    erratic_flag: bool | None = None
-    ego_lane_flag: bool | None = None
-    nudge_magnitude: str | None = None  # "In Lane" | "Out-of-Lane"
-    is_aggressive_or_cut_in: bool | None = None
     illegal_flag: bool = False
-    maneuver_aborted_flag: bool = False
     signaling_details: SignalingDetails | None = None
 
 
@@ -312,6 +319,7 @@ class Agent(BaseModel):
     containment: list[Containment] = Field(default_factory=list)
     influenced_by: list[Influence] = Field(default_factory=list)
     keypoints: list[Keypoint] = Field(default_factory=list)
+    track_index: int | None = Field(default=None, alias="_track_index")
 
 
 class EgoAction(BaseModel):
@@ -327,7 +335,6 @@ class EgoAction(BaseModel):
     link_to: list[str] = Field(default_factory=list)
     action_target: list[str] = Field(default_factory=list)
     illegal_flag: bool = False
-    is_aggressive_or_cut_in: bool | None = None
     start_timestamp: str = ""
     end_timestamp: str = ""
 
@@ -342,7 +349,7 @@ class EgoVehicle(BaseModel):
     properties: list[AgentProperty] = Field(default_factory=list)
     containment: list[Containment] = Field(default_factory=list)
     influenced_by: list[Influence] = Field(default_factory=list)
-    driving_judgment: str | None = None  # emoji glyph; see DrivingJudgmentVocab
+    driving_judgment: str | None = None  # see DrivingJudgmentVocab
 
 
 # -----------------------------------------------------------------------------
@@ -375,6 +382,35 @@ class VideoMeta(BaseModel):
     duration_s: float = 0.0
 
 
+class QAIssue(BaseModel):
+    """One QA finding raised against the annotation bundle."""
+
+    model_config = _MC
+
+    type: str = ""
+    severity: str = ""
+    message: str = ""
+
+
+class UiConfig(BaseModel):
+    """Annotator-only viewport state. Round-trips on disk as ``_ui_config``.
+
+    Carries timeline track-count totals, current zoom level, and current
+    scroll offset so the annotator restores the same layout the user left.
+    Not part of the semantic annotation; downstream consumers can ignore it.
+    """
+
+    model_config = _MC
+
+    env_track_count: int | None = Field(default=None, alias="envTrackCount")
+    object_track_count: int | None = Field(default=None, alias="objectTrackCount")
+    light_track_count: int | None = Field(default=None, alias="lightTrackCount")
+    agent_track_count: int | None = Field(default=None, alias="agentTrackCount")
+    ego_cont_track_count: int | None = Field(default=None, alias="egoContTrackCount")
+    zoom_level: float | None = Field(default=None, alias="zoomLevel")
+    scroll_offset: float | None = Field(default=None, alias="scrollOffset")
+
+
 class AnnotationBundle(BaseModel):
     """Root model — one serialized JSON file equals one AnnotationBundle."""
 
@@ -385,6 +421,9 @@ class AnnotationBundle(BaseModel):
     annotation: SilAvAnnotation = Field(default_factory=SilAvAnnotation)
     status: str = "annotating"  # see AnnotationStatusVocab
     provenance: dict[str, Any] = Field(default_factory=lambda: {"generated_by": "human"})
+    qa_issues: list[QAIssue] = Field(default_factory=list)
+    review_round: int | None = None
+    ui_config: UiConfig | None = Field(default=None, alias="_ui_config")
 
     # Schema-extension surface (see `cascade_av.extensions`). Both are
     # PrivateAttr so they are absent from `model_dump()` / `model_dump_json()`
@@ -411,19 +450,19 @@ class AnnotationBundle(BaseModel):
 
     @model_validator(mode="after")
     def _warn_on_old_schema(self) -> "AnnotationBundle":
-        """Emit one DeprecationWarning per non-current schema_version per process.
+        """Emit one ``DeprecationWarning`` per non-current schema_version per process.
 
-        The loader still accepts older bundles — this is advisory only — but
-        the message points users at the ``cascade-migrate`` CLI so the
-        deprecation isn't silent.
+        The loader still accepts older bundles — this is advisory only. After
+        the 2.0.0 reboot there is no in-tree migration path; downstream
+        producers need to re-export against the current schema.
         """
         v = self.schema_version
         if v != CURRENT_SCHEMA_VERSION and v not in _warned_schema_versions:
             _warned_schema_versions.add(v)
             warnings.warn(
                 f"AnnotationBundle has schema_version={v!r}; current is "
-                f"{CURRENT_SCHEMA_VERSION!r}. Run `cascade-migrate` to "
-                f"upgrade the corpus.",
+                f"{CURRENT_SCHEMA_VERSION!r}. Re-export the bundle against "
+                f"the current schema.",
                 DeprecationWarning,
                 stacklevel=3,
             )
@@ -437,33 +476,342 @@ def _reset_version_warn_cache_for_tests() -> None:
 
 # -----------------------------------------------------------------------------
 # Advisory vocabularies — the fields above are open `str`; these enumerate
-# the known values for autocomplete and for use in queries.
+# the known values for autocomplete and for use in queries. All strings are
+# verbatim from the upstream ``sil-dense-annotation-tool 0.4.5`` reference
+# and must be kept byte-for-byte in sync.
 # -----------------------------------------------------------------------------
 
 class AgentTypeVocab:
-    """Known values for Agent.type. Advisory, not exhaustive; field is `str`."""
+    """Known values for ``Agent.type``. Advisory, not exhaustive; field is ``str``."""
 
+    VEHICLE = "Vehicle"
     CAR = "oxd:Car"
+    HEAVY_DUTY = "Heavy-duty vehicle"
+    EMERGENCY_VEHICLE = "oxd:EmergencyVehicle"
     TRUCK = "oxd:Truck"
     BUS = "PublicBus"
     BICYCLE = "oxd:Bicycle"
     MOTORCYCLE = "oxd:Motorcycle"
     SCOOTER = "fst:Scooter"
-    HEAVY_DUTY = "Heavy-duty vehicle"
-    EMERGENCY_VEHICLE = "oxd:EmergencyVehicle"
-    ANIMAL = "oxd:Animal"
+    PEDESTRIAN = "Pedestrian"
+    PEDESTRIAN_OFFICER = "Pedestrian (Officer)"
+    PEDESTRIAN_PERSONNEL = "Pedestrian (Personnel)"
     PEDESTRIAN_ADULT = "Pedestrian (Adult)"
     PEDESTRIAN_KID_TEEN = "Pedestrian (Kid/Teen)"
-    PEDESTRIAN_PERSONNEL = "Pedestrian (Personnel)"
-    PEDESTRIAN_OFFICER = "Pedestrian (Officer)"
     PEDESTRIAN_STROLLER = "Pedestrian (Stroller)"
     PEDESTRIAN_WHEELCHAIR = "Pedestrian (oxd:Wheelchair)"
     PEDESTRIAN_OTHER = "Pedestrian (Other)"
+    ANIMAL = "oxd:Animal"
     OTHER = "Other"
 
 
+class AgentActionTypeVocab:
+    """Known values for ``AgentAction.action_type`` on vehicle/cyclist agents.
+
+    These are combined-suffix strings: the base verb plus any qualifier in
+    parentheses, e.g. ``"oxd:MakeALeftTurn (unprotected)"``.
+    """
+
+    MANEUVER_ABORT = "fst:ManeuverAbort"
+    PARK = "fst:Park"
+    STOP = "oxd:Stop"
+    NOT_MOVE = "oxd:NotMove"
+    ENTER = "fst:Enter"
+    EXIT = "fst:Exit"
+    CREEP = "fst:Creep"
+    YIELD = "fst:Yield"
+    DECELERATE = "oxd:Decelerate"
+    DRIVING_IN_LANE = "fst:DrivingInLane"
+    FOLLOW_ROAD_USER = "oxd:FollowRoadUser"
+    NUDGE_IN_LANE = "fst:Nudge (in lane)"
+    NUDGE_OUT_OF_LANE_NOT_INTO_EGO_LANE = "fst:Nudge (out of lane: not into ego lane)"
+    NUDGE_OUT_OF_LANE_INTO_EGO_LANE = "fst:Nudge (out of lane: into ego lane)"
+    OVERTAKE_USING_EGO_LANE = "oxd:Overtake (using ego lane)"
+    OVERTAKE_NOT_USING_EGO_LANE = "oxd:Overtake (not using ego lane)"
+    CHANGE_LANE_LEFT = "oxd:ChangeLane (left)"
+    CHANGE_LANE_RIGHT = "oxd:ChangeLane (right)"
+    LEFT_TURN_UNPROTECTED = "oxd:MakeALeftTurn (unprotected)"
+    RIGHT_TURN_UNPROTECTED = "oxd:MakeARightTurn (unprotected)"
+    UTURN_UNPROTECTED = "fst:MakeAUTurn (unprotected)"
+    LEFT_TURN_PROTECTED = "oxd:MakeALeftTurn (protected)"
+    RIGHT_TURN_PROTECTED = "oxd:MakeARightTurn (protected)"
+    UTURN_PROTECTED = "fst:MakeAUTurn (protected)"
+    OTHER_MAKE_A_TURN = "Other oxd:MakeATurn"
+    REVERSE = "fst:Reverse"
+    OTHER = "Other"
+
+
+class AgentActionTypePedestrianVocab:
+    """Known values for ``AgentAction.action_type`` on pedestrian agents."""
+
+    MANEUVER_ABORT = "fst:ManeuverAbort"
+    STOP = "oxd:Stop"
+    STAND = "oxd:Stand"
+    ENTER = "fst:Enter"
+    EXIT = "fst:Exit"
+    CREEP = "fst:Creep"
+    YIELD = "fst:Yield"
+    DECELERATE = "oxd:Decelerate"
+    FOLLOW_ROAD_USER = "oxd:FollowRoadUser"
+    WALK = "oxd:Walk"
+    WALK_JAYWALK = "oxd:Walk (jaywalk)"
+    WALK_ERRATIC = "oxd:Walk (erratic)"
+    WALK_JAYWALK_ERRATIC = "oxd:Walk (jaywalk, erratic)"
+    RUN = "oxd:Run"
+    RUN_JAYWALK = "oxd:Run (jaywalk)"
+    RUN_ERRATIC = "oxd:Run (erratic)"
+    RUN_JAYWALK_ERRATIC = "oxd:Run (jaywalk, erratic)"
+    OTHER = "Other"
+
+
+class EgoActionTypeVocab:
+    """Known values for ``EgoAction.type``."""
+
+    MANEUVER_ABORT = "fst:ManeuverAbort"
+    STOP = "oxd:Stop"
+    NOT_MOVE = "oxd:NotMove"
+    ENTER = "fst:Enter"
+    EXIT = "fst:Exit"
+    CREEP = "fst:Creep"
+    YIELD = "fst:Yield"
+    DECELERATE = "oxd:Decelerate"
+    DRIVING_IN_LANE = "fst:DrivingInLane"
+    FOLLOW_ROAD_USER = "oxd:FollowRoadUser"
+    NUDGE_IN_LANE = "fst:Nudge (in lane)"
+    NUDGE_OUT_OF_LANE = "fst:Nudge (out of lane)"
+    OVERTAKE = "oxd:Overtake"
+    CHANGE_LANE_LEFT = "oxd:ChangeLane (left)"
+    CHANGE_LANE_RIGHT = "oxd:ChangeLane (right)"
+    LEFT_TURN_UNPROTECTED = "oxd:MakeALeftTurn (unprotected)"
+    RIGHT_TURN_UNPROTECTED = "oxd:MakeARightTurn (unprotected)"
+    UTURN_UNPROTECTED = "fst:MakeAUTurn (unprotected)"
+    LEFT_TURN_PROTECTED = "oxd:MakeALeftTurn (protected)"
+    RIGHT_TURN_PROTECTED = "oxd:MakeARightTurn (protected)"
+    UTURN_PROTECTED = "fst:MakeAUTurn (protected)"
+    OTHER_MAKE_A_TURN = "Other oxd:MakeATurn"
+    REVERSE = "fst:Reverse"
+    OTHER = "Other"
+
+
+class EnvironmentTypeVocab:
+    """Known values for ``Environment.type``."""
+
+    ROAD = "oxd:Road"
+    LANE_MERGE = "fst:LaneMerge"
+    LANE_FORK = "fst:LaneFork"
+    T_INTERSECTION = "oxd:TIntersection"
+    Y_INTERSECTION = "oxd:YIntersection"
+    CROSSROAD = "oxd:CrossRoad"
+    FIVE_WAY = "5-way"
+    SIX_WAY = "6-way"
+    SIX_PLUS_WAY = "6+-way"
+    OTHER_INTERSECTION = "Other Intersection"
+    ROUNDABOUT = "oxd:Roundabout"
+    TUNNEL = "oxd:Tunnel"
+    BRIDGE = "oxd:Bridge"
+    PAVED_SHOULDER = "oxd:PavedShoulder"
+    GRASS_SHOULDER = "oxd:GrassShoulder"
+    SIDEWALK = "oxd:Sidewalk"
+    PEDESTRIAN_CROSSING = "oxd:PedestrianCrossing"
+    RAIL_CROSSING = "oxd:RailCrossing"
+    CYCLE_LANE = "oxd:CycleLane"
+    OTHER = "Other"
+
+
+class ConditionTypeVocab:
+    """Known values for ``Condition.type`` (list-valued field)."""
+
+    CONSTRUCTION_ZONE = "Construction Zone"
+    TEMPORARILY_MARKED = "Temporarily marked"
+    SNOWY_ROAD = "oxd:snowyRoadCondition"
+    WET_ROAD = "oxd:wetRoadCondition"
+    OVERGROWN = "Overgrown"
+    SHARED_MARKED_CENTER_LANE = "Shared marked center lane"
+    NO_DIRECTION_DIVIDER = "No direction divider"
+    LANES_OBSCURED = "Lanes obscured / unmarked"
+    OTHER = "Other"
+
+
+class TrafficObjectTypeVocab:
+    """Known values for ``TrafficObject.type``."""
+
+    STOP_SIGN = "fst:StopSign"
+    YIELD_SIGN = "fst:YieldSign"
+    SPEED_LIMIT_SIGN = "fst:SpeedLimitSign"
+    MERGE_AHEAD = "Merge ahead"
+    ADJACENT_LANES_AHEAD = "Adjacent lanes ahead"
+    DO_NOT_ENTER = "Do not enter"
+    OTHER_TRAFFIC_SIGN = "Other oxd:TrafficSign"
+    RAIL_CROSSING = "oxd:RailCrossing"
+    GARAGE = "Garage"
+    TOLL_PLAZA = "oxd:TollPlaza"
+    BOLLARD = "Bollard"
+    ROADBLOCKS = "oxd:Roadblocks"
+    TRAFFIC_CONE = "oxd:TrafficCone"
+    WARNING_SIGN = "oxd:WarningSign"
+    PORTABLE_DISPLAY = "PortableDisplay"
+    BARRIER = "Barrier"
+    OTHER_PORTABLE_INDICATOR = "Other Small Portable Traffic Indicator"
+    TOY = "Toy"
+    BALL = "Ball"
+    OTHER_FALLEN_OBJECT = "Other fst:FallenObject"
+    DIRT = "Dirt"
+    TRASH = "Trash"
+    OTHER_DEBRIS = "Other oxd:Debris"
+    NOT_IDENTIFIABLE = "Not identifiable"
+    OTHER = "Other"
+
+
+class LightColorVocab:
+    """Known values for ``LightStates.color``."""
+
+    GREEN = "Green"
+    YELLOW = "Yellow"
+    RED = "Red"
+    OTHER = "Other"
+
+
+class LightShapeVocab:
+    """Known values for ``LightStates.shape``."""
+
+    ROUND = "Round"
+    ARROW_LEFT = "Arrow_Left"
+    ARROW_RIGHT = "Arrow_Right"
+    ARROW_UP = "Arrow_Up"
+    ARROW_DOWN = "Arrow_Down"
+    OTHER = "Other"
+
+
+class LightStateTypeVocab:
+    """Known values for ``LightStates.type``."""
+
+    FIXED = "Fixed"
+    FLASHING = "Flashing"
+    OFF = "OFF"
+
+
+class AgentPropertyTypeVocab:
+    """Known values for ``AgentProperty.property_type`` on non-ego agents."""
+
+    SLOW = "Slow"
+    FAST = "Fast"
+    AGGRESSIVE = "Aggressive"
+    ERRATIC = "Erratic"
+    EMERGENCY = "Emergency"
+    ON_DUTY = "On Duty"
+    DOUBLE_PARKED = "Double Parked"
+    SIGNAL = "Signal"
+    OUTSIDE_CAMERA_VIEW = "Outside Camera View"
+    OTHER = "Other"
+
+
+class EgoPropertyTypeVocab:
+    """Known values for ``AgentProperty.property_type`` on the ego vehicle.
+
+    Same string vocabulary as :class:`AgentPropertyTypeVocab`; this class
+    exists for symmetry with the producer UI, which exposes the two
+    property pickers separately.
+    """
+
+    SLOW = "Slow"
+    FAST = "Fast"
+    AGGRESSIVE = "Aggressive"
+    ERRATIC = "Erratic"
+    EMERGENCY = "Emergency"
+    ON_DUTY = "On Duty"
+    DOUBLE_PARKED = "Double Parked"
+    SIGNAL = "Signal"
+    OUTSIDE_CAMERA_VIEW = "Outside Camera View"
+    OTHER = "Other"
+
+
+class SignalSourceVocab:
+    """Known values for ``SignalingDetails.source``."""
+
+    FLASHING_LIGHT = "Flashing light"
+    HAND_GESTURE = "Hand gesture"
+    HOLDING_SIGN = "Holding sign"
+    OTHER = "Other"
+
+
+class SignalIntentVocab:
+    """Known values for ``SignalingDetails.intent``."""
+
+    TURN = "Turn"
+    STOP = "Stop"
+    SLOW_DOWN = "Slow Down"
+    PROCEED = "Proceed"
+    FOLLOW = "Follow"
+    CAUTION = "Caution"
+    DANGER = "Danger"
+    UNCLEAR = "Unclear / Incorrectly used"
+    OTHER = "Other"
+
+
+class SignTypeVocab:
+    """Known values for ``SignalingDetails.sign_type``."""
+
+    STOP_SIGN = "Stop Sign"
+    YIELD_SIGN = "Yield Sign"
+    SLOW_SIGN = "Slow Sign"
+    NOT_IDENTIFIABLE = "Not identifiable"
+    OTHER = "Other"
+
+
+class MotionStateVocab:
+    """Known values for ``ObjectStateEntry.motion_state``."""
+
+    STATIC = "Static"
+    MOVING = "Moving / Rolling"
+
+
+class OpenStateVocab:
+    """Known values for ``ObjectStateEntry.open_state``."""
+
+    OPEN = "Open"
+    CLOSED = "Closed"
+
+
+class TrafficObjectQuantityVocab:
+    """Known values for ``TrafficObject.quantity``."""
+
+    SINGLE = "Single"
+    LINE = "Line / Row"
+    CHANNELIZING = "Channelizing Line"
+    PERIMETER = "Perimeter"
+    GROUP = "Group"
+
+
+class AgentAmountVocab:
+    """Known values for ``Agent.amount``."""
+
+    SINGLE = "Single"
+    ROW_GROUP = "Row/group"
+    LIGHT_TRAFFIC = "Light traffic"
+    MEDIUM_TRAFFIC = "Medium traffic"
+    HEAVY_TRAFFIC = "Heavy traffic"
+
+
+class PositionRelToEgoVocab:
+    """Known values for ``EgoRelativePose.position_rel_to_ego``."""
+
+    IN_FRONT = "In front"
+    LEFT = "Left"
+    RIGHT = "Right"
+    BEHIND = "Behind"
+
+
+class DirectionRelToEgoVocab:
+    """Known values for ``EgoRelativePose.direction_rel_to_ego``."""
+
+    SAME = "Same"
+    OPPOSITE = "Opposite"
+    PERPENDICULAR_LR = "Perpendicular-L-R"
+    PERPENDICULAR_RL = "Perpendicular-R-L"
+
+
 class AnnotationStatusVocab:
-    """Known status values across producers. Field is `str`."""
+    """Known status values across producers. Field is ``str``."""
 
     # From the upstream tool
     PENDING = "pending"
@@ -476,35 +824,57 @@ class AnnotationStatusVocab:
 
 
 class DrivingJudgmentVocab:
-    """Emoji glyphs used for ego_vehicle.driving_judgment."""
+    """Known values for ``EgoVehicle.driving_judgment``."""
 
-    GOOD = "\U0001f642"  # 🙂
-    NEUTRAL = "\U0001f610"  # 😐
-    BAD = "\U0001f641"  # 🙁
+    GOOD = "good"
+    NEUTRAL = "neutral"
+    BAD = "bad"
 
 
 __all__ = [
     "Agent",
     "AgentAction",
+    "AgentActionTypePedestrianVocab",
+    "AgentActionTypeVocab",
+    "AgentAmountVocab",
     "AgentProperty",
+    "AgentPropertyTypeVocab",
     "AgentTypeVocab",
     "AnnotationBundle",
     "AnnotationStatusVocab",
     "Condition",
+    "ConditionTypeVocab",
     "Containment",
+    "DirectionRelToEgoVocab",
     "DrivingJudgmentVocab",
     "EgoAction",
+    "EgoActionTypeVocab",
+    "EgoPropertyTypeVocab",
     "EgoRelativePose",
     "EgoVehicle",
     "Environment",
+    "EnvironmentTypeVocab",
     "Influence",
     "Keypoint",
+    "LightColorVocab",
+    "LightShapeVocab",
+    "LightStateTypeVocab",
     "LightStates",
+    "MotionStateVocab",
     "ObjectStateEntry",
+    "OpenStateVocab",
+    "PositionRelToEgoVocab",
+    "QAIssue",
+    "SignTypeVocab",
     "SignalHead",
+    "SignalIntentVocab",
+    "SignalSourceVocab",
     "SignalingDetails",
     "SilAvAnnotation",
     "TrafficLight",
     "TrafficObject",
+    "TrafficObjectQuantityVocab",
+    "TrafficObjectTypeVocab",
+    "UiConfig",
     "VideoMeta",
 ]
