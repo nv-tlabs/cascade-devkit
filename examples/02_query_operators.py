@@ -87,9 +87,19 @@ def main() -> None:
     show(ds, "light.color = green then ego.action = drive")  # K defaults to 0
 
     section("Relational: 'A because_of B' — A's because_of edge points to B")
-    show(ds, "ego.action = decel because_of agent.type = ped")
-    show(ds, "ego.action = drive because_of agent.type = ped")
-    show(ds, "ego.action = yield because_of agent.type = vehicle")
+    # `because_of` walks the schema's `action.because_of` list. The list holds
+    # the IDs of *actions, states, properties, objects* that caused this
+    # action — never agents directly. So `because_of agent.type = X` always
+    # returns 0; point at the agent's action instead, or at a signal state
+    # / traffic object. The RHS can be any parenthesized expression.
+    show(ds, 'ego.action = decel because_of agent.action.type in ("oxd:Walk", "oxd:Run")')
+    show(ds, "ego.action = stop because_of light.color = red")
+    show(ds, "ego.action = stop because_of obj.type = stop_sign")
+    show(
+        ds,
+        "ego.action = yield because_of "
+        "(agent.action.type = fst:DrivingInLane or agent.action.type = oxd:ChangeLane)",
+    )
 
     section("Window scoping: 'within W: E' — restrict E's time to W's intervals")
     show(ds, "within light.color = red: not ego.action = stop")

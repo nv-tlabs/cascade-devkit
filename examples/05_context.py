@@ -33,9 +33,25 @@ def main() -> None:
     # is the actual moment both held.
     query = "agent.type = ped while ego.action = decel"
     matches = ds.find(query)
-    print(f"{len(matches)} matches for: {query}\n")
 
-    for m in matches.matches[:3]:
+    # `while` returns the cross product of left × right matches whose
+    # intervals intersect — one match per (pedestrian, ego-action) pair.
+    # The same `(clip_id, window)` can appear multiple times when several
+    # distinct pairs collapse to the same interval. For a context tour
+    # that's noise, so dedupe by (clip_id, interval).
+    seen: set[tuple[str, float, float]] = set()
+    unique = []
+    for m in matches.matches:
+        if m.interval is None:
+            continue
+        key = (m.clip_id, m.interval.start, m.interval.end)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(m)
+    print(f"{len(matches)} matches ({len(unique)} unique by clip+window) for: {query}\n")
+
+    for m in unique[:3]:
         ctx = ds.context_for(m)
         t0, t1 = m.interval.start, m.interval.end
         print(f"=== clip {ctx.clip_id}   window {t0:.2f}–{t1:.2f}s ===")
