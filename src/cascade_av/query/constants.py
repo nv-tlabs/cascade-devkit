@@ -2,19 +2,20 @@
 # SPDX-License-Identifier: Apache-2.0
 """DSL vocabulary — short aliases, hierarchical parents, schema literals.
 
-Grounded against the 376-clip corpus on 2026-05-11 (see
-`scripts/scan_corpus_vocabulary.py`). All sets are frozen and contain
-the exact strings observed in `Agent.type` / `AgentAction.action_type`
-/ etc.
+All sets are frozen and contain the exact strings declared in
+``cascade_av.spec.schema`` ``*Vocab`` classes — the spec module is the single
+source of truth for vocabulary literals; this module only assembles short DSL
+aliases over them.
 
 Lookup discipline:
-- DSL parser accepts a short alias (e.g. `"ped"`) or a full literal
-  (e.g. `"oxd:Pedestrian (Adult)"`). It calls `resolve_alias(family,
-  name)` to get the underlying set of schema strings.
+
+- DSL parser accepts a short alias (e.g. ``"ped"``) or a full literal
+  (e.g. ``"Pedestrian (Adult)"``). It calls :func:`resolve_alias`
+  ``(family, name)`` to get the underlying set of schema strings.
 - Aliases are case-folded to lowercase at the call site.
-- Parent aliases (e.g. `"vehicle"`, `"vru"`, `"turn"`) resolve to the
+- Parent aliases (e.g. ``"vehicle"``, ``"vru"``, ``"turn"``) resolve to the
   union of their child aliases.
-- Unknown aliases raise `KeyError` — callers wrap in `NameError`.
+- Unknown aliases raise ``KeyError`` — callers wrap in ``NameError``.
 """
 
 from __future__ import annotations
@@ -22,26 +23,49 @@ from __future__ import annotations
 from enum import Enum
 from typing import Mapping
 
+from cascade_av.spec.schema import (
+    AgentActionTypePedestrianVocab,
+    AgentActionTypeVocab,
+    AgentPropertyTypeVocab,
+    AgentTypeVocab,
+    ConditionTypeVocab,
+    DirectionRelToEgoVocab,
+    DrivingJudgmentVocab,
+    EgoActionTypeVocab,
+    EgoPropertyTypeVocab,
+    EnvironmentTypeVocab,
+    LightColorVocab,
+    LightShapeVocab,
+    LightStateTypeVocab,
+    MotionStateVocab,
+    OpenStateVocab,
+    PositionRelToEgoVocab,
+    SignalIntentVocab,
+    SignalSourceVocab,
+    TrafficObjectTypeVocab,
+)
+
 # ---------------------------------------------------------------------------
 # Agent types
 # ---------------------------------------------------------------------------
 
 AGENT_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
-    "car": frozenset({"oxd:Car"}),
-    "truck": frozenset({"oxd:Truck", "Heavy-duty vehicle"}),
-    "bus": frozenset({"PublicBus"}),
-    "motorcycle": frozenset({"oxd:Motorcycle"}),
-    "emergency": frozenset({"oxd:EmergencyVehicle"}),
-    "bicycle": frozenset({"oxd:Bicycle"}),
-    "scooter": frozenset({"fst:Scooter"}),
-    "animal": frozenset({"oxd:Animal"}),
-    "ped_adult": frozenset({"Pedestrian (Adult)"}),
-    "ped_kid": frozenset({"Pedestrian (Kid/Teen)"}),
-    "ped_personnel": frozenset({"Pedestrian (Personnel)"}),
-    "ped_officer": frozenset({"Pedestrian (Officer)"}),
-    "ped_stroller": frozenset({"Pedestrian (Stroller)"}),
-    "ped_other": frozenset({"Pedestrian (Other)", "Pedestrian"}),
-    "officer": frozenset({"Pedestrian (Officer)"}),
+    "car": frozenset({AgentTypeVocab.CAR}),
+    "truck": frozenset({AgentTypeVocab.TRUCK, AgentTypeVocab.HEAVY_DUTY}),
+    "bus": frozenset({AgentTypeVocab.BUS}),
+    "motorcycle": frozenset({AgentTypeVocab.MOTORCYCLE}),
+    "emergency": frozenset({AgentTypeVocab.EMERGENCY_VEHICLE}),
+    "bicycle": frozenset({AgentTypeVocab.BICYCLE}),
+    "scooter": frozenset({AgentTypeVocab.SCOOTER}),
+    "animal": frozenset({AgentTypeVocab.ANIMAL}),
+    "ped_adult": frozenset({AgentTypeVocab.PEDESTRIAN_ADULT}),
+    "ped_kid": frozenset({AgentTypeVocab.PEDESTRIAN_KID_TEEN}),
+    "ped_personnel": frozenset({AgentTypeVocab.PEDESTRIAN_PERSONNEL}),
+    "ped_officer": frozenset({AgentTypeVocab.PEDESTRIAN_OFFICER}),
+    "ped_stroller": frozenset({AgentTypeVocab.PEDESTRIAN_STROLLER}),
+    "ped_wheelchair": frozenset({AgentTypeVocab.PEDESTRIAN_WHEELCHAIR}),
+    "ped_other": frozenset({AgentTypeVocab.PEDESTRIAN_OTHER, AgentTypeVocab.PEDESTRIAN}),
+    "officer": frozenset({AgentTypeVocab.PEDESTRIAN_OFFICER}),
 }
 
 # Parent categories — unions of the leaf aliases above.
@@ -60,6 +84,7 @@ AGENT_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
         | AGENT_TYPE_ALIASES["ped_personnel"]
         | AGENT_TYPE_ALIASES["ped_officer"]
         | AGENT_TYPE_ALIASES["ped_stroller"]
+        | AGENT_TYPE_ALIASES["ped_wheelchair"]
         | AGENT_TYPE_ALIASES["ped_other"]
     ),
 }
@@ -82,30 +107,30 @@ AGENT_TYPE: Mapping[str, frozenset[str]] = {**AGENT_TYPE_ALIASES, **AGENT_TYPE_P
 # ---------------------------------------------------------------------------
 
 ACTION_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
-    "drive": frozenset({"fst:DrivingInLane"}),
-    "stop": frozenset({"oxd:Stop"}),
-    "park": frozenset({"fst:Park"}),
-    "walk": frozenset({"oxd:Walk"}),
-    "stand": frozenset({"oxd:Stand"}),
-    "run": frozenset({"oxd:Run"}),
-    "yield": frozenset({"fst:Yield"}),
-    "decel": frozenset({"oxd:Decelerate"}),
-    "creep": frozenset({"fst:Creep"}),
-    "enter": frozenset({"fst:Enter"}),
-    "follow": frozenset({"oxd:FollowRoadUser"}),
-    "not_move": frozenset({"oxd:NotMove"}),
-    "abort": frozenset({"fst:ManeuverAbort"}),
-    "reverse": frozenset({"fst:Reverse"}),
+    "drive": frozenset({EgoActionTypeVocab.DRIVING_IN_LANE}),
+    "stop": frozenset({EgoActionTypeVocab.STOP}),
+    "park": frozenset({AgentActionTypeVocab.PARK}),
+    "walk": frozenset({AgentActionTypePedestrianVocab.WALK}),
+    "stand": frozenset({AgentActionTypePedestrianVocab.STAND}),
+    "run": frozenset({AgentActionTypePedestrianVocab.RUN}),
+    "yield": frozenset({EgoActionTypeVocab.YIELD}),
+    "decel": frozenset({EgoActionTypeVocab.DECELERATE}),
+    "creep": frozenset({EgoActionTypeVocab.CREEP}),
+    "enter": frozenset({EgoActionTypeVocab.ENTER}),
+    "follow": frozenset({EgoActionTypeVocab.FOLLOW_ROAD_USER}),
+    "not_move": frozenset({EgoActionTypeVocab.NOT_MOVE}),
+    "abort": frozenset({EgoActionTypeVocab.MANEUVER_ABORT}),
+    "reverse": frozenset({EgoActionTypeVocab.REVERSE}),
     "turn_left": frozenset({"oxd:MakeALeftTurn"}),
     "turn_right": frozenset({"oxd:MakeARightTurn"}),
     "uturn": frozenset({"fst:MakeAUTurn"}),
-    "change_lane_left": frozenset({"oxd:ChangeLane (left)"}),
-    "change_lane_right": frozenset({"oxd:ChangeLane (right)"}),
+    "change_lane_left": frozenset({EgoActionTypeVocab.CHANGE_LANE_LEFT}),
+    "change_lane_right": frozenset({EgoActionTypeVocab.CHANGE_LANE_RIGHT}),
     "change_lane": frozenset({"oxd:ChangeLane"}),
-    "nudge_in": frozenset({"fst:Nudge (in lane)"}),
-    "nudge_out": frozenset({"fst:Nudge (out of lane)"}),
+    "nudge_in": frozenset({EgoActionTypeVocab.NUDGE_IN_LANE}),
+    "nudge_out": frozenset({EgoActionTypeVocab.NUDGE_OUT_OF_LANE}),
     "nudge": frozenset({"fst:Nudge"}),
-    "overtake": frozenset({"oxd:Overtake"}),
+    "overtake": frozenset({EgoActionTypeVocab.OVERTAKE}),
 }
 
 # Parent categories.
@@ -128,8 +153,10 @@ ACTION_TYPE: Mapping[str, frozenset[str]] = {
 }
 
 # Action-type flags — these are tokens that appear inside parenthesized
-# suffixes. The engine matches by checking suffix tokens AND
-# corresponding schema flag fields where they exist.
+# suffixes. The 2.0.0 schema reboot removed the parallel ``*_flag`` fields
+# on AgentAction / EgoAction (jaywalk_flag, erratic_flag, turn_protected,
+# ...), so the suffix string is now the single source of truth — the engine
+# matches by checking suffix tokens alone.
 ACTION_FLAG_TOKENS: frozenset[str] = frozenset(
     {
         "jaywalk",
@@ -146,49 +173,31 @@ ACTION_FLAG_TOKENS: frozenset[str] = frozenset(
     }
 )
 
-# Mapping from DSL flag attribute name → corresponding schema field name
-# on AgentAction / EgoAction. ``None`` means "no schema flag; rely on
-# suffix matching alone".
-ACTION_FLAG_SCHEMA_FIELDS: Mapping[str, str | None] = {
-    "jaywalk": "jaywalk_flag",
-    "erratic": "erratic_flag",
-    "illegal": "illegal_flag",
-    "aggressive": "is_aggressive_or_cut_in",
-    "turn_protected": "turn_protected",
-    "ego_lane": "ego_lane_flag",
-    "aborted": "maneuver_aborted_flag",
-    # Suffix-only flags:
-    "unprotected": None,
-    "left": None,
-    "right": None,
-    "in_lane": None,
-    "out_of_lane": None,
-    "into_ego_lane": None,
-}
-
 # ---------------------------------------------------------------------------
 # Environment types
 # ---------------------------------------------------------------------------
 
 ENV_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
-    "road": frozenset({"oxd:Road"}),
-    "crosswalk": frozenset({"oxd:PedestrianCrossing"}),
-    "sidewalk": frozenset({"oxd:Sidewalk"}),
-    "crossroad": frozenset({"oxd:CrossRoad"}),
-    "t_intersection": frozenset({"oxd:TIntersection"}),
-    "y_intersection": frozenset({"oxd:YIntersection"}),
-    "five_way_intersection": frozenset({"5-way"}),
-    "other_intersection": frozenset({"Other Intersection"}),
-    "cycle_lane": frozenset({"oxd:CycleLane"}),
-    "bike_lane": frozenset({"oxd:CycleLane"}),  # alias
-    "lane_merge": frozenset({"fst:LaneMerge"}),
-    "lane_fork": frozenset({"fst:LaneFork"}),
-    "roundabout": frozenset({"oxd:Roundabout"}),
-    "tunnel": frozenset({"oxd:Tunnel"}),
-    "bridge": frozenset({"oxd:Bridge"}),
-    "paved_shoulder": frozenset({"oxd:PavedShoulder"}),
-    "grass_shoulder": frozenset({"oxd:GrassShoulder"}),
-    "rail_crossing": frozenset({"oxd:RailCrossing"}),
+    "road": frozenset({EnvironmentTypeVocab.ROAD}),
+    "crosswalk": frozenset({EnvironmentTypeVocab.PEDESTRIAN_CROSSING}),
+    "sidewalk": frozenset({EnvironmentTypeVocab.SIDEWALK}),
+    "crossroad": frozenset({EnvironmentTypeVocab.CROSSROAD}),
+    "t_intersection": frozenset({EnvironmentTypeVocab.T_INTERSECTION}),
+    "y_intersection": frozenset({EnvironmentTypeVocab.Y_INTERSECTION}),
+    "five_way_intersection": frozenset({EnvironmentTypeVocab.FIVE_WAY}),
+    "six_way": frozenset({EnvironmentTypeVocab.SIX_WAY}),
+    "six_plus_way": frozenset({EnvironmentTypeVocab.SIX_PLUS_WAY}),
+    "other_intersection": frozenset({EnvironmentTypeVocab.OTHER_INTERSECTION}),
+    "cycle_lane": frozenset({EnvironmentTypeVocab.CYCLE_LANE}),
+    "bike_lane": frozenset({EnvironmentTypeVocab.CYCLE_LANE}),  # alias
+    "lane_merge": frozenset({EnvironmentTypeVocab.LANE_MERGE}),
+    "lane_fork": frozenset({EnvironmentTypeVocab.LANE_FORK}),
+    "roundabout": frozenset({EnvironmentTypeVocab.ROUNDABOUT}),
+    "tunnel": frozenset({EnvironmentTypeVocab.TUNNEL}),
+    "bridge": frozenset({EnvironmentTypeVocab.BRIDGE}),
+    "paved_shoulder": frozenset({EnvironmentTypeVocab.PAVED_SHOULDER}),
+    "grass_shoulder": frozenset({EnvironmentTypeVocab.GRASS_SHOULDER}),
+    "rail_crossing": frozenset({EnvironmentTypeVocab.RAIL_CROSSING}),
 }
 
 ENV_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
@@ -197,6 +206,8 @@ ENV_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
         | ENV_TYPE_ALIASES["t_intersection"]
         | ENV_TYPE_ALIASES["y_intersection"]
         | ENV_TYPE_ALIASES["five_way_intersection"]
+        | ENV_TYPE_ALIASES["six_way"]
+        | ENV_TYPE_ALIASES["six_plus_way"]
         | ENV_TYPE_ALIASES["other_intersection"]
     ),
     "shoulder": ENV_TYPE_ALIASES["paved_shoulder"] | ENV_TYPE_ALIASES["grass_shoulder"],
@@ -209,11 +220,15 @@ ENV_TYPE: Mapping[str, frozenset[str]] = {**ENV_TYPE_ALIASES, **ENV_TYPE_PARENTS
 # ---------------------------------------------------------------------------
 
 COND_TYPE: Mapping[str, frozenset[str]] = {
-    "clear": frozenset({"Clear"}),
-    "construction": frozenset({"Construction Zone"}),
-    "wet": frozenset({"oxd:wetRoadCondition"}),
-    "snowy": frozenset({"oxd:snowyRoadCondition"}),
-    "temp_marked": frozenset({"Temporarily marked"}),
+    "construction": frozenset({ConditionTypeVocab.CONSTRUCTION_ZONE}),
+    "temp_marked": frozenset({ConditionTypeVocab.TEMPORARILY_MARKED}),
+    "wet": frozenset({ConditionTypeVocab.WET_ROAD}),
+    "snowy": frozenset({ConditionTypeVocab.SNOWY_ROAD}),
+    "overgrown": frozenset({ConditionTypeVocab.OVERGROWN}),
+    "shared_center": frozenset({ConditionTypeVocab.SHARED_MARKED_CENTER_LANE}),
+    "no_divider": frozenset({ConditionTypeVocab.NO_DIRECTION_DIVIDER}),
+    "lanes_obscured": frozenset({ConditionTypeVocab.LANES_OBSCURED}),
+    "other": frozenset({ConditionTypeVocab.OTHER}),
 }
 
 # ---------------------------------------------------------------------------
@@ -221,24 +236,25 @@ COND_TYPE: Mapping[str, frozenset[str]] = {
 # ---------------------------------------------------------------------------
 
 LIGHT_COLOR: Mapping[str, frozenset[str]] = {
-    "red": frozenset({"Red"}),
-    "yellow": frozenset({"Yellow"}),
-    "green": frozenset({"Green"}),
-    "other": frozenset({"Other"}),
+    "red": frozenset({LightColorVocab.RED}),
+    "yellow": frozenset({LightColorVocab.YELLOW}),
+    "green": frozenset({LightColorVocab.GREEN}),
+    "other": frozenset({LightColorVocab.OTHER}),
 }
 
 LIGHT_STATE_TYPE: Mapping[str, frozenset[str]] = {
-    "fixed": frozenset({"Fixed"}),
-    "flashing": frozenset({"Flashing"}),
-    "off": frozenset({"OFF"}),
+    "fixed": frozenset({LightStateTypeVocab.FIXED}),
+    "flashing": frozenset({LightStateTypeVocab.FLASHING}),
+    "off": frozenset({LightStateTypeVocab.OFF}),
 }
 
 LIGHT_SHAPE: Mapping[str, frozenset[str]] = {
-    "round": frozenset({"Round"}),
-    "arrow_left": frozenset({"Arrow_Left"}),
-    "arrow_right": frozenset({"Arrow_Right"}),
-    "arrow_up": frozenset({"Arrow_Up"}),
-    "other": frozenset({"Other"}),
+    "round": frozenset({LightShapeVocab.ROUND}),
+    "arrow_left": frozenset({LightShapeVocab.ARROW_LEFT}),
+    "arrow_right": frozenset({LightShapeVocab.ARROW_RIGHT}),
+    "arrow_up": frozenset({LightShapeVocab.ARROW_UP}),
+    "arrow_down": frozenset({LightShapeVocab.ARROW_DOWN}),
+    "other": frozenset({LightShapeVocab.OTHER}),
 }
 
 TRAFFIC_LIGHT_TYPE: Mapping[str, frozenset[str]] = {
@@ -250,23 +266,31 @@ TRAFFIC_LIGHT_TYPE: Mapping[str, frozenset[str]] = {
 # ---------------------------------------------------------------------------
 
 OBJ_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
-    "traffic_sign": frozenset({"Other oxd:TrafficSign"}),
-    "stop_sign": frozenset({"fst:StopSign"}),
-    "yield_sign": frozenset({"fst:YieldSign"}),
-    "speed_limit_sign": frozenset({"fst:SpeedLimitSign"}),
-    "warning_sign": frozenset({"oxd:WarningSign"}),
-    "cone": frozenset({"oxd:TrafficCone"}),
-    "roadblock": frozenset({"oxd:Roadblocks"}),
-    "rail_crossing_obj": frozenset({"oxd:RailCrossing"}),
-    "merge_ahead": frozenset({"Merge ahead"}),
-    "adjacent_lanes_ahead": frozenset({"Adjacent lanes ahead"}),
-    "do_not_enter": frozenset({"Do not enter"}),
-    "portable_indicator": frozenset({"Other Small Portable Traffic Indicator"}),
-    "portable_display": frozenset({"PortableDisplay"}),
-    "trash": frozenset({"Trash"}),
-    "dirt": frozenset({"Dirt"}),
-    "other_debris": frozenset({"Other oxd:Debris"}),
-    "not_identifiable": frozenset({"Not identifiable"}),
+    "traffic_sign": frozenset({TrafficObjectTypeVocab.OTHER_TRAFFIC_SIGN}),
+    "stop_sign": frozenset({TrafficObjectTypeVocab.STOP_SIGN}),
+    "yield_sign": frozenset({TrafficObjectTypeVocab.YIELD_SIGN}),
+    "speed_limit_sign": frozenset({TrafficObjectTypeVocab.SPEED_LIMIT_SIGN}),
+    "warning_sign": frozenset({TrafficObjectTypeVocab.WARNING_SIGN}),
+    "cone": frozenset({TrafficObjectTypeVocab.TRAFFIC_CONE}),
+    "roadblock": frozenset({TrafficObjectTypeVocab.ROADBLOCKS}),
+    "bollard": frozenset({TrafficObjectTypeVocab.BOLLARD}),
+    "barrier": frozenset({TrafficObjectTypeVocab.BARRIER}),
+    "garage": frozenset({TrafficObjectTypeVocab.GARAGE}),
+    "toll_plaza": frozenset({TrafficObjectTypeVocab.TOLL_PLAZA}),
+    "rail_crossing_obj": frozenset({TrafficObjectTypeVocab.RAIL_CROSSING}),
+    "merge_ahead": frozenset({TrafficObjectTypeVocab.MERGE_AHEAD}),
+    "adjacent_lanes_ahead": frozenset({TrafficObjectTypeVocab.ADJACENT_LANES_AHEAD}),
+    "do_not_enter": frozenset({TrafficObjectTypeVocab.DO_NOT_ENTER}),
+    "portable_indicator": frozenset({TrafficObjectTypeVocab.OTHER_PORTABLE_INDICATOR}),
+    "portable_display": frozenset({TrafficObjectTypeVocab.PORTABLE_DISPLAY}),
+    "toy": frozenset({TrafficObjectTypeVocab.TOY}),
+    "ball": frozenset({TrafficObjectTypeVocab.BALL}),
+    "fallen_object": frozenset({TrafficObjectTypeVocab.OTHER_FALLEN_OBJECT}),
+    "trash": frozenset({TrafficObjectTypeVocab.TRASH}),
+    "dirt": frozenset({TrafficObjectTypeVocab.DIRT}),
+    "other_debris": frozenset({TrafficObjectTypeVocab.OTHER_DEBRIS}),
+    "not_identifiable": frozenset({TrafficObjectTypeVocab.NOT_IDENTIFIABLE}),
+    "other": frozenset({TrafficObjectTypeVocab.OTHER}),
 }
 
 OBJ_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
@@ -285,7 +309,17 @@ OBJ_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
         | OBJ_TYPE_ALIASES["trash"]
         | OBJ_TYPE_ALIASES["dirt"]
     ),
-    "barrier": OBJ_TYPE_ALIASES["roadblock"] | OBJ_TYPE_ALIASES["cone"],
+    "barrier": (
+        OBJ_TYPE_ALIASES["barrier"]
+        | OBJ_TYPE_ALIASES["bollard"]
+        | OBJ_TYPE_ALIASES["roadblock"]
+        | OBJ_TYPE_ALIASES["cone"]
+    ),
+    "fallen": (
+        OBJ_TYPE_ALIASES["toy"]
+        | OBJ_TYPE_ALIASES["ball"]
+        | OBJ_TYPE_ALIASES["fallen_object"]
+    ),
 }
 
 OBJ_TYPE: Mapping[str, frozenset[str]] = {**OBJ_TYPE_ALIASES, **OBJ_TYPE_PARENTS}
@@ -295,13 +329,13 @@ OBJ_TYPE: Mapping[str, frozenset[str]] = {**OBJ_TYPE_ALIASES, **OBJ_TYPE_PARENTS
 # ---------------------------------------------------------------------------
 
 OBJ_MOTION_STATE: Mapping[str, frozenset[str]] = {
-    "static": frozenset({"Static"}),
-    "moving": frozenset({"Moving / Rolling"}),
+    "static": frozenset({MotionStateVocab.STATIC}),
+    "moving": frozenset({MotionStateVocab.MOVING}),
 }
 
 OBJ_OPEN_STATE: Mapping[str, frozenset[str]] = {
-    "open": frozenset({"Open"}),
-    "closed": frozenset({"Closed"}),
+    "open": frozenset({OpenStateVocab.OPEN}),
+    "closed": frozenset({OpenStateVocab.CLOSED}),
 }
 
 # ---------------------------------------------------------------------------
@@ -309,17 +343,17 @@ OBJ_OPEN_STATE: Mapping[str, frozenset[str]] = {
 # ---------------------------------------------------------------------------
 
 POSITION_ALIASES: Mapping[str, frozenset[str]] = {
-    "front": frozenset({"In front"}),
-    "left": frozenset({"Left"}),
-    "right": frozenset({"Right"}),
-    "behind": frozenset({"Behind"}),
+    "front": frozenset({PositionRelToEgoVocab.IN_FRONT}),
+    "left": frozenset({PositionRelToEgoVocab.LEFT}),
+    "right": frozenset({PositionRelToEgoVocab.RIGHT}),
+    "behind": frozenset({PositionRelToEgoVocab.BEHIND}),
 }
 
 DIRECTION_ALIASES: Mapping[str, frozenset[str]] = {
-    "same": frozenset({"Same"}),
-    "opposite": frozenset({"Opposite"}),
-    "perpendicular_rl": frozenset({"Perpendicular-R-L"}),
-    "perpendicular_lr": frozenset({"Perpendicular-L-R"}),
+    "same": frozenset({DirectionRelToEgoVocab.SAME}),
+    "opposite": frozenset({DirectionRelToEgoVocab.OPPOSITE}),
+    "perpendicular_rl": frozenset({DirectionRelToEgoVocab.PERPENDICULAR_RL}),
+    "perpendicular_lr": frozenset({DirectionRelToEgoVocab.PERPENDICULAR_LR}),
 }
 
 DIRECTION_PARENTS: Mapping[str, frozenset[str]] = {
@@ -336,32 +370,47 @@ DIRECTION: Mapping[str, frozenset[str]] = {**DIRECTION_ALIASES, **DIRECTION_PARE
 # ---------------------------------------------------------------------------
 
 AGENT_PROPERTY_TYPE: Mapping[str, frozenset[str]] = {
-    "signal": frozenset({"Signal"}),
-    "slow": frozenset({"Slow"}),
-    "on_duty": frozenset({"On Duty"}),
-    "double_parked": frozenset({"Double Parked"}),
+    "signal": frozenset({AgentPropertyTypeVocab.SIGNAL}),
+    "slow": frozenset({AgentPropertyTypeVocab.SLOW}),
+    "fast": frozenset({AgentPropertyTypeVocab.FAST}),
+    "aggressive": frozenset({AgentPropertyTypeVocab.AGGRESSIVE}),
+    "erratic": frozenset({AgentPropertyTypeVocab.ERRATIC}),
+    "emergency": frozenset({AgentPropertyTypeVocab.EMERGENCY}),
+    "on_duty": frozenset({AgentPropertyTypeVocab.ON_DUTY}),
+    "double_parked": frozenset({AgentPropertyTypeVocab.DOUBLE_PARKED}),
+    "outside_camera": frozenset({AgentPropertyTypeVocab.OUTSIDE_CAMERA_VIEW}),
+    "other": frozenset({AgentPropertyTypeVocab.OTHER}),
 }
 
 EGO_PROPERTY_TYPE: Mapping[str, frozenset[str]] = {
-    "slow": frozenset({"Slow"}),
-    "signal": frozenset({"Signal"}),
-    "erratic": frozenset({"Erratic"}),
-    "fast": frozenset({"Fast"}),
+    "signal": frozenset({EgoPropertyTypeVocab.SIGNAL}),
+    "slow": frozenset({EgoPropertyTypeVocab.SLOW}),
+    "fast": frozenset({EgoPropertyTypeVocab.FAST}),
+    "aggressive": frozenset({EgoPropertyTypeVocab.AGGRESSIVE}),
+    "erratic": frozenset({EgoPropertyTypeVocab.ERRATIC}),
+    "emergency": frozenset({EgoPropertyTypeVocab.EMERGENCY}),
+    "on_duty": frozenset({EgoPropertyTypeVocab.ON_DUTY}),
+    "double_parked": frozenset({EgoPropertyTypeVocab.DOUBLE_PARKED}),
+    "outside_camera": frozenset({EgoPropertyTypeVocab.OUTSIDE_CAMERA_VIEW}),
+    "other": frozenset({EgoPropertyTypeVocab.OTHER}),
 }
 
 SIGNALING_INTENT: Mapping[str, frozenset[str]] = {
-    "proceed": frozenset({"Proceed"}),
-    "turn": frozenset({"Turn"}),
-    "stop": frozenset({"Stop"}),
-    "caution": frozenset({"Caution"}),
-    "slow": frozenset({"Slow Down"}),
-    "follow": frozenset({"Follow"}),
+    "proceed": frozenset({SignalIntentVocab.PROCEED}),
+    "turn": frozenset({SignalIntentVocab.TURN}),
+    "stop": frozenset({SignalIntentVocab.STOP}),
+    "caution": frozenset({SignalIntentVocab.CAUTION}),
+    "slow": frozenset({SignalIntentVocab.SLOW_DOWN}),
+    "follow": frozenset({SignalIntentVocab.FOLLOW}),
+    "danger": frozenset({SignalIntentVocab.DANGER}),
+    "unclear": frozenset({SignalIntentVocab.UNCLEAR}),
+    "other": frozenset({SignalIntentVocab.OTHER}),
 }
 
 SIGNALING_SOURCE: Mapping[str, frozenset[str]] = {
-    "flashing_light": frozenset({"Flashing light"}),
-    "holding_sign": frozenset({"Holding sign"}),
-    "hand_gesture": frozenset({"Hand gesture"}),
+    "flashing_light": frozenset({SignalSourceVocab.FLASHING_LIGHT}),
+    "holding_sign": frozenset({SignalSourceVocab.HOLDING_SIGN}),
+    "hand_gesture": frozenset({SignalSourceVocab.HAND_GESTURE}),
 }
 
 # ---------------------------------------------------------------------------
@@ -369,11 +418,11 @@ SIGNALING_SOURCE: Mapping[str, frozenset[str]] = {
 # ---------------------------------------------------------------------------
 
 DRIVING_JUDGMENT: Mapping[str, frozenset[str]] = {
-    "good": frozenset({"good"}),
-    "neutral": frozenset({"neutral"}),
-    # Future-proofing: these glyphs/labels may appear in later corpus
-    # versions; including them here is cheap.
-    "bad": frozenset({"bad"}),
+    "good": frozenset({DrivingJudgmentVocab.GOOD}),
+    "neutral": frozenset({DrivingJudgmentVocab.NEUTRAL}),
+    "bad": frozenset({DrivingJudgmentVocab.BAD}),
+    # Future-proofing: an older corpus may still carry the literal
+    # "acceptable" string. Cheap to leave in.
     "acceptable": frozenset({"acceptable"}),
 }
 
@@ -392,6 +441,7 @@ class AgentKind(str, Enum):
     PED_OFFICER = "ped_officer"
     PED_PERSONNEL = "ped_personnel"
     PED_STROLLER = "ped_stroller"
+    PED_WHEELCHAIR = "ped_wheelchair"
     PED_OTHER = "ped_other"
     CYCLIST = "cyclist"
     BICYCLE = "bicycle"
