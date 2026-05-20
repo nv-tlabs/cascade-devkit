@@ -162,7 +162,6 @@ class Condition(BaseModel):
     condition_other_description: str = ""
     start_timestamp: str = ""
     end_timestamp: str = ""
-    track_index: int | None = Field(default=None, alias="_track_index")
     cond_track_index: int | None = Field(default=None, alias="_cond_track_index")
 
     @field_validator("type", mode="before")
