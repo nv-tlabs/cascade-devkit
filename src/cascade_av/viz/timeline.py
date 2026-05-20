@@ -133,7 +133,6 @@ _FAMILY_SUB_ROW_META_KEY: dict[str, str] = {
     "condition": "_cond_track_index",
     "containment": "_cont_track_index",
     "influence": "_influence_track_index",
-    "property": "_prop_track_index",
     "physical_containment": "_cont_track_index",
 }
 
