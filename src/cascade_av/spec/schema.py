@@ -16,7 +16,8 @@ near the bottom of this file enumerate the known values for autocomplete and
 for use in queries.
 
 Annotator timeline-layout indices (``_track_index``, ``_cond_track_index``,
-``_state_track_index``, ``_influence_track_index``) live as Pydantic ``Field``
+``_state_track_index``, ``_influence_track_index``, ``_cont_track_index``,
+``_prop_track_index``, ``_state_lane_count``) live as Pydantic ``Field``
 aliases on the relevant typed models, so they round-trip through
 ``model_dump(by_alias=True)`` to the underscore-prefixed on-disk keys. The
 top-level ``_ui_config`` block on :class:`AnnotationBundle` carries
@@ -65,7 +66,9 @@ class Containment(BaseModel):
     other: str | None = None
     start_timestamp: str = ""
     end_timestamp: str = ""
-    track_index: int | None = Field(default=None, alias="_track_index")
+    # Upstream emits `_cont_track_index` (not `_track_index`) for containment
+    # entries — separate prefix per nested family. See issue #124.
+    track_index: int | None = Field(default=None, alias="_cont_track_index")
 
 
 class Influence(BaseModel):
@@ -242,6 +245,7 @@ class SignalHead(BaseModel):
     start_timestamp: str = ""
     end_timestamp: str = ""
     keypoints: list[Keypoint] = Field(default_factory=list)
+    state_lane_count: int | None = Field(default=None, alias="_state_lane_count")
 
 
 class TrafficLight(BaseModel):
@@ -275,6 +279,7 @@ class AgentProperty(BaseModel):
     start_timestamp: str = ""
     end_timestamp: str = ""
     signaling_details: SignalingDetails | None = None
+    track_index: int | None = Field(default=None, alias="_prop_track_index")
 
 
 class AgentAction(BaseModel):
