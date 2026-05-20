@@ -39,8 +39,8 @@ within light.color = red: not ego.action = stop
 # multi-lane road, ego changes lane
 env(type = road, lanes >= 2) and ego.action in (change_lane_left, change_lane_right)
 
-# action with a flag
-agent(type = ped, action(jaywalk = true))
+# action with a flag (suffix encoded in the type string — see §4.9)
+agent(type = ped, action.type = "oxd:Walk (jaywalk)")
 
 # light with a flag (the "defining yellow" of the scenarios doc)
 light(color = yellow, ego_in_on_yellow = true)
@@ -57,7 +57,7 @@ agent.type = ped
 
 **Scenario 8** — Pedestrian crosses mid-block (jaywalking).
 ```
-agent(type = ped, action(jaywalk = true))
+agent(type = ped, action.type in ("oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", "oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))
   and ego.action in (stop, yield, decel)
 ```
 
@@ -224,8 +224,9 @@ though it's accepted as a no-op).
 agent(type = vehicle and pos = front)
 # every Agent with both type=vehicle and pos=front
 
-agent(type = ped, action(jaywalk = true))
-# every Agent of type ped that has at least one action with jaywalk=true
+agent(type = ped, action.type = "oxd:Walk (jaywalk)")
+# every Agent of type ped that has at least one action of that exact type
+# (see §4.9 for the parenthesized-suffix convention)
 
 light(color = yellow, ego_in_on_yellow = true)
 # every LightState with color=yellow AND ego_in_on_yellow=true
@@ -297,37 +298,112 @@ agent.type = vehicle
 
 ### 4.9 Action type suffixes (corpus convention)
 
-Action types in the corpus encode optional flags as **parenthesized
-suffixes** on the type string: `oxd:Walk (jaywalk)`,
-`oxd:Run (jaywalk, erratic)`, `oxd:MakeARightTurn (unprotected)`,
-`fst:Nudge (out of lane: into ego lane)`. Some schema fields
-(`jaywalk_flag`, `turn_protected`, …) duplicate this, others do not.
+Action types in schema `2.0.0` encode optional flags as **parenthesized
+suffixes** baked into the `action_type` string — the suffix is the
+single source of truth. The pre-2.0.0 side-channel flag fields
+(`jaywalk_flag`, `erratic_flag`, `ego_lane_flag`, `turn_protected`,
+`change_where`, `nudge_magnitude`, `is_aggressive_or_cut_in`,
+`maneuver_aborted_flag`) **are gone** — `AgentAction` keeps only
+`illegal_flag` and `signaling_details`; `EgoAction` keeps only
+`illegal_flag`. Querying any of the dropped attributes raises
+`NameError` ("unknown attribute on agent.action / ego.action").
 
-DSL rules:
-- **Base-verb aliases are parents**: `agent.action.type = walk` matches
-  every action whose type **starts with** `oxd:Walk` — base form *and*
-  all `(…)` variants.
-- **Flag attributes on actions check both sources**:
-  `agent.action(jaywalk = true)` matches if **either** the schema flag
-  field is true, **or** the suffix contains the flag name as a token
-  (`(jaywalk)` or `(jaywalk, erratic)`). Same for `erratic`,
-  `turn_protected` (matches `(protected)` suffix), `aborted`, and the
-  directional variants (`left`, `right`).
-- **Direction sub-actions**: `change_lane_left` /
-  `change_lane_right` / `turn_left` / `turn_right` resolve to the
-  specific suffixed form (`oxd:ChangeLane (left)` etc.).
-  `change_lane` / `turn` are parents.
+The full set of suffixed values the corpus emits:
 
-### 4.10 Booleans must be explicit
+| Base verb | Suffixed forms |
+|---|---|
+| `oxd:Walk` | `(jaywalk)`, `(erratic)`, `(jaywalk, erratic)` |
+| `oxd:Run` | `(jaywalk)`, `(erratic)`, `(jaywalk, erratic)` |
+| `fst:Nudge` | `(in lane)`, `(out of lane: not into ego lane)`, `(out of lane: into ego lane)` |
+| `oxd:ChangeLane` | `(left)`, `(right)` |
+| `fst:Overtake` | `(using ego lane)`, `(not using ego lane)` |
+| `oxd:MakeALeftTurn` | `(protected)`, `(unprotected)` |
+| `oxd:MakeARightTurn` | `(protected)`, `(unprotected)` |
+| `fst:MakeAUTurn` | `(protected)`, `(unprotected)` |
+
+DSL rules — suffix matching is the **only** path (no flag attribute is
+checked on either side):
+
+- **Base-verb aliases are parents.** `agent.action.type = walk` matches
+  every action whose type **starts with** `oxd:Walk` — bare base form
+  *and* every `(…)` variant. Same for `run`, `nudge`, `change_lane`,
+  `turn`, `overtake`, etc. Use this when you want "any walk, however
+  it's flagged."
+- **Direction sub-actions resolve to the specific suffixed form.**
+  `change_lane_left` → `oxd:ChangeLane (left)`,
+  `change_lane_right` → `oxd:ChangeLane (right)`,
+  `turn_left` → `oxd:MakeALeftTurn`,
+  `turn_right` → `oxd:MakeARightTurn`, etc. `change_lane` and `turn`
+  remain base-verb parents that include every suffix variant.
+- **For an exact suffixed form, write the full literal in quotes.**
+  String literals (double-quoted) reach the engine as the matched
+  `action_type` string verbatim:
+
+  ```
+  # exactly oxd:Walk (jaywalk) — no plain "oxd:Walk", no other suffixes
+  agent.action.type = "oxd:Walk (jaywalk)"
+
+  # any walk that carries the jaywalk flag (with or without erratic)
+  agent.action.type in ("oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)")
+
+  # protected vs. unprotected left turn
+  ego.action.type = "oxd:MakeALeftTurn (unprotected)"
+  ```
+
+- **Pre-2.0.0 syntax (`action(jaywalk = true)`) no longer parses** —
+  the engine reports `unknown attribute jaywalk on agent.action`.
+  Rewrite as a value-set predicate over `action.type`, or use a
+  base-verb alias if you don't care which flag is present:
+
+  ```
+  # before (schema 1.x):  agent.action(jaywalk = true)
+  # after (schema 2.0.0):
+  agent.action.type in ("oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", "oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)")
+  ```
+
+> **Aggression and cut-in are not actions.** The dropped
+> `is_aggressive_or_cut_in` flag is replaced by an `AgentProperty` whose
+> `property_type = "Aggressive"`. A "cut-in" is decomposed as a
+> `oxd:ChangeLane (left)` or `oxd:ChangeLane (right)` action **with a
+> simultaneous `Aggressive` property on the same agent.** Query the
+> property directly, not the action:
+>
+> ```
+> # aggressive cut-in to the left
+> agent(prop.type = aggressive) while agent.action.type = "oxd:ChangeLane (left)"
+> ```
+>
+> See §4.10 for the property sub-entity.
+
+### 4.10 Property sub-entity (`agent.prop`, `ego.prop`)
+
+Agents and the ego carry a `properties` list of `AgentProperty` entries
+— each is a typed flag spanning a time window. The DSL surfaces them
+as a sub-entity:
+
+```
+agent.prop.type = aggressive          # any agent with an Aggressive property
+ego.prop.type = signal                # ego had a Signal property
+agent(type = ped, prop.type = erratic) # a pedestrian agent flagged Erratic
+```
+
+Property-type aliases live in the `agent_property_type` /
+`ego_property_type` families: `signal`, `slow`, `fast`, `aggressive`,
+`erratic`, `emergency`, `on_duty`, `double_parked`, `outside_camera`,
+`other`. Properties carry their own start/end timestamps, so
+`while` / `then` / `because_of` over `agent.prop` works the same as
+over actions.
+
+### 4.11 Booleans must be explicit
 
 Boolean attributes always carry an explicit `=true` / `=false`:
 
 ```
-agent(type = ped, action(jaywalk = true))    # correct
-agent(type = ped, action(jaywalk))           # SYNTAX ERROR
+light(color = yellow, ego_in_on_yellow = true)    # correct
+light(color = yellow, ego_in_on_yellow)           # SYNTAX ERROR
 ```
 
-### 4.11 Clip-level attributes
+### 4.12 Clip-level attributes
 
 `clip` is a virtual entity for clip-level metadata:
 
@@ -400,7 +476,7 @@ Queries live in **fenced code blocks**, one query per block, language
 tag `query` for syntax highlighting:
 
 ```query
-agent(type = ped, action(jaywalk = true))
+agent(type = ped, action.type in ("oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", "oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))
   and ego.action in (stop, yield, decel)
 ```
 

@@ -133,7 +133,11 @@ See [§4](#4-tracks-reference) for the full track / subtrack reference.
 Whatever you select on the timeline opens its editor in the right
 panel. Pick the type from the dropdown, set the time range with the
 **Start (s)** / **End (s)** inputs (or drag the segment edges in the
-timeline), and toggle flags like *Illegal*, *One way*, *Jaywalk*, etc.
+timeline), and toggle the remaining scalar flags (e.g. *Illegal* on an
+action or containment; *One way* on an environment). Variant flags
+that used to be separate toggles (jaywalk, erratic, protected /
+unprotected, left / right, in / out of lane, …) are now baked into the
+action-type dropdown itself — see §12.1.
 
 A **Missing fields** warning chip appears at the top of the editor
 when required fields are empty.
@@ -271,8 +275,8 @@ environment-controls.
 [ containment (lanes 1..N)  ]
 [ pose                      ]    ego-relative position over time
 [ influences (lanes 1..N)   ]    what is causing the agent's behaviour
-[ actions                   ]    drive / stop / walk / jaywalk / ...
-[ properties (lanes 1..N)   ]    e.g. signalling lights, sirens
+[ actions                   ]    drive / stop / walk / Walk (jaywalk) / ...
+[ properties (lanes 1..N)   ]    e.g. signalling lights, sirens, Aggressive
 ```
 
 **Ego**
@@ -612,7 +616,7 @@ At the very bottom of the right panel:
 If you point the CLI at a directory of *videos* with no JSONs:
 
 1. Each video appears as **unlabelled** in the sidebar.
-2. Selecting it loads an empty bundle (schema `2.1.0`,
+2. Selecting it loads an empty bundle (schema `2.0.0`,
    `status="annotating"`).
 3. Annotate as normal. On the **first save**, the tool creates
    `<dir>/<clip_id>.json`. The sidebar badge flips from amber
@@ -620,7 +624,67 @@ If you point the CLI at a directory of *videos* with no JSONs:
 
 ---
 
-## 12. Themes
+## 12. What the annotator writes (schema 2.0.0 wire format)
+
+The on-disk JSON the annotator emits follows the
+[`cascade_av.spec`](../../src/cascade_av/spec/schema.py) Pydantic
+models for schema **2.0.0**. Three things in particular are worth
+knowing so what you read in the file matches what you set in the UI:
+
+### 12.1 Action types are combined strings
+
+Every `AgentAction.action_type` and `EgoAction.type` value is a single
+string that bakes the base verb and any flags together with a
+parenthesized suffix. There are **no parallel `*_flag` fields** to set
+on the action — the suffix is the only source of truth.
+
+| In the editor… | …on disk |
+|---|---|
+| Pedestrian, *Walk*, *Jaywalk* toggled on | `"action_type": "oxd:Walk (jaywalk)"` |
+| Pedestrian, *Walk*, *Jaywalk* and *Erratic* on | `"action_type": "oxd:Walk (jaywalk, erratic)"` |
+| Pedestrian, *Run*, *Jaywalk* on | `"action_type": "oxd:Run (jaywalk)"` |
+| Vehicle, *ChangeLane*, *Left* selected | `"action_type": "oxd:ChangeLane (left)"` |
+| Vehicle, *Nudge*, *Out of lane: into ego lane* | `"action_type": "fst:Nudge (out of lane: into ego lane)"` |
+| Vehicle, *Overtake*, *Using ego lane* | `"action_type": "fst:Overtake (using ego lane)"` |
+| Ego, *MakeALeftTurn*, *Unprotected* | `"type": "oxd:MakeALeftTurn (unprotected)"` |
+
+Only **two scalar flags** survive on `AgentAction` / `EgoAction`:
+`illegal_flag` (the *Mark as Illegal* toggle in §6.4) and, on
+`AgentAction`, `signaling_details` (set indirectly via the *Signal*
+property's link-to widget — see §5.3). The pre-2.0.0 side-channel
+fields (`jaywalk_flag`, `erratic_flag`, `ego_lane_flag`,
+`turn_protected`, `change_where`, `nudge_magnitude`,
+`is_aggressive_or_cut_in`, `maneuver_aborted_flag`) are gone — the
+editor no longer exposes them and the writer no longer emits them.
+
+### 12.2 Aggression is a property, not an action flag
+
+The pre-2.0.0 "aggressive / cut-in" action flag is now an
+`AgentProperty` entry on the agent's `properties` row with
+`property_type = "Aggressive"` spanning the aggressive window. A
+"cut-in" annotation is now **two** segments on the same agent: a
+`ChangeLane (left)` or `ChangeLane (right)` action plus a
+simultaneous `Aggressive` property covering the same time range.
+Create the property in the **properties** subtrack (see §4.1
+"Agents") and pick *Aggressive* from the property-type dropdown.
+
+### 12.3 `driving_judgment` is a plain string
+
+`ego_vehicle.driving_judgment` is written as one of the three plain
+strings `"good"`, `"neutral"`, or `"bad"` — **no emoji glyphs**, no
+numeric scores. Use the same dropdown in the right panel as before;
+the wire value is what changed, not the UI affordance.
+
+```json
+"ego_vehicle": {
+  "driving_judgment": "good",
+  ...
+}
+```
+
+---
+
+## 13. Themes
 
 The lock bar's rightmost button is the theme toggle. Click cycles
 through **System** (follow OS) → **Light** → **Dark** → **System**.
@@ -628,7 +692,7 @@ Your choice persists across reloads (stored in browser local storage).
 
 ---
 
-## 13. Troubleshooting
+## 14. Troubleshooting
 
 | Symptom | Likely cause / fix |
 |---|---|
@@ -642,7 +706,7 @@ Your choice persists across reloads (stored in browser local storage).
 
 ---
 
-## 14. See also
+## 15. See also
 
 - [`tools/annotator/README.md`](../../tools/annotator/README.md) — install,
   CLI flags, transcode pipeline, architecture.
