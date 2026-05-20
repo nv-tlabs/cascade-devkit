@@ -61,9 +61,22 @@ def main() -> None:
     show(ds, "ego.action = stop or ego.action = yield")
     show(ds, "agent.type = ped and not env.type = crosswalk")
 
-    section("Action flags (schema flag OR parenthesized suffix)")
-    show(ds, "agent(type = ped, action(jaywalk = true))")
-    show(ds, "agent(action(erratic = true))")
+    section("Action-type suffixes (schema 2.0.0 single source of truth)")
+    # Flags are encoded as parenthesized suffixes on `action_type` —
+    # `(jaywalk)`, `(erratic)`, `(jaywalk, erratic)`. Match them with
+    # literal-string equality / `in (...)` on `action.type`.
+    show(
+        ds,
+        'agent(type = ped, action.type in ('
+        '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
+        '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))',
+    )
+    show(
+        ds,
+        'agent.action.type in ('
+        '"oxd:Walk (erratic)", "oxd:Walk (jaywalk, erratic)", '
+        '"oxd:Run (erratic)", "oxd:Run (jaywalk, erratic)")',
+    )
 
     section("Temporal: 'A while B' — co-occurring intervals")
     show(ds, "agent.type = ped while ego.action = decel")
