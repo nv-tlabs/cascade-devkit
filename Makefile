@@ -10,6 +10,14 @@
 
 .PHONY: help install test lint fmt annotator-dev annotator-build notebooks
 
+# Recipe-prefix helper: source .env into the recipe shell when present,
+# with `.env` values winning over inherited shell exports (matches
+# `set -a` semantics; same idiom annotator-dev / notebooks used inline
+# before this was factored out). The annotator's own Python loader uses
+# the opposite precedence (`override=False`, shell wins) — documented
+# in AGENTS.md.
+LOAD_ENV := if [ -f .env ]; then set -a; . ./.env; set +a; fi;
+
 help:  ## Show this help and exit.
 	@echo "Usage: make <target>"
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-22s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -18,8 +26,8 @@ install:  ## Install Python deps (all extras + groups) and the annotator's npm d
 	uv sync --all-extras
 	cd tools/annotator/web && npm install
 
-test:  ## Run Python (pytest) and annotator frontend (vitest) test suites.
-	uv run pytest
+test:  ## Run Python (pytest) and annotator frontend (vitest) test suites. Sources `.env` so HF-gated tests pick up `HF_TOKEN`.
+	@$(LOAD_ENV) uv run pytest
 	cd tools/annotator/web && npm test
 
 lint:  ## Lint Python (ruff) and the annotator frontend (eslint).
@@ -30,11 +38,9 @@ fmt:  ## Format Python with ruff.
 	uv run ruff format .
 
 annotator-dev: annotator-build  ## Build the annotator frontend bundle, then launch the backend. Optional: DATA=<path> (falls back to CASCADE_AV_DATASET_ROOT from .env), PORT=<n>. Always rebuilds — stale bundles cause confusing "my fix didn't land" debugging sessions; the 2-3s rebuild cost is worth it.
-	@DATA="$(DATA)"; \
-	if [ -z "$$DATA" ] && [ -f .env ]; then \
-	  set -a; . ./.env; set +a; \
-	  DATA="$$CASCADE_AV_DATASET_ROOT"; \
-	fi; \
+	@$(LOAD_ENV) \
+	DATA="$${DATA:-$(DATA)}"; \
+	if [ -z "$$DATA" ]; then DATA="$$CASCADE_AV_DATASET_ROOT"; fi; \
 	if [ -z "$$DATA" ]; then \
 	  echo "error: no DATA path. Pass DATA=<path>, or set CASCADE_AV_DATASET_ROOT in .env (see .env.example)" >&2; \
 	  exit 2; \
@@ -45,11 +51,9 @@ annotator-build:  ## Build the annotator frontend bundle (tools/annotator/web/di
 	cd tools/annotator/web && npm run build
 
 notebooks:  ## Launch JupyterLab against ./notebooks. Optional: DATA=<path> (falls back to CASCADE_AV_DATASET_ROOT from .env).
-	@DATA="$(DATA)"; \
-	if [ -z "$$DATA" ] && [ -f .env ]; then \
-	  set -a; . ./.env; set +a; \
-	  DATA="$$CASCADE_AV_DATASET_ROOT"; \
-	fi; \
+	@$(LOAD_ENV) \
+	DATA="$${DATA:-$(DATA)}"; \
+	if [ -z "$$DATA" ]; then DATA="$$CASCADE_AV_DATASET_ROOT"; fi; \
 	if [ -z "$$DATA" ]; then \
 	  echo "warning: no dataset root (DATA= unset, CASCADE_AV_DATASET_ROOT unset in .env) — notebooks that iterate the corpus will fail. Continuing anyway." >&2; \
 	else \

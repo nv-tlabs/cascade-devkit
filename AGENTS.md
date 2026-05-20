@@ -184,11 +184,22 @@ The DevKit reads these from the environment. Copy
 
 Setting options: shell `export` (or per-command
 `VAR=... make test`); a `.env` file at the repo root (auto-loaded by
-the annotator itself — `cascade-annotate` walks up from cwd at
-startup, `override=False` so shell exports win — plus IDE test
-runners, Docker Compose, and `dotenv-cli`, but **not** plain shell or
-the other `uv run` / `make` targets); or on the Horde DGXC VM via
+the `make test`, `make annotator-dev`, and `make notebooks` targets,
+and by the annotator itself); or on the Horde DGXC VM via
 `hgx secrets`, which auto-inject across sessions.
+
+Two `.env` precedence rules to know:
+
+- **`make` targets** that load `.env` use `set -a; . ./.env; set +a`
+  (the `LOAD_ENV` helper in the Makefile), so **`.env` wins over
+  inherited shell exports** in the recipe shell.
+- **The annotator's own Python loader** — `cascade-annotate` walks up
+  from cwd at startup — uses `override=False`, so **shell exports win
+  over `.env`** there.
+
+Plain `uv run <cmd>` outside `make` does not auto-load `.env`; reach
+for `dotenv-cli` (or `VAR=... uv run ...`, or your IDE's test-runner
+env-file integration) when running outside `make`.
 
 ### Never commit
 
