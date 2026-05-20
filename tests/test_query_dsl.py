@@ -81,6 +81,56 @@ def test_contained_in_is_alias_of_in() -> None:
         assert desc.attributes["in"] is desc.attributes["contained_in"]
 
 
+def test_pos_any_dir_any_parse_and_register() -> None:
+    """`pos_any` / `dir_any` are reachable from the parser and registered
+    as `kind="list"` attributes on AGENT_DESCRIPTOR sharing the alias
+    families of `pos` / `dir`."""
+    from cascade_av.query.entities import AGENT_DESCRIPTOR
+
+    for q in (
+        "agent.pos_any = front",
+        "agent.pos_any in (front, left)",
+        "agent(type = vehicle, dir_any = opposite)",
+        "agent(type = vehicle, dir_any in (perpendicular_rl, perpendicular_lr))",
+    ):
+        assert parse(q) is not None
+
+    pa = AGENT_DESCRIPTOR.attributes["pos_any"]
+    da = AGENT_DESCRIPTOR.attributes["dir_any"]
+    assert pa.kind == "list"
+    assert da.kind == "list"
+    assert pa.alias_family == "position"
+    assert da.alias_family == "direction"
+
+
+def test_pos_any_iterates_intervals(rich_bundle: AnnotationBundle) -> None:
+    """`agent.pos_any` returns all distinct positions across pose intervals;
+    `agent.pos` returns one value (the midpoint sample).  For an agent
+    whose pose changes during its visibility, the two will differ."""
+    from cascade_av.query.entities import AGENT_DESCRIPTOR
+
+    pos_reader = AGENT_DESCRIPTOR.attributes["pos"].reader
+    pos_any_reader = AGENT_DESCRIPTOR.attributes["pos_any"].reader
+
+    found_multi = False
+    for agent in rich_bundle.annotation.agents:
+        positions = pos_any_reader(agent, rich_bundle)
+        if len(positions) >= 2:
+            # Found an agent whose pose changes across intervals.
+            midpoint = pos_reader(agent, rich_bundle)
+            assert isinstance(positions, list)
+            # pos_any must be a superset of (or equal to) what midpoint
+            # sampling returns — anything the midpoint sees is in some
+            # interval.
+            if midpoint is not None:
+                assert midpoint in positions
+            found_multi = True
+            break
+
+    if not found_multi:
+        pytest.skip("rich bundle has no agent with multi-interval pose")
+
+
 def test_parse_errors_carry_position() -> None:
     # Unknown entity
     with pytest.raises(QueryParseError) as exc_info:

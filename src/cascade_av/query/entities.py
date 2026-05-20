@@ -264,6 +264,37 @@ def _agent_dir(a: Agent, bundle: AnnotationBundle) -> str | None:
     return pose.direction_rel_to_ego if pose else None
 
 
+def _agent_pos_any(a: Agent, _bundle: AnnotationBundle) -> list[str]:
+    """Every distinct position value across the agent's ego_relative_pose
+    intervals — order-preserving, deduplicated.
+
+    Complements `_agent_pos`, which samples the position at the agent's
+    visibility midpoint.  Use `agent.pos_any = front` (or `in (...)`) to
+    match an agent whose pose was `front` at any time during its
+    visibility, not necessarily at the midpoint.
+    """
+    seen: list[str] = []
+    for pose in a.ego_relative_pose:
+        v = pose.position_rel_to_ego
+        if v and v not in seen:
+            seen.append(v)
+    return seen
+
+
+def _agent_dir_any(a: Agent, _bundle: AnnotationBundle) -> list[str]:
+    """Every distinct direction value across the agent's ego_relative_pose
+    intervals — order-preserving, deduplicated.
+
+    Per-interval counterpart of `_agent_dir`.  See `_agent_pos_any`.
+    """
+    seen: list[str] = []
+    for pose in a.ego_relative_pose:
+        v = pose.direction_rel_to_ego
+        if v and v not in seen:
+            seen.append(v)
+    return seen
+
+
 def _agent_in(a: Agent, bundle: AnnotationBundle) -> list[str]:
     """List of environment types this agent is contained in."""
     env_by_id = {e.id: e for e in bundle.annotation.environments}
@@ -510,6 +541,14 @@ AGENT_DESCRIPTOR = EntityDescriptor(
         "vis": Attribute(reader=_agent_vis),
         "pos": Attribute(reader=_agent_pos, alias_family="position"),
         "dir": Attribute(reader=_agent_dir, alias_family="direction"),
+        # Per-interval existential counterparts of `pos` / `dir`.  Use
+        # these when the agent's relative pose changes across its
+        # visibility window (e.g. a vehicle that approaches in front of
+        # ego and ends up perpendicular as it crosses the intersection).
+        # `pos`/`dir` sample at the midpoint; `pos_any`/`dir_any` match
+        # if any pose interval carries the value.
+        "pos_any": Attribute(reader=_agent_pos_any, alias_family="position", kind="list"),
+        "dir_any": Attribute(reader=_agent_dir_any, alias_family="direction", kind="list"),
         # `in` is the canonical containment attribute, but `in` is also a
         # reserved DSL keyword (the set-membership operator), so the
         # parser cannot reach `agent.in` directly.  We register the same

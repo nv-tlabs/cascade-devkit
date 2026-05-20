@@ -225,6 +225,21 @@ light.color = red             # every LightState with color = red
 > ego.contained_in in (road, intersection)
 > ```
 
+> **Ego-relative pose — `pos` vs `pos_any`.**
+> `agent.pos` and `agent.dir` are sampled at the agent's visibility-window
+> **midpoint** (single deterministic value per agent).  For agents whose
+> relative pose changes across intervals (e.g. a vehicle that approaches
+> in front of ego and ends up perpendicular as it crosses the
+> intersection), use the per-interval counterparts `agent.pos_any` and
+> `agent.dir_any`.  Both are `kind="list"` attributes that match
+> existentially across every `EgoRelativePose` interval the agent
+> carries:
+>
+> ```
+> agent.pos_any = front                                  # any pose interval has pos=front
+> agent(type = vehicle, dir_any in (perpendicular_lr, perpendicular_rl))
+> ```
+
 ### 4.3 Entity clauses (same-entity grouping)
 
 `<entity>(<expr>)` — match every entity of type `<entity>` such that
