@@ -213,6 +213,18 @@ light.color = red             # every LightState with color = red
 - The implicit AND-and-existential-quantifier rule: a clip matches iff
   *at least one* entity satisfies the predicate.
 
+> **Containment — `agent.contained_in` / `ego.contained_in`.** The
+> containment attribute is also exposed under the name `contained_in`
+> in addition to its canonical name `in` (`agent.in` / `ego.in`).
+> The DSL parser tokenises bare `in` as the IN set-membership operator
+> in every position, which makes the bare-name form unreachable from
+> a query string — use `contained_in` instead:
+>
+> ```
+> agent(type = vehicle, contained_in = roundabout)
+> ego.contained_in in (road, intersection)
+> ```
+
 ### 4.3 Entity clauses (same-entity grouping)
 
 `<entity>(<expr>)` — match every entity of type `<entity>` such that

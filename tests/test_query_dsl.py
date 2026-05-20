@@ -57,6 +57,30 @@ def test_parser_accepts_spec_examples() -> None:
     assert isinstance(parse("agent(type = vehicle, pos = front)"), EntityClause)
 
 
+def test_parser_accepts_contained_in_alias() -> None:
+    """The `contained_in` alias reaches the containment attribute that is
+    otherwise unreachable in the grammar because the bare name `in` is
+    also the IN set-membership operator."""
+    cases = [
+        ("agent.contained_in = road", AttrPredicate),
+        ("agent(contained_in = sidewalk)", EntityClause),
+        ("ego.contained_in in (road, intersection)", AttrPredicate),
+        ("agent(type = ped, contained_in = crosswalk)", EntityClause),
+    ]
+    for text, expected_root in cases:
+        ast = parse(text)
+        assert isinstance(ast, expected_root), f"{text} -> {type(ast).__name__}"
+
+
+def test_contained_in_is_alias_of_in() -> None:
+    """`contained_in` and `in` are registered as the same Attribute on
+    both agent and ego descriptors, so they share alias_family and reader."""
+    from cascade_av.query.entities import AGENT_DESCRIPTOR, EGO_DESCRIPTOR
+
+    for desc in (AGENT_DESCRIPTOR, EGO_DESCRIPTOR):
+        assert desc.attributes["in"] is desc.attributes["contained_in"]
+
+
 def test_parse_errors_carry_position() -> None:
     # Unknown entity
     with pytest.raises(QueryParseError) as exc_info:

@@ -494,6 +494,12 @@ CLIP_DESCRIPTOR = EntityDescriptor(
 )
 
 
+# Shared between the `in` and `contained_in` keys on each descriptor.  See
+# the comment near each entry for the rationale.
+_AGENT_CONTAINED_IN = Attribute(reader=_agent_in, alias_family="env_type", kind="list")
+_EGO_CONTAINED_IN = Attribute(reader=_ego_in, alias_family="env_type", kind="list")
+
+
 AGENT_DESCRIPTOR = EntityDescriptor(
     name="agent",
     candidates=_agent_candidates,
@@ -504,7 +510,13 @@ AGENT_DESCRIPTOR = EntityDescriptor(
         "vis": Attribute(reader=_agent_vis),
         "pos": Attribute(reader=_agent_pos, alias_family="position"),
         "dir": Attribute(reader=_agent_dir, alias_family="direction"),
-        "in": Attribute(reader=_agent_in, alias_family="env_type", kind="list"),
+        # `in` is the canonical containment attribute, but `in` is also a
+        # reserved DSL keyword (the set-membership operator), so the
+        # parser cannot reach `agent.in` directly.  We register the same
+        # Attribute under the unambiguous name `contained_in`; both keys
+        # behave identically.  See `docs/user/query_language.md` §4.
+        "in": _AGENT_CONTAINED_IN,
+        "contained_in": _AGENT_CONTAINED_IN,
         "signaling": Attribute(
             reader=_agent_signaling, alias_family="signaling_intent", kind="list"
         ),
@@ -530,7 +542,10 @@ EGO_DESCRIPTOR = EntityDescriptor(
             reader=_ego_props, kind="sub_entity", sub_entity="ego.prop"
         ),
         "judgment": Attribute(reader=_ego_judgment, alias_family="driving_judgment"),
-        "in": Attribute(reader=_ego_in, alias_family="env_type", kind="list"),
+        # See AGENT_DESCRIPTOR — the alias is needed because `in` is also
+        # a reserved DSL keyword.  Both keys reference the same Attribute.
+        "in": _EGO_CONTAINED_IN,
+        "contained_in": _EGO_CONTAINED_IN,
     },
 )
 
