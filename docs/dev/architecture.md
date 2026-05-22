@@ -172,9 +172,11 @@ also has its own test suite under `tools/annotator/tests/` (mocks
 ### `docs/`
 
 `docs/dev/` is the project's living memory for contributors (this file,
-[`contrib.md`](./contrib.md), [`changelog.md`](./changelog.md)). User-facing
-reference material lives under `docs/user/` (`query_language.md`,
-`visualization.md`, `annotator.md`).
+[`changelog.md`](./changelog.md), [`schema-history.md`](./schema-history.md)).
+The contributor workflow itself lives at the repo root in
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md) so GitHub surfaces it on
+issue / PR pages. User-facing reference material lives under
+`docs/user/` (`query_language.md`, `visualization.md`, `annotator.md`).
 
 ## Decisions
 
