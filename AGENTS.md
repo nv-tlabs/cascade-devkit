@@ -51,9 +51,10 @@ Devin, Jules, Cursor, etc.) and rebuild in container — Python 3.11,
 If you are new to the repo, read in this order:
 
 1. This file.
-2. [`docs/dev/contrib.md`](docs/dev/contrib.md) — branch-first
-   workflow, worktree layout, atomic commits, PR conventions, `gh`
-   CLI usage. **Mandatory before any non-trivial change.**
+2. [`CONTRIBUTING.md`](CONTRIBUTING.md) — branch-first
+ workflow, worktree layout, atomic commits, DCO sign-off, PR
+ conventions, `gh` CLI usage. **Mandatory before any non-trivial
+ change.**
 3. [`docs/dev/architecture.md`](docs/dev/architecture.md) — design
    decisions; **read before any structural change**.
 4. [`README.md`](README.md) — user-facing overview of the dataset and
@@ -75,7 +76,7 @@ If you are new to the repo, read in this order:
 | `notebooks/` | Jupyter notebooks (built from `scripts/build_notebooks.py`) |
 | `scripts/` | One-off Python utilities (notebook builder, vocabulary scan) |
 | `docs/user/` | User-facing reference docs (`query_language.md`, `visualization.md`, `annotator.md`) |
-| `docs/dev/` | Living dev docs (`contrib.md`, `architecture.md`, `changelog.md`) |
+| `docs/dev/` | Living dev docs (`architecture.md`, `changelog.md`, `schema-history.md`) |
 | `meta/` | **Gitignored.** Working research and planning notes. |
 
 ## Common workflows
@@ -137,7 +138,7 @@ belong here.
 
 ## Agent expectations
 
-The full workflow is in [`docs/dev/contrib.md`](docs/dev/contrib.md);
+The full workflow is in [`CONTRIBUTING.md`](CONTRIBUTING.md);
 the short version for agents:
 
 1. **Use a worktree.** Branch off `origin/main` with
@@ -146,18 +147,22 @@ the short version for agents:
    Never commit to `main`. Prefixes: `feat/`, `fix/`, `refactor/`,
    `docs/`, `chore/`.
 2. **Atomic commits.** One logical change per commit, message format
-   `<type>(<scope>): <summary>` followed by a body explaining what +
-   why + any trade-offs considered.
-3. **Small PRs.** Reviewable in <30 min. Open with `gh pr create`.
-   Update `docs/dev/changelog.md` **in the same PR** with one line in
-   the form `- YYYY-MM-DD <type>(<scope>): <summary> (#<PR>)`.
-4. **Surface issues with `gh issue create`** — don't silently work
-   around defects you discover. Search `gh issue list --search "..."`
-   before filing duplicates.
-5. **No force-push to `main`. No secrets. Don't auto-merge your own
-   PRs.**
-6. **Architecture first.** Read `docs/dev/architecture.md` before
-   structural changes.
+ `<type>(<scope>): <summary>` followed by a body explaining what +
+ why + any trade-offs considered.
+3. **Sign off every commit.** Use `git commit -s` to append a
+ `Signed-off-by:` trailer certifying the contribution under the
+ [DCO 1.1](https://developercertificate.org/). Unsigned commits are
+ rejected — see [Signing Your Work](CONTRIBUTING.md#signing-your-work).
+4. **Small PRs.** Reviewable in <30 min. Open with `gh pr create`.
+ Update `docs/dev/changelog.md` **in the same PR** with one line in
+ the form `- YYYY-MM-DD <type>(<scope>): <summary> (#<PR>)`.
+5. **Surface issues with `gh issue create`** — don't silently work
+ around defects you discover. Search `gh issue list --search "..."`
+ before filing duplicates.
+6. **No force-push to `main`. No secrets. Don't auto-merge your own
+ PRs.**
+7. **Architecture first.** Read `docs/dev/architecture.md` before
+ structural changes.
 
 ### Do not touch
 
@@ -225,7 +230,7 @@ descriptions, issue bodies, or externally uploaded stack traces.
 
 ## When in doubt
 
-- **Stuck on workflow?** Re-read `docs/dev/contrib.md`.
+- **Stuck on workflow?** Re-read `CONTRIBUTING.md`.
 - **About to make a structural change?** Read
   `docs/dev/architecture.md` first.
 - **Found a defect?** File a `gh issue` before patching around it.
