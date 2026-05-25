@@ -156,10 +156,18 @@ attribute_path  := IDENT ( '.' IDENT )*
 
 comparison      := '=' | '!=' | '>' | '>=' | '<' | '<=' | 'in'
 
-value           := atom | value_set
+value           := atom | value_set | attr_ref
 value_set       := '(' atom ( ',' atom )* ')'
 atom            := IDENT | QUALIFIED | NUMBER | BOOL
+
+attr_ref        := attribute_path                # same-entity only; see §4.2
 ```
+
+`attr_ref` is only valid as the RHS of a non-`in` comparison. It denotes
+a reference to another scalar attribute **on the same entity** as the
+LHS — see §4.2 for the disambiguation rules (a bare ident on the RHS is
+parsed as an `attr_ref` only when it names a known scalar attribute on
+the LHS entity; otherwise it falls through to a literal value atom).
 
 ### Precedence (lowest to highest)
 
@@ -240,6 +248,48 @@ light.color = red             # every LightState with color = red
 > agent(type = vehicle, dir_any in (perpendicular_lr, perpendicular_rl))
 > ```
 
+> **Same-entity attribute-to-attribute comparisons.** The right-hand
+> side of a non-`in` comparison may be another scalar attribute **on
+> the same entity** as the left-hand side. Use the entity-clause
+> shorthand or the qualified `<entity>.<attr>` form — both compile to
+> the same AST:
+>
+> ```
+> env(out_lanes > lanes)            # forks: more out-lanes than in-lanes
+> env(out_lanes < lanes)            # merges: fewer out-lanes than in-lanes
+> env.out_lanes != env.lanes        # qualified form, outside the clause
+> ```
+>
+> Only the six scalar comparators (`=`, `!=`, `>`, `>=`, `<`, `<=`) are
+> supported on this RHS shape; `in` continues to take a parenthesized
+> value set. Cross-entity references (`env.lanes = agent.amount`),
+> sub-entity descent on the RHS (`agent(action.illegal != action.illegal)`),
+> arithmetic, and list-valued attributes are rejected at parse time.
+>
+> Disambiguation: a bare ident on the RHS is treated as an attribute
+> reference only when it names a known *scalar* attribute on the LHS
+> entity. Otherwise it falls through to a literal value atom — so
+> existing queries like `agent.type = ped` still parse as a string
+> literal because `ped` is not an attribute.
+>
+> **None handling.** When either side resolves to `None` for the
+> candidate entity, the comparison treats the two sides as **equal**.
+> "Equal" satisfies `=`, `>=`, and `<=` but not `!=`, `>`, or `<`.
+> Both sides `None` are also treated as equal. The truth table for
+> `lanes <op> out_lanes`:
+>
+> | `lanes` | `out_lanes` | `=` | `!=` | `>` | `>=` | `<` | `<=` |
+> |---|---|---|---|---|---|---|---|
+> | 3 | None | True | False | False | True | False | True |
+> | None | 2 | True | False | False | True | False | True |
+> | None | None | True | False | False | True | False | True |
+> | 3 | 4 | False | True | False | False | True | True |
+> | 3 | 2 | False | True | True | True | False | False |
+>
+> This rule applies only to attr-to-attr comparisons; literal RHS
+> predicates keep the existing behaviour (any `None` on the LHS → no
+> match).
+
 ### 4.3 Entity clauses (same-entity grouping)
 
 `<entity>(<expr>)` — match every entity of type `<entity>` such that
@@ -257,6 +307,10 @@ agent(type = ped, action.type = "oxd:Walk (jaywalk)")
 
 light(color = yellow, ego_in_on_yellow = true)
 # every LightState with color=yellow AND ego_in_on_yellow=true
+
+env(type = lane_fork, out_lanes > lanes)
+# every Environment that is a lane fork and adds at least one lane
+# downstream — uses the same-entity attr-to-attr RHS from §4.2
 ```
 
 Inside an entity clause, `and`/`or`/`not` compose constraints on the

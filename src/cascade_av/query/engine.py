@@ -20,6 +20,7 @@ from cascade_av.query.constants import ALIAS_FAMILIES, resolve_alias
 from cascade_av.query.dsl import (
     And,
     AttrPredicate,
+    AttrRef,
     BecauseOf,
     EntityClause,
     Expr,
@@ -233,6 +234,45 @@ def _flatten_values(value: object, family: str | None) -> frozenset[Any]:
     return _values_for(value, family)
 
 
+def _compare_attr_ref(
+    candidate: Any,
+    desc: EntityDescriptor,
+    attr: Any,
+    op: str,
+    ref: AttrRef,
+    ctx: "_Context",
+) -> bool:
+    """Same-entity attribute-to-attribute comparison.
+
+    The LHS value comes from ``attr`` on ``candidate``; the RHS value
+    comes from the attribute named by ``ref.path[-1]`` on the same
+    ``desc``. Implements the "None-as-equal" rule from
+    ``docs/user/query_language.md`` §4.2: when either side resolves to
+    ``None`` for the same candidate, the comparison treats the two sides
+    as equal — so ``=``, ``>=``, and ``<=`` all match, but ``!=``,
+    ``>``, and ``<`` do not.
+    """
+    lhs = attr.reader(candidate, ctx.bundle)
+    rhs_attr = desc.attributes[ref.path[-1]]
+    rhs = rhs_attr.reader(candidate, ctx.bundle)
+
+    # "None means same" per the user-stated rule. Equal satisfies =,
+    # >=, <=; not !=, >, <.
+    if lhs is None or rhs is None:
+        return op in ("=", ">=", "<=")
+
+    if op == "=":
+        return lhs == rhs
+    if op == "!=":
+        return lhs != rhs
+    try:
+        lv = float(lhs)
+        rv = float(rhs)
+    except (TypeError, ValueError):
+        return False
+    return {">": lv > rv, ">=": lv >= rv, "<": lv < rv, "<=": lv <= rv}[op]
+
+
 def _compare(left: object, op: str, right_set: frozenset[Any], right_raw: object) -> bool:
     """Apply comparison `op` between `left` and `right_set`/`right_raw`."""
     if op in ("=", "in"):
@@ -342,7 +382,13 @@ def _eval_attr(pred: AttrPredicate, ctx: _Context) -> MatchSet:
         return MatchSet(())
 
     family = attr.alias_family
-    right_set = _flatten_values(pred.value, family)
+    if isinstance(pred.value, AttrRef):
+        # AttrRef bypasses alias flattening — handled by
+        # `_compare_attr_ref` directly. `right_set` is unused on that
+        # path.
+        right_set: frozenset[Any] = frozenset()
+    else:
+        right_set = _flatten_values(pred.value, family)
 
     matches: list[Match] = []
     for c in candidates:
@@ -365,6 +411,13 @@ def _candidate_matches(
     raw_value: object,
     ctx: _Context,
 ) -> bool:
+    # Attribute-to-attribute comparison short-circuits before reading the
+    # LHS through the alias / list / action-type machinery — both sides
+    # are scalar values pulled from the same candidate, and the None
+    # substitution rule lives in `_compare_attr_ref`.
+    if isinstance(raw_value, AttrRef):
+        return _compare_attr_ref(candidate, desc, attr, op, raw_value, ctx)
+
     value = attr.reader(candidate, ctx.bundle)
 
     # Special handling for `type` on action-typed sub-entities (uses the
@@ -473,7 +526,13 @@ def _attr_matches_for_candidate(
     if attr is None:
         return False
 
-    right_set = _flatten_values(pred.value, attr.alias_family)
+    if isinstance(pred.value, AttrRef):
+        # AttrRef bypasses alias flattening — handled by
+        # `_compare_attr_ref` directly. `right_set` is unused on that
+        # path.
+        right_set: frozenset[Any] = frozenset()
+    else:
+        right_set = _flatten_values(pred.value, attr.alias_family)
     for c in sub_candidates:
         if _candidate_matches(c, desc, attr, leaf_name, pred.op, right_set, pred.value, ctx):
             return True
