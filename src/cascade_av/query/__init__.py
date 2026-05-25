@@ -25,6 +25,7 @@ from cascade_av.query.constants import (
 from cascade_av.query.dsl import (
     And,
     AttrPredicate,
+    AttrRef,
     BecauseOf,
     EntityClause,
     Expr,
@@ -101,6 +102,7 @@ __all__ = [
     "MatchSet",
     "QueryParseError",
     "AttrPredicate",
+    "AttrRef",
     "EntityClause",
     "And",
     "Or",

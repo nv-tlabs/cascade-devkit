@@ -16,6 +16,7 @@ import pytest
 from cascade_av.dataset import CascadeDataset
 from cascade_av.query import (
     AttrPredicate,
+    AttrRef,
     EntityClause,
     Match,
     MatchSet,
@@ -23,7 +24,7 @@ from cascade_av.query import (
     evaluate,
     parse,
 )
-from cascade_av.spec import Agent, AnnotationBundle
+from cascade_av.spec import Agent, AnnotationBundle, Environment
 
 CORPUS = Path("/home/horde/01_json_annotations")
 
@@ -335,3 +336,214 @@ def test_match_set_sequences_raises_without_dataset(
     ms = find_on_bundle(rich_bundle, "agent.type = ped")
     with pytest.raises(RuntimeError, match="no dataset back-reference"):
         next(ms.sequences())
+
+
+# ---------------------------------------------------------------------------
+# Same-entity attribute-to-attribute comparisons (AttrRef)
+# ---------------------------------------------------------------------------
+
+
+def _inner_predicate(ast: object) -> AttrPredicate:
+    """Pull the inner AttrPredicate out of an EntityClause (or assume the
+    AST is already an AttrPredicate). Helper for the parser-acceptance
+    test below."""
+    if isinstance(ast, EntityClause):
+        inner = ast.inner
+        assert isinstance(inner, AttrPredicate), (
+            f"expected AttrPredicate inside clause, got {type(inner).__name__}"
+        )
+        return inner
+    assert isinstance(ast, AttrPredicate), (
+        f"expected AttrPredicate, got {type(ast).__name__}"
+    )
+    return ast
+
+
+def test_parser_accepts_same_entity_attr_ref() -> None:
+    """Parser builds `AttrRef` for same-entity attr-to-attr comparisons,
+    keeps literal RHS as scalar atoms, and rejects cross-entity refs +
+    unknown attributes with clear errors."""
+    # Same-entity comparisons inside an entity clause.
+    for op_query, expected_op in (
+        ("env(out_lanes > lanes)", ">"),
+        ("env(out_lanes = lanes)", "="),
+        ("env(out_lanes != lanes)", "!="),
+        ("env(out_lanes < lanes)", "<"),
+        ("env(out_lanes >= lanes)", ">="),
+        ("env(out_lanes <= lanes)", "<="),
+    ):
+        pred = _inner_predicate(parse(op_query))
+        assert pred.entity == "env"
+        assert pred.path == ("out_lanes",)
+        assert pred.op == expected_op
+        assert isinstance(pred.value, AttrRef), (
+            f"{op_query!r}: expected AttrRef RHS, got {type(pred.value).__name__}"
+        )
+        assert pred.value.path == ("lanes",)
+
+    # Qualified form outside the entity clause.
+    pred = _inner_predicate(parse("env.out_lanes >= env.lanes"))
+    assert pred.entity == "env"
+    assert pred.path == ("out_lanes",)
+    assert pred.op == ">="
+    assert isinstance(pred.value, AttrRef)
+    assert pred.value.path == ("lanes",)
+
+    # Composition with a sibling predicate via `and`.
+    ast = parse("env.type = lane_fork and env(out_lanes > lanes)")
+    # Right side of `and` is the entity clause carrying the AttrRef.
+    from cascade_av.query.dsl import And
+
+    assert isinstance(ast, And)
+    rhs_pred = _inner_predicate(ast.right)
+    assert isinstance(rhs_pred.value, AttrRef)
+    assert rhs_pred.value.path == ("lanes",)
+
+    # Regressions: literal RHS still parses as a scalar atom, not AttrRef.
+    pred = _inner_predicate(parse("env.lanes >= 2"))
+    assert pred.value == 2
+    assert not isinstance(pred.value, AttrRef)
+
+    pred = _inner_predicate(parse("agent.type = ped"))
+    assert pred.value == "ped"
+    assert not isinstance(pred.value, AttrRef)
+
+    # Cross-entity references are rejected with a `cross-entity` hint.
+    # (The architect's original example `agent.in = ego.in` can't reach
+    # the AttrRef parser — the bare `in` token is reserved for the IN
+    # set-membership operator, so the LHS path stops at `agent.` before
+    # the RHS even tokenises. Use `env.lanes = agent.amount` instead,
+    # which clears the lexer.)
+    with pytest.raises(QueryParseError) as exc_info:
+        parse("env.lanes = agent.amount")
+    assert "cross-entity" in exc_info.value.message
+
+    with pytest.raises(QueryParseError) as exc_info:
+        parse("env(out_lanes > agent.lanes)")
+    assert "cross-entity" in exc_info.value.message
+
+    # Unknown attribute on the RHS still goes through the did-you-mean
+    # path that `_validate_path` provides — but only when the parser
+    # commits to the path branch. A bare unknown ident like `lanez`
+    # falls through to a literal value atom (so legacy alias-style
+    # queries keep working); the qualified form is what triggers the
+    # attribute-name validator.
+    with pytest.raises(QueryParseError) as exc_info:
+        parse("env.lanes = env.lanez")
+    assert "unknown attribute" in exc_info.value.message
+
+
+def _make_env(
+    *, env_id: str, type_str: str, lanes: int | None, out_lanes: int | None
+) -> Environment:
+    """Build a minimal Environment for the AttrRef semantics test."""
+    return Environment(
+        id=env_id,
+        type=type_str,
+        num_lanes=lanes,
+        num_out_lanes=out_lanes,
+    )
+
+
+def _bundle_with_envs(envs: list[Environment]) -> AnnotationBundle:
+    bundle = AnnotationBundle.model_validate({"video": {"clip_id": "attr-ref-test"}})
+    bundle.annotation.environments.extend(envs)
+    return bundle
+
+
+def test_attr_ref_lane_geometry_semantics() -> None:
+    """Lane-geometry attr-to-attr comparisons honour the None-substitution
+    rule from `docs/user/query_language.md` §4.2: when either side is
+    None, substitute the other side's value into the None side before
+    comparing. Both None → equal."""
+    e1 = _make_env(env_id="e1", type_str="lane_fork", lanes=2, out_lanes=3)
+    e2 = _make_env(env_id="e2", type_str="lane_merge", lanes=3, out_lanes=2)
+    e3 = _make_env(env_id="e3", type_str="lane_merge", lanes=3, out_lanes=None)
+    e4 = _make_env(env_id="e4", type_str="lane_merge", lanes=3, out_lanes=3)
+    e5 = _make_env(env_id="e5", type_str="lane_fork", lanes=None, out_lanes=None)
+    bundle = _bundle_with_envs([e1, e2, e3, e4, e5])
+
+    def ids_for(query: str) -> set[str]:
+        ms = evaluate(parse(query), bundle)
+        return {m.entity.id for m in ms.matches}
+
+    assert ids_for("env(out_lanes > lanes)") == {"e1"}
+    assert ids_for("env(out_lanes < lanes)") == {"e2"}
+    # `=` matches both the symmetric pair (e4) and the None-substituted
+    # pairs (e3, e5).
+    assert ids_for("env(out_lanes = lanes)") == {"e3", "e4", "e5"}
+    # `!=` is strict — None matches never count as inequal.
+    assert ids_for("env(out_lanes != lanes)") == {"e1", "e2"}
+    # `>=` / `<=` both succeed whenever either side is None (the
+    # None-as-equal rule satisfies both directions); for envs where
+    # both sides are non-None the usual numeric comparison applies.
+    # e1 (3>2): >=, not <=. e2 (2<3): <=, not >=. e4 (3=3): both.
+    # e3 (3, None) and e5 (None, None): both via None-as-equal.
+    assert ids_for("env(out_lanes >= lanes)") == {"e1", "e3", "e4", "e5"}
+    assert ids_for("env(out_lanes <= lanes)") == {"e2", "e3", "e4", "e5"}
+
+    # Both-None env (e5) specifically: matches =, >=, <=; fails !=, >, <.
+    only_e5 = _bundle_with_envs([e5])
+
+    def ids_for_e5(query: str) -> set[str]:
+        ms = evaluate(parse(query), only_e5)
+        return {m.entity.id for m in ms.matches}
+
+    assert ids_for_e5("env(out_lanes = lanes)") == {"e5"}
+    assert ids_for_e5("env(out_lanes >= lanes)") == {"e5"}
+    assert ids_for_e5("env(out_lanes <= lanes)") == {"e5"}
+    assert ids_for_e5("env(out_lanes != lanes)") == set()
+    assert ids_for_e5("env(out_lanes > lanes)") == set()
+    assert ids_for_e5("env(out_lanes < lanes)") == set()
+
+
+def test_attr_ref_qualified_form_matches_clause_form() -> None:
+    """`env.out_lanes > env.lanes` (outside the entity clause) and
+    `env(out_lanes > lanes)` (inside) return the same match set."""
+    e1 = _make_env(env_id="e1", type_str="lane_fork", lanes=2, out_lanes=3)
+    e2 = _make_env(env_id="e2", type_str="lane_merge", lanes=3, out_lanes=2)
+    bundle = _bundle_with_envs([e1, e2])
+
+    clause = evaluate(parse("env(out_lanes > lanes)"), bundle)
+    qualified = evaluate(parse("env.out_lanes > env.lanes"), bundle)
+    assert {m.entity.id for m in clause.matches} == {m.entity.id for m in qualified.matches}
+
+
+def test_attr_ref_rejects_list_valued_lhs() -> None:
+    """Symmetric to the RHS list check: a list-valued LHS in an
+    attr-to-attr comparison is rejected at parse time, rather than
+    silently never matching. Regression: a list-valued LHS paired with a
+    literal RHS (the existing existential-match shape) still parses."""
+    # `cond.type` is `kind="list"`; comparing it against itself as an
+    # attr-ref would be undefined under v1 semantics.
+    with pytest.raises(QueryParseError) as exc_info:
+        parse("cond(type = type)")
+    assert "list-valued" in exc_info.value.message
+
+    # Regression: literal RHS on a list-valued LHS continues to parse
+    # (the engine resolves it as an existential-match against the list).
+    pred = _inner_predicate(parse("cond.type = construction"))
+    assert pred.entity == "cond"
+    assert pred.path == ("type",)
+    assert pred.value == "construction"
+    assert not isinstance(pred.value, AttrRef)
+
+
+def test_attr_ref_rejects_sub_entity_scoped_cross_entity_rhs() -> None:
+    """The qualified-RHS guard fires when the LHS is sub-entity-scoped
+    (e.g. `agent.action.illegal`) and the RHS names a different
+    top-level entity. Even though `ego.judgment` is a real attribute,
+    cross-entity references are out of scope for v1 attr-to-attr
+    comparisons."""
+    with pytest.raises(QueryParseError) as exc_info:
+        parse("agent.action.illegal = ego.judgment")
+    # The cross-entity branch fires first because the RHS head
+    # (`ego`) differs from the LHS top-level entity (`agent`).
+    assert "cross-entity" in exc_info.value.message
+
+    # When the RHS uses the bare top-level form *but* the LHS is
+    # sub-entity-scoped (same top-level entity, different leaf
+    # descriptor), the dedicated sub-entity-scope guard fires instead.
+    with pytest.raises(QueryParseError) as exc_info:
+        parse("agent.action.illegal = agent.amount")
+    assert "sub-entity scope" in exc_info.value.message
