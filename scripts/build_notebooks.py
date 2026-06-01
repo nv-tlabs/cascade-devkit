@@ -527,20 +527,20 @@ def build_dsl_tour() -> None:
         ])
         """),
         md("""
-        ## Causal-link lists — `ego.influenced_by`, action `link_to` / `action_target`
+        ## Action ID-link lists — `action.link_to` / `action_target`
 
-        Three list-valued, ID-keyed attributes that complement the
+        Two list-valued, ID-keyed attributes that complement the
         `because_of` *operator*. `because_of` walks
         `Action.because_of`; these expose the sibling ID lists for
         explicit membership tests. UUIDs in the corpus carry hyphens
         and must be quoted (the lexer treats bare `-` as an error).
         """),
         code("""
-        # ego.influenced_by is populated on ~72 % of clips; the IDs
-        # are UUIDs, so the membership form is the natural call site.
+        # IDs are UUIDs, so the membership form is the natural call
+        # site.
         run([
-            'ego.influenced_by in ("00000000-0000-0000-0000-000000000000")',
             'agent.action.link_to = "00000000-0000-0000-0000-000000000000"',
+            'ego.action.action_target in ("00000000-0000-0000-0000-000000000000")',
         ])
         """),
         md("""

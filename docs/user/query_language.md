@@ -335,20 +335,22 @@ light.color = red             # every LightState with color = red
 > `Containment.illegal_flag` directly. Per §4.11, all three must
 > compare against an explicit boolean.
 
-> **Causal-link lists — `ego.influenced_by`, `action.link_to`,
-> `action.action_target`.** Three list-valued, ID-keyed attributes
-> that complement the existing `because_of` *operator*. `because_of`
-> still walks `Action.because_of`; these expose the sibling ID
-> lists for membership tests:
+> **Action ID-link lists — `action.link_to`, `action.action_target`.**
+> Two list-valued, ID-keyed attributes that complement the existing
+> `because_of` *operator*. `because_of` still walks
+> `Action.because_of`; these expose the sibling ID lists for
+> membership tests:
 >
 > ```
-> ego.influenced_by in (some-id-1, some-id-2)
 > agent.action.link_to = signal-id            # Signal action targeting a specific signal-head
 > ego.action.action_target in (a, b)
 > ```
 >
 > Hyphenated UUIDs in the corpus must be quoted (`"abc-def"`); the
 > lexer treats bare `-` as an error outside string literals.
+> (The `EgoVehicle.influenced_by` field is exposed by the
+> `influenced_by` *operator* rather than as a membership-keyed
+> attribute — see the relational operators section.)
 
 > **Clip description — `clip.brief_description`.** The annotator's
 > one-line summary of the clip; 100 % populated in current corpora.

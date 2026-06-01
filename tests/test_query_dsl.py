@@ -266,20 +266,14 @@ def test_clip_brief_description_register_and_parse() -> None:
         assert parse(q) is not None
 
 
-def test_influence_and_action_id_link_attrs() -> None:
-    """`ego.influenced_by` flattens every Influence window's influencer
-    IDs; `{agent,ego}.action.{link_to,action_target}` expose the
-    companion ID lists to the `because_of` operator. All four are
-    `kind="list"` so the DSL matches existentially."""
+def test_action_id_link_attrs() -> None:
+    """`{agent,ego}.action.{link_to,action_target}` expose the companion
+    ID lists to the `because_of` operator. Both are `kind="list"` so
+    the DSL matches existentially."""
     from cascade_av.query.entities import (
         AGENT_ACTION_DESCRIPTOR,
         EGO_ACTION_DESCRIPTOR,
-        EGO_DESCRIPTOR,
     )
-
-    inf = EGO_DESCRIPTOR.attributes["influenced_by"]
-    assert inf.kind == "list"
-    assert inf.alias_family is None
 
     for desc in (AGENT_ACTION_DESCRIPTOR, EGO_ACTION_DESCRIPTOR):
         for name in ("link_to", "action_target"):
@@ -289,8 +283,7 @@ def test_influence_and_action_id_link_attrs() -> None:
     for q in (
         # IDs in the corpus carry hyphens (UUIDs), so callers quote them
         # to bypass the bare-identifier lexer rule.
-        'ego.influenced_by = "abc-def"',
-        "ego.influenced_by in (id1, id2, id3)",
+        'agent.action.link_to = "abc-def"',
         "agent.action.link_to = abc",
         "ego.action.action_target in (a, b)",
         "agent(action.link_to = abc)",

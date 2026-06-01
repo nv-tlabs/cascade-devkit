@@ -537,19 +537,6 @@ def _action_action_target(
     return list(action.action_target)
 
 
-def _ego_influenced_by(e: EgoVehicle, _bundle: AnnotationBundle) -> list[str]:
-    """Flat list of influencer IDs across every `Influence` window on
-    `EgoVehicle.influenced_by`, order-preserving and deduplicated.
-    72 % of clips in the 100json audit carry at least one influence
-    record; today the only way to read them was Python post-filtering."""
-    seen: list[str] = []
-    for inf in e.influenced_by:
-        for influencer_id in inf.influencers:
-            if influencer_id and influencer_id not in seen:
-                seen.append(influencer_id)
-    return seen
-
-
 def _action_illegal(action: AgentAction | EgoAction, _bundle: AnnotationBundle) -> bool:
     """Reader for the ``illegal`` DSL attribute on actions.
 
@@ -749,13 +736,6 @@ EGO_DESCRIPTOR = EntityDescriptor(
         # a reserved DSL keyword.  Both keys reference the same Attribute.
         "in": _EGO_CONTAINED_IN,
         "contained_in": _EGO_CONTAINED_IN,
-        # Flat, order-preserving list of every distinct influencer ID
-        # across every `Influence` window on `EgoVehicle.influenced_by`.
-        # 72 % of clips in the 100json audit carry at least one influence
-        # record; existential match via `ego.influenced_by = <id>` or
-        # `ego.influenced_by in (<ids>)` lets users join ego behaviour
-        # to the annotated cause-set without falling back to Python.
-        "influenced_by": Attribute(reader=_ego_influenced_by, kind="list"),
     },
 )
 

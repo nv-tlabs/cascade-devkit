@@ -128,11 +128,10 @@ def main() -> None:
     show(ds, "obj.lane_edge = true")
     show(ds, "agent(type = car, illegal_lane = true)")
 
-    section("Causal-link lists — `ego.influenced_by`, action `link_to` / `action_target`")
-    # `ego.influenced_by` is populated on 72 % of clips; the IDs are
-    # UUIDs, so demonstrate via the in-set membership idiom only.
-    show(ds, 'ego.influenced_by in ("00000000-0000-0000-0000-000000000000")')
+    section("Action ID-link lists — `action.link_to` / `action_target`")
+    # IDs are UUIDs, so the membership idiom is the natural call site.
     show(ds, 'agent.action.link_to = "00000000-0000-0000-0000-000000000000"')
+    show(ds, 'ego.action.action_target in ("00000000-0000-0000-0000-000000000000")')
 
     section("Clip description — `clip.brief_description`")
     # Equality only; the exact string per clip is unique, so this is
