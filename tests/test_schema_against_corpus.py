@@ -1,23 +1,30 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Validate every JSON in /home/horde/01_json_annotations/ against the schema.
+"""Validate every JSON in `$CASCADE_AV_DATASET_ROOT` against the schema.
 
-If a file fails, the schema is wrong — not the file. The on-disk corpus is the
-ground truth for schema_version 2.0.0. Triage failures by reading the
-diagnostic, then relax / extend the corresponding field in
+If a file fails, the schema is wrong — not the file. The on-disk corpus
+is the ground truth for schema_version 2.0.0. Triage failures by
+reading the diagnostic, then relax / extend the corresponding field in
 `cascade_av.spec.schema`.
 """
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from cascade_av.spec import AnnotationBundle
 
-CORPUS = Path("/home/horde/01_json_annotations")
-ALL_FILES = sorted(CORPUS.glob("*.json"))
+_root = os.environ.get("CASCADE_AV_DATASET_ROOT")
+CORPUS = Path(_root) if _root else None
+ALL_FILES = sorted(CORPUS.glob("*.json")) if (CORPUS and CORPUS.is_dir()) else []
+
+pytestmark = pytest.mark.skipif(
+    not ALL_FILES,
+    reason="set CASCADE_AV_DATASET_ROOT to an annotation-JSON directory",
+)
 
 
 def test_corpus_present() -> None:
