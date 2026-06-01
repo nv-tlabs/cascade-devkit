@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from cascade_av.io import (
     group_by_clip_id,
@@ -16,7 +19,13 @@ from cascade_av.io import (
     save_file,
 )
 
-CORPUS = Path("/home/horde/01_json_annotations")
+_root = os.environ.get("CASCADE_AV_DATASET_ROOT")
+CORPUS = Path(_root) if _root else None
+
+pytestmark = pytest.mark.skipif(
+    CORPUS is None or not CORPUS.is_dir(),
+    reason="set CASCADE_AV_DATASET_ROOT to run corpus-backed tests",
+)
 
 
 def test_load_file_smoke(rich_path: Path) -> None:

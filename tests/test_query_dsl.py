@@ -9,6 +9,7 @@ Dataset aggregation surface. No per-method unit coverage.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,19 @@ from cascade_av.query import (
 )
 from cascade_av.spec import Agent, AnnotationBundle, Environment
 
-CORPUS = Path("/home/horde/01_json_annotations")
+_root = os.environ.get("CASCADE_AV_DATASET_ROOT")
+CORPUS = Path(_root) if _root else None
+
+# Tests that construct a real CascadeDataset call `_skip_if_no_corpus()`
+# at the top of the body; unit tests with fabricated bundles run
+# unconditionally. The module-wide guard is intentionally absent so the
+# parser/registry tests stay green on machines without the corpus.
+
+
+def _skip_if_no_corpus() -> Path:
+    if CORPUS is None or not CORPUS.is_dir():
+        pytest.skip("set CASCADE_AV_DATASET_ROOT to run corpus-backed tests")
+    return CORPUS
 
 
 @pytest.fixture
@@ -165,6 +178,74 @@ def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
 
     assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "vehicle")
     assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "generic_vehicle")
+
+
+def test_cond_env_attrs_register_and_resolve_join() -> None:
+    """`cond.env_type` / `env_lanes` / `env_one_way` / `env_id`
+    denormalize the `Condition.env_id → Environment.*` join the DSL
+    can't express directly. Verifies descriptor shape, parser
+    acceptance, and the reader's behaviour against a fabricated
+    bundle with two environments + one condition pointing at one of
+    them."""
+    from cascade_av.query.entities import COND_DESCRIPTOR
+
+    # Descriptor shape: env_type reuses the existing env_type family;
+    # the others are scalar-no-family.
+    assert COND_DESCRIPTOR.attributes["env_type"].alias_family == "env_type"
+    for name in ("env_lanes", "env_one_way", "env_id"):
+        assert COND_DESCRIPTOR.attributes[name].alias_family is None
+        assert COND_DESCRIPTOR.attributes[name].kind == "scalar"
+
+    for q in (
+        "cond.env_type = road",
+        "cond.env_type in (road, crossroad)",
+        "cond.env_lanes > 2",
+        "cond.env_one_way = true",
+        "cond.type = construction and cond.env_type = road",
+    ):
+        assert parse(q) is not None
+
+    # Behavioural: fabricate a bundle with two envs and one cond
+    # pointing at the first, verify the join resolves.
+    from cascade_av.query.entities import _cond_env_id, _cond_env_lanes, _cond_env_type
+    from cascade_av.spec import Condition
+    from cascade_av.spec.schema import (
+        AnnotationBundle as _AB,
+    )
+    from cascade_av.spec.schema import (
+        EgoVehicle as _Ego,
+    )
+    from cascade_av.spec.schema import (
+        SilAvAnnotation,
+        VideoMeta,
+    )
+
+    env_a = Environment(id="env-A", type="oxd:Road", num_lanes=3, one_way=True)
+    env_b = Environment(id="env-B", type="oxd:CrossRoad", num_lanes=2)
+    cond_in_a = Condition(id="c-1", env_id="env-A", type=["Construction Zone"])
+    cond_orphan = Condition(id="c-2", env_id="env-missing", type=["Other"])
+
+    bundle = _AB(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="test", fps=30.0, duration_s=10.0),
+        annotation=SilAvAnnotation(
+            environments=[env_a, env_b],
+            conditions=[cond_in_a, cond_orphan],
+            ego_vehicle=_Ego(),
+        ),
+    )
+
+    # Resolved join — cond_in_a → env_a's type.
+    assert _cond_env_type(cond_in_a, bundle) == "oxd:Road"
+    assert _cond_env_lanes(cond_in_a, bundle) == 3
+    assert _cond_env_id(cond_in_a, bundle) == "env-A"
+    # Dangling env_id resolves to None across the board so predicates
+    # fall through cleanly.
+    assert _cond_env_type(cond_orphan, bundle) is None
+    assert _cond_env_lanes(cond_orphan, bundle) is None
+    # `env_id` passthrough preserves the raw value (even when dangling)
+    # so callers can spot orphans via inequality.
+    assert _cond_env_id(cond_orphan, bundle) == "env-missing"
 
 
 def test_clip_brief_description_register_and_parse() -> None:
@@ -350,7 +431,7 @@ def test_entity_clause_couples_constraints(rich_bundle: AnnotationBundle) -> Non
 
 def test_and_across_entities(patched_parent: None) -> None:
     """`agent.type = ped and env.type = crosswalk` finds at least one clip."""
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     ms = ds.find("agent.type = ped and env.type = crosswalk")
     # Soft assertion — corpus is real; we expect *some* clip to have both.
     assert isinstance(ms, MatchSet)
@@ -360,7 +441,7 @@ def test_and_across_entities(patched_parent: None) -> None:
 def test_because_of_parses_and_runs(patched_parent: None) -> None:
     """`ego.action = decel because_of agent.type = ped` parses and evaluates
     without crashing. Match count may be 0 — we only test wiring."""
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     # Just confirm it parses and runs against every clip without error.
     n = ds.count("ego.action = decel because_of agent.type = ped")
     assert isinstance(n, int)
@@ -368,7 +449,7 @@ def test_because_of_parses_and_runs(patched_parent: None) -> None:
 
 
 def test_dataset_count_and_group_by(patched_parent: None) -> None:
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     n = ds.count("agent.type = ped")
     assert isinstance(n, int)
     assert n > 0
@@ -383,7 +464,7 @@ def test_dataset_count_and_group_by(patched_parent: None) -> None:
 
 def test_match_set_carries_dataset_back_reference(patched_parent: None) -> None:
     """MatchSet from `ds.find(...)` resolves `.dataset` back to the dataset."""
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     ms = ds.find("agent.type = ped")
     assert ms.dataset is ds
 
@@ -403,7 +484,7 @@ def test_match_set_carries_dataset_back_reference_from_sequence(
         "get_clip_feature",
         lambda self, *a, **kw: None,
     )
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     clip_id = ds.list_sequences()[0]
     seq = ds.get_sequence(clip_id)
     ms = seq.find("agent.type = ped")
@@ -427,7 +508,7 @@ def test_match_set_dataset_raises_after_gc(patched_parent: None) -> None:
     import gc
     import weakref as _wr
 
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     ms = ds.find("agent.type = ped")
     # Sanity: ms holds only a weakref, not a strong reference back.
     ds_wr = _wr.ref(ds)
@@ -458,7 +539,7 @@ def test_match_set_sequences_yields_pairs(
         "get_clip_feature",
         lambda self, *a, **kw: None,
     )
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     ms = ds.find("agent.type = ped")
     if not ms:
         pytest.skip("corpus has no pedestrian matches")
@@ -484,7 +565,7 @@ def test_match_set_sequences_dedups_per_clip(
         "get_clip_feature",
         lambda self, *a, **kw: None,
     )
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     ms = ds.find("agent.type = ped")
 
     # Find a clip_id that produced at least two matches in this MatchSet.

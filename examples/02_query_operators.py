@@ -145,6 +145,12 @@ def main() -> None:
     show(ds, "env.type = other")
     show(ds, "agent.action.type = other")
 
+    section("Condition → environment lookup — `cond.env_*`")
+    show(ds, "cond.env_type = road")
+    show(ds, "cond.type = construction and cond.env_type = road")
+    show(ds, "cond.env_one_way = true")
+    show(ds, "cond.env_lanes > 2")
+
 
 if __name__ == "__main__":
     main()

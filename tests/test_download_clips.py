@@ -8,13 +8,20 @@ Network calls are stubbed: we replace the parent's
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 from cascade_av.dataset import CascadeDataset
 
-CORPUS = Path("/home/horde/01_json_annotations")
+_root = os.environ.get("CASCADE_AV_DATASET_ROOT")
+CORPUS = Path(_root) if _root else None
+
+pytestmark = pytest.mark.skipif(
+    CORPUS is None or not CORPUS.is_dir(),
+    reason="set CASCADE_AV_DATASET_ROOT to run corpus-backed tests",
+)
 
 
 @pytest.fixture

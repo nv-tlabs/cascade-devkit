@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +14,20 @@ import pytest
 from cascade_av.io import load_file
 from cascade_av.spec import AnnotationBundle
 
-CORPUS = Path("/home/horde/01_json_annotations")
+
+def _corpus_root() -> Path | None:
+    """Resolve the annotation-corpus root from `CASCADE_AV_DATASET_ROOT`,
+    matching the env-var contract documented in AGENTS.md and `.env.example`.
+    Returns ``None`` when unset so fixtures can `pytest.skip` cleanly
+    instead of failing with a hard-to-diagnose path error.
+    """
+    root = os.environ.get("CASCADE_AV_DATASET_ROOT")
+    if not root:
+        return None
+    return Path(root)
+
+
+CORPUS = _corpus_root()
 
 
 class FakeVideoReader:
@@ -61,10 +75,19 @@ class FakeVideoReader:
         return frames, np.asarray(t_us, dtype=np.int64)
 
 
+def _require_corpus() -> Path:
+    if CORPUS is None:
+        pytest.skip("set CASCADE_AV_DATASET_ROOT to run corpus-backed tests")
+    if not CORPUS.is_dir():
+        pytest.skip(f"CASCADE_AV_DATASET_ROOT does not exist: {CORPUS}")
+    return CORPUS
+
+
 @pytest.fixture(scope="session")
 def rich_path() -> Path:
     """The richest corpus file by size — guaranteed to have many features."""
-    return max(CORPUS.glob("*.json"), key=lambda p: p.stat().st_size)
+    corpus = _require_corpus()
+    return max(corpus.glob("*.json"), key=lambda p: p.stat().st_size)
 
 
 @pytest.fixture(scope="session")
@@ -75,7 +98,8 @@ def rich_bundle(rich_path: Path) -> AnnotationBundle:
 @pytest.fixture(scope="session")
 def file_with_causal_link() -> Path:
     """First corpus file that has at least one `because_of` link."""
-    for p in sorted(CORPUS.glob("*.json")):
+    corpus = _require_corpus()
+    for p in sorted(corpus.glob("*.json")):
         data = json.loads(p.read_text())
         ann = data.get("annotation", {})
         for action in ann.get("ego_vehicle", {}).get("actions", []):

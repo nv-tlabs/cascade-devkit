@@ -14,6 +14,7 @@ dataset is needed at all.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -24,7 +25,13 @@ from cascade_av.spec import AnnotationBundle
 from cascade_av.state import SequenceState, SequenceStateRange
 from tests.conftest import FakeVideoReader  # noqa: E402 — used by the visualize smoke test
 
-CORPUS = Path("/home/horde/01_json_annotations")
+_root = os.environ.get("CASCADE_AV_DATASET_ROOT")
+CORPUS = Path(_root) if _root else None
+
+pytestmark = pytest.mark.skipif(
+    CORPUS is None or not CORPUS.is_dir(),
+    reason="set CASCADE_AV_DATASET_ROOT to run corpus-backed tests",
+)
 
 
 @pytest.fixture

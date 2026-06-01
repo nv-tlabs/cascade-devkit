@@ -367,6 +367,30 @@ light.color = red             # every LightState with color = red
 > doesn't match any specific subtype) is folded into the `vehicle`
 > parent alias and also accessible as the leaf `generic_vehicle`.
 
+> **Condition → environment lookup — `cond.env_type` /
+> `cond.env_lanes` / `cond.env_one_way` / `cond.env_id`.** Each
+> `Condition` carries an `env_id` pointing at one of the bundle's
+> `Environment` records. The DSL has no cross-entity join operator
+> today, but the four most-useful environment fields are reachable
+> as *denormalized* attributes on `cond` — the common "is this
+> condition on a road / highway / roundabout?" question works
+> without dropping into Python:
+>
+> ```
+> cond.type = construction and cond.env_type = road      # construction on the road
+> cond.env_one_way = true                                # any cond on a one-way env
+> cond.env_lanes > 2                                     # any cond on a 3+ lane env
+> ```
+>
+> `cond.env_type` reuses the `env_type` alias family (`road`,
+> `crossroad`, `intersection`, …). `env_lanes` is `int | None`,
+> `env_one_way` is `bool | None`, `env_id` is the raw string
+> passthrough for callers that want to compose with other ID-keyed
+> attributes via string equality. A condition whose `env_id` is
+> empty or doesn't resolve to any Environment falls through to
+> `None` for the three derived fields, so predicates compose
+> without an explicit guard.
+
 ### 4.3 Entity clauses (same-entity grouping)
 
 `<entity>(<expr>)` — match every entity of type `<entity>` such that
