@@ -143,7 +143,7 @@ the short version for agents:
 
 1. **Use a worktree.** Branch off `origin/main` with
    `git worktree add -b <type>/<desc>
-   ../av-causal-dataset-tools-<type>-<desc> origin/main`.
+   ../cascade-devkit-<type>-<desc> origin/main`.
    Never commit to `main`. Prefixes: `feat/`, `fix/`, `refactor/`,
    `docs/`, `chore/`.
 2. **Atomic commits.** One logical change per commit, message format

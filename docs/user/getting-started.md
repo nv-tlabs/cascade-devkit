@@ -16,15 +16,15 @@ One line installs system prerequisites (apt + Node LTS + `uv`), clones
 the repo, runs `make install`, and smoke-tests the Python side:
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/NVIDIA-dev/av-causal-dataset-tools/main/scripts/install.sh | bash
+curl -LsSf https://raw.githubusercontent.com/nv-tlabs/cascade-devkit/main/scripts/install.sh | bash
 ```
 
 Re-running is safe (idempotent). If you already have `uv`, Node 20+,
 and `ffmpeg`/`ffprobe` on PATH, you can skip the bootstrap and just:
 
 ```bash
-git clone https://github.com/NVIDIA-dev/av-causal-dataset-tools.git
-cd av-causal-dataset-tools
+git clone https://github.com/nv-tlabs/cascade-devkit.git
+cd cascade-devkit
 make install
 ```
 
@@ -90,7 +90,7 @@ of what it found in the environment:
 
 ```
 INFO  annotator.server.preflight: preflight:
-INFO  annotator.server.preflight:   ✓ dotenv: loaded /home/you/work/av-causal-dataset-tools/.env
+INFO  annotator.server.preflight:   ✓ dotenv: loaded /home/you/work/cascade-devkit/.env
 INFO  annotator.server.preflight:   ✓ ffmpeg: ffmpeg version 6.1.1 ...
 INFO  annotator.server.preflight:   ✓ ffprobe: /usr/bin/ffprobe
 INFO  annotator.server.preflight:   ✓ hf_auth: HF_TOKEN present in environment

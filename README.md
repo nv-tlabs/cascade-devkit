@@ -50,7 +50,7 @@ the Python side. Idempotent — re-running is safe.
 Fresh host (no checkout yet):
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/NVIDIA-dev/av-causal-dataset-tools/main/scripts/install.sh | bash
+curl -LsSf https://raw.githubusercontent.com/nv-tlabs/cascade-devkit/main/scripts/install.sh | bash
 ```
 
 Already cloned, run from the repo root:

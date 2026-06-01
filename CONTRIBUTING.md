@@ -33,9 +33,9 @@ We prefer [`git worktree`](https://git-scm.com/docs/git-worktree) over swapping 
 
 ```
 ~/Projects/
-  av-causal-dataset-tools/                # main checkout, tracks `main`
-  av-causal-dataset-tools-feat-loader/    # worktree on `feat/loader`
-  av-causal-dataset-tools-fix-nan-ts/     # worktree on `fix/nan-timestamps`
+  cascade-devkit/                # main checkout, tracks `main`
+  cascade-devkit-feat-loader/    # worktree on `feat/loader`
+  cascade-devkit-fix-nan-ts/     # worktree on `fix/nan-timestamps`
 ```
 
 **Create a worktree for a new branch.** From the main checkout:
@@ -43,15 +43,15 @@ We prefer [`git worktree`](https://git-scm.com/docs/git-worktree) over swapping 
 ```bash
 git fetch origin
 # Create a new branch off origin/main AND a worktree for it in one step
-git worktree add -b feat/loader ../av-causal-dataset-tools-feat-loader origin/main
-cd ../av-causal-dataset-tools-feat-loader
+git worktree add -b feat/loader ../cascade-devkit-feat-loader origin/main
+cd ../cascade-devkit-feat-loader
 ```
 
 **Create a worktree for an existing branch** (e.g. to review someone else's PR locally):
 
 ```bash
 git fetch origin
-git worktree add ../av-causal-dataset-tools-pr-42 origin/their-branch
+git worktree add ../cascade-devkit-pr-42 origin/their-branch
 ```
 
 **List and inspect worktrees:**
@@ -65,7 +65,7 @@ git worktree list --porcelain
 
 ```bash
 # From any worktree (typically the main checkout):
-git worktree remove ../av-causal-dataset-tools-feat-loader
+git worktree remove ../cascade-devkit-feat-loader
 git branch -d feat/loader     # delete the branch if merged (use -D to force)
 
 # If the directory was deleted manually, prune stale metadata:
@@ -304,15 +304,15 @@ First time on the project:
 
 ```bash
 git clone <repo-url>
-cd av-causal-dataset-tools
+cd cascade-devkit
 ```
 
 Starting a new piece of work (preferred — uses a worktree so your main checkout stays free):
 
 ```bash
 git fetch origin
-git worktree add -b feat/your-feature ../av-causal-dataset-tools-feat-your-feature origin/main
-cd ../av-causal-dataset-tools-feat-your-feature
+git worktree add -b feat/your-feature ../cascade-devkit-feat-your-feature origin/main
+cd ../cascade-devkit-feat-your-feature
 
 # Install deps into this worktree (fresh worktrees have no .venv or
 # node_modules). Cheap if everything is already cached.
@@ -327,8 +327,8 @@ gh pr create                  # open a PR from the terminal
 When the PR is merged, clean up:
 
 ```bash
-cd ../av-causal-dataset-tools
-git worktree remove ../av-causal-dataset-tools-feat-your-feature
+cd ../cascade-devkit
+git worktree remove ../cascade-devkit-feat-your-feature
 git branch -d feat/your-feature
 ```
 

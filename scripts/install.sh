@@ -63,8 +63,8 @@ fi
 # Repo coordinates. Kept up here so the curl-pipe path and the post-clone
 # path point at the same upstream.
 # ---------------------------------------------------------------------------
-REPO_URL="${CASCADE_REPO_URL:-https://github.com/NVIDIA-dev/av-causal-dataset-tools.git}"
-REPO_DIRNAME="${CASCADE_REPO_DIR:-av-causal-dataset-tools}"
+REPO_URL="${CASCADE_REPO_URL:-https://github.com/nv-tlabs/cascade-devkit.git}"
+REPO_DIRNAME="${CASCADE_REPO_DIR:-cascade-devkit}"
 
 is_repo_root() {
     [ -f "pyproject.toml" ] && [ -f "Makefile" ] && [ -d "src/cascade_av" ]
