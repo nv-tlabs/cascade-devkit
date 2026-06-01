@@ -167,6 +167,36 @@ def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
     assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "generic_vehicle")
 
 
+def test_influence_and_action_id_link_attrs() -> None:
+    """`ego.influenced_by` flattens every Influence window's influencer
+    IDs; `{agent,ego}.action.{link_to,action_target}` expose the
+    companion ID lists to the `because_of` operator. All four are
+    `kind="list"` so the DSL matches existentially."""
+    from cascade_av.query.entities import (
+        AGENT_ACTION_DESCRIPTOR,
+        EGO_ACTION_DESCRIPTOR,
+        EGO_DESCRIPTOR,
+    )
+
+    inf = EGO_DESCRIPTOR.attributes["influenced_by"]
+    assert inf.kind == "list"
+    assert inf.alias_family is None
+
+    for desc in (AGENT_ACTION_DESCRIPTOR, EGO_ACTION_DESCRIPTOR):
+        for name in ("link_to", "action_target"):
+            assert desc.attributes[name].kind == "list"
+            assert desc.attributes[name].alias_family is None
+
+    for q in (
+        "ego.influenced_by = abc-def",
+        "ego.influenced_by in (id1, id2, id3)",
+        "agent.action.link_to = abc",
+        "ego.action.action_target in (a, b)",
+        "agent(action.link_to = abc)",
+    ):
+        assert parse(q) is not None
+
+
 def test_containment_flag_attrs_register_on_agent_and_obj() -> None:
     """`{agent,obj}.{lane_edge,near_lane,illegal_lane}` expose the three
     boolean flags carried in `Containment.{edge,near_flag,illegal_flag}`.

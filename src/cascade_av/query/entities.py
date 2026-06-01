@@ -475,6 +475,36 @@ def _action_type_attr(action: AgentAction | EgoAction, _bundle: AnnotationBundle
     return action.type
 
 
+def _action_link_to(action: AgentAction | EgoAction, _bundle: AnnotationBundle) -> list[str]:
+    """IDs of entities this action is *linked to* — the signal a `Signal`
+    action signals about, the entity a `Yield`/`Follow`/`Overtake` action
+    affects-as-target. Companion to `action.because_of`; returned as a
+    list for existential matching via `=` / `in (...)`."""
+    return list(action.link_to)
+
+
+def _action_action_target(
+    action: AgentAction | EgoAction, _bundle: AnnotationBundle
+) -> list[str]:
+    """IDs of entities targeted by an action — currently set on
+    `Yield` / `Follow` / `Overtake` to name the affected agent or
+    object. Companion to `action.because_of` and `action.link_to`."""
+    return list(action.action_target)
+
+
+def _ego_influenced_by(e: EgoVehicle, _bundle: AnnotationBundle) -> list[str]:
+    """Flat list of influencer IDs across every `Influence` window on
+    `EgoVehicle.influenced_by`, order-preserving and deduplicated.
+    72 % of clips in the 100json audit carry at least one influence
+    record; today the only way to read them was Python post-filtering."""
+    seen: list[str] = []
+    for inf in e.influenced_by:
+        for influencer_id in inf.influencers:
+            if influencer_id and influencer_id not in seen:
+                seen.append(influencer_id)
+    return seen
+
+
 def _action_illegal(action: AgentAction | EgoAction, _bundle: AnnotationBundle) -> bool:
     """Reader for the ``illegal`` DSL attribute on actions.
 
@@ -533,6 +563,14 @@ AGENT_ACTION_DESCRIPTOR = EntityDescriptor(
     attributes={
         "type": Attribute(reader=_action_type_attr, alias_family="action_type"),
         "illegal": Attribute(reader=_action_illegal),
+        # ID-link list attributes — companion to the `because_of`
+        # operator. `link_to` names the entity a Signal action signals
+        # about; `action_target` names the affected entity for Yield /
+        # Follow / Overtake. Both are kind="list" so the DSL matches
+        # existentially: `agent.action.link_to = some-id` is true when
+        # `some-id` appears in the list.
+        "link_to": Attribute(reader=_action_link_to, kind="list"),
+        "action_target": Attribute(reader=_action_action_target, kind="list"),
     },
 )
 
@@ -544,6 +582,8 @@ EGO_ACTION_DESCRIPTOR = EntityDescriptor(
     attributes={
         "type": Attribute(reader=_action_type_attr, alias_family="action_type"),
         "illegal": Attribute(reader=_action_illegal),
+        "link_to": Attribute(reader=_action_link_to, kind="list"),
+        "action_target": Attribute(reader=_action_action_target, kind="list"),
     },
 )
 
@@ -663,6 +703,13 @@ EGO_DESCRIPTOR = EntityDescriptor(
         # a reserved DSL keyword.  Both keys reference the same Attribute.
         "in": _EGO_CONTAINED_IN,
         "contained_in": _EGO_CONTAINED_IN,
+        # Flat, order-preserving list of every distinct influencer ID
+        # across every `Influence` window on `EgoVehicle.influenced_by`.
+        # 72 % of clips in the 100json audit carry at least one influence
+        # record; existential match via `ego.influenced_by = <id>` or
+        # `ego.influenced_by in (<ids>)` lets users join ego behaviour
+        # to the annotated cause-set without falling back to Python.
+        "influenced_by": Attribute(reader=_ego_influenced_by, kind="list"),
     },
 )
 
