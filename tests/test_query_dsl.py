@@ -188,7 +188,9 @@ def test_influence_and_action_id_link_attrs() -> None:
             assert desc.attributes[name].alias_family is None
 
     for q in (
-        "ego.influenced_by = abc-def",
+        # IDs in the corpus carry hyphens (UUIDs), so callers quote them
+        # to bypass the bare-identifier lexer rule.
+        'ego.influenced_by = "abc-def"',
         "ego.influenced_by in (id1, id2, id3)",
         "agent.action.link_to = abc",
         "ego.action.action_target in (a, b)",
