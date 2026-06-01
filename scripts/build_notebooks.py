@@ -574,6 +574,27 @@ def build_dsl_tour() -> None:
             "agent.action.type = other",
         ])
         """),
+        md("""
+        ## Condition → environment lookup — `cond.env_*`
+
+        Each `Condition` carries an `env_id` pointing at one of the
+        bundle's `Environment` records. The DSL has no cross-entity
+        join operator today, so the four most-useful environment
+        fields are exposed as *denormalized* attributes on `cond`:
+        `cond.env_type` (reuses the `env_type` alias family),
+        `cond.env_lanes`, `cond.env_one_way`, and `cond.env_id`
+        (raw passthrough). A condition with an unresolvable
+        `env_id` falls through to `None` for the derived fields, so
+        predicates compose without an explicit guard.
+        """),
+        code("""
+        run([
+            "cond.env_type = road",
+            "cond.type = construction and cond.env_type = road",
+            "cond.env_one_way = true",
+            "cond.env_lanes > 2",
+        ])
+        """),
     ]
     save(cells, NOTEBOOKS_DIR / "02_query_dsl_tour.ipynb")
 

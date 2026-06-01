@@ -180,6 +180,74 @@ def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
     assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "generic_vehicle")
 
 
+def test_cond_env_attrs_register_and_resolve_join() -> None:
+    """`cond.env_type` / `env_lanes` / `env_one_way` / `env_id`
+    denormalize the `Condition.env_id → Environment.*` join the DSL
+    can't express directly. Verifies descriptor shape, parser
+    acceptance, and the reader's behaviour against a fabricated
+    bundle with two environments + one condition pointing at one of
+    them."""
+    from cascade_av.query.entities import COND_DESCRIPTOR
+
+    # Descriptor shape: env_type reuses the existing env_type family;
+    # the others are scalar-no-family.
+    assert COND_DESCRIPTOR.attributes["env_type"].alias_family == "env_type"
+    for name in ("env_lanes", "env_one_way", "env_id"):
+        assert COND_DESCRIPTOR.attributes[name].alias_family is None
+        assert COND_DESCRIPTOR.attributes[name].kind == "scalar"
+
+    for q in (
+        "cond.env_type = road",
+        "cond.env_type in (road, crossroad)",
+        "cond.env_lanes > 2",
+        "cond.env_one_way = true",
+        "cond.type = construction and cond.env_type = road",
+    ):
+        assert parse(q) is not None
+
+    # Behavioural: fabricate a bundle with two envs and one cond
+    # pointing at the first, verify the join resolves.
+    from cascade_av.query.entities import _cond_env_id, _cond_env_lanes, _cond_env_type
+    from cascade_av.spec import Condition
+    from cascade_av.spec.schema import (
+        AnnotationBundle as _AB,
+    )
+    from cascade_av.spec.schema import (
+        EgoVehicle as _Ego,
+    )
+    from cascade_av.spec.schema import (
+        SilAvAnnotation,
+        VideoMeta,
+    )
+
+    env_a = Environment(id="env-A", type="oxd:Road", num_lanes=3, one_way=True)
+    env_b = Environment(id="env-B", type="oxd:CrossRoad", num_lanes=2)
+    cond_in_a = Condition(id="c-1", env_id="env-A", type=["Construction Zone"])
+    cond_orphan = Condition(id="c-2", env_id="env-missing", type=["Other"])
+
+    bundle = _AB(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="test", fps=30.0, duration_s=10.0),
+        annotation=SilAvAnnotation(
+            environments=[env_a, env_b],
+            conditions=[cond_in_a, cond_orphan],
+            ego_vehicle=_Ego(),
+        ),
+    )
+
+    # Resolved join — cond_in_a → env_a's type.
+    assert _cond_env_type(cond_in_a, bundle) == "oxd:Road"
+    assert _cond_env_lanes(cond_in_a, bundle) == 3
+    assert _cond_env_id(cond_in_a, bundle) == "env-A"
+    # Dangling env_id resolves to None across the board so predicates
+    # fall through cleanly.
+    assert _cond_env_type(cond_orphan, bundle) is None
+    assert _cond_env_lanes(cond_orphan, bundle) is None
+    # `env_id` passthrough preserves the raw value (even when dangling)
+    # so callers can spot orphans via inequality.
+    assert _cond_env_id(cond_orphan, bundle) == "env-missing"
+
+
 def test_clip_brief_description_register_and_parse() -> None:
     """`clip.brief_description` exposes the annotator's one-line
     summary on `AnnotationBundle.brief_description` (100 % populated
