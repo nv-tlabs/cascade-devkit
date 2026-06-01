@@ -396,6 +396,44 @@ def _cond_type(c: Condition, _bundle: AnnotationBundle) -> list[str]:
     return list(c.type)
 
 
+def _cond_env(c: Condition, bundle: AnnotationBundle) -> Environment | None:
+    """Resolve `Condition.env_id` to its `Environment`. Returns ``None``
+    if the condition has no env_id or the id doesn't match any
+    Environment in the bundle. Linear walk over the env list — fine in
+    practice; bundles cap at ~30 envs."""
+    if not c.env_id:
+        return None
+    for env in bundle.annotation.environments:
+        if env.id == c.env_id:
+            return env
+    return None
+
+
+def _cond_env_type(c: Condition, bundle: AnnotationBundle) -> str | None:
+    """`Environment.type` of the environment this condition is attached
+    to — `oxd:Road`, `oxd:CrossRoad`, etc. Lets users ask
+    "construction zone on a highway" without an explicit cross-entity
+    join operator."""
+    env = _cond_env(c, bundle)
+    return env.type if env is not None else None
+
+
+def _cond_env_lanes(c: Condition, bundle: AnnotationBundle) -> int | None:
+    env = _cond_env(c, bundle)
+    return env.num_lanes if env is not None else None
+
+
+def _cond_env_one_way(c: Condition, bundle: AnnotationBundle) -> bool | None:
+    env = _cond_env(c, bundle)
+    return env.one_way if env is not None else None
+
+
+def _cond_env_id(c: Condition, _bundle: AnnotationBundle) -> str | None:
+    """Raw `Condition.env_id` passthrough. Lets callers compose with
+    other ID-keyed attributes via string equality."""
+    return c.env_id or None
+
+
 def _light_color(ls: LightStates, _bundle: AnnotationBundle) -> str | None:
     return ls.color
 
@@ -741,6 +779,17 @@ COND_DESCRIPTOR = EntityDescriptor(
     interval=_generic_interval,
     attributes={
         "type": Attribute(reader=_cond_type, alias_family="cond_type", kind="list"),
+        # Denormalized lookups through `Condition.env_id → Environment.*`.
+        # The DSL has no cross-entity join operator today; we expose the
+        # most-useful environment fields directly on the condition so
+        # `cond.env_type = highway` answers "this condition's env is a
+        # highway" without a `cond ⋈ env` form. `cond.env_id` is the
+        # raw passthrough for callers composing with other ID-keyed
+        # attributes via string equality.
+        "env_type": Attribute(reader=_cond_env_type, alias_family="env_type"),
+        "env_lanes": Attribute(reader=_cond_env_lanes),
+        "env_one_way": Attribute(reader=_cond_env_one_way),
+        "env_id": Attribute(reader=_cond_env_id),
     },
 )
 
