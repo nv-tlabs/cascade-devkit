@@ -306,6 +306,44 @@ def _agent_in(a: Agent, bundle: AnnotationBundle) -> list[str]:
     return out
 
 
+def _agent_on_lane_edge(a: Agent, _bundle: AnnotationBundle) -> bool:
+    """True if any of this agent's containment records carry a lane-edge
+    flag (`Containment.edge in ("left", "right")`). Common for agents
+    driving close to the lane boundary; 26 % of agents in the 100json
+    audit corpus."""
+    return any(c.edge in ("left", "right") for c in a.containment)
+
+
+def _agent_near_lane(a: Agent, _bundle: AnnotationBundle) -> bool:
+    """True if any containment carries the `near_flag` — typically used
+    to mark agents close to a special lane feature (crosswalk edge,
+    sign post, …)."""
+    return any(c.near_flag for c in a.containment)
+
+
+def _agent_illegal_lane(a: Agent, _bundle: AnnotationBundle) -> bool:
+    """True if any containment carries the `illegal_flag` — e.g. an
+    agent parked in a no-parking lane or stopped where stopping is
+    prohibited."""
+    return any(c.illegal_flag for c in a.containment)
+
+
+def _obj_on_lane_edge(o: TrafficObject, _bundle: AnnotationBundle) -> bool:
+    """Same pattern as `_agent_on_lane_edge`, on traffic objects.
+    Cones and barriers near the edge of a lane are the canonical
+    examples; 55 % of `TrafficObject.containment` records carry an
+    edge value in the 100json corpus."""
+    return any(c.edge in ("left", "right") for c in o.containment)
+
+
+def _obj_near_lane(o: TrafficObject, _bundle: AnnotationBundle) -> bool:
+    return any(c.near_flag for c in o.containment)
+
+
+def _obj_illegal_lane(o: TrafficObject, _bundle: AnnotationBundle) -> bool:
+    return any(c.illegal_flag for c in o.containment)
+
+
 def _agent_signaling(a: Agent, _bundle: AnnotationBundle) -> list[str]:
     """List of signaling-intent strings from this agent's Signal properties."""
     out: list[str] = []
@@ -586,6 +624,16 @@ AGENT_DESCRIPTOR = EntityDescriptor(
         # behave identically.  See `docs/user/query_language.md` §4.
         "in": _AGENT_CONTAINED_IN,
         "contained_in": _AGENT_CONTAINED_IN,
+        # Boolean containment-flag attributes — read existentially across
+        # the agent's containment records (`any(c.<flag> for c in
+        # a.containment)`). Use `agent.lane_edge = true` for agents on a
+        # lane boundary, `agent.near_lane = true` for the near-flag
+        # (typically agents close to crosswalk edges or other lane
+        # features), and `agent.illegal_lane = true` for parked agents
+        # in no-parking zones or stopped where stopping is prohibited.
+        "lane_edge": Attribute(reader=_agent_on_lane_edge),
+        "near_lane": Attribute(reader=_agent_near_lane),
+        "illegal_lane": Attribute(reader=_agent_illegal_lane),
         "signaling": Attribute(
             reader=_agent_signaling, alias_family="signaling_intent", kind="list"
         ),
@@ -670,6 +718,14 @@ OBJ_DESCRIPTOR = EntityDescriptor(
         "open": Attribute(
             reader=_obj_open, alias_family="obj_open_state", kind="list"
         ),
+        # Boolean containment-flag attributes — see AGENT_DESCRIPTOR for
+        # the semantics. `obj.lane_edge` covers cones / barriers on a
+        # lane boundary (55 % of TrafficObject.containment records carry
+        # an edge value in 100json); `obj.near_lane` (61 % True in
+        # 100json) marks objects near a lane feature.
+        "lane_edge": Attribute(reader=_obj_on_lane_edge),
+        "near_lane": Attribute(reader=_obj_near_lane),
+        "illegal_lane": Attribute(reader=_obj_illegal_lane),
     },
 )
 

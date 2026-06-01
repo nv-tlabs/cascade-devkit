@@ -167,6 +167,30 @@ def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
     assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "generic_vehicle")
 
 
+def test_containment_flag_attrs_register_on_agent_and_obj() -> None:
+    """`{agent,obj}.{lane_edge,near_lane,illegal_lane}` expose the three
+    boolean flags carried in `Containment.{edge,near_flag,illegal_flag}`.
+    Boolean attributes (no alias family), read existentially across the
+    entity's containment list."""
+    from cascade_av.query.entities import AGENT_DESCRIPTOR, OBJ_DESCRIPTOR
+
+    for desc in (AGENT_DESCRIPTOR, OBJ_DESCRIPTOR):
+        for name in ("lane_edge", "near_lane", "illegal_lane"):
+            attr = desc.attributes[name]
+            assert attr.alias_family is None
+            assert attr.kind == "scalar"
+
+    for q in (
+        "agent.lane_edge = true",
+        "agent.near_lane = true",
+        "agent.illegal_lane = true",
+        "agent(type = car, illegal_lane = true)",
+        "obj.lane_edge = true",
+        "obj(type = cone, lane_edge = true)",
+    ):
+        assert parse(q) is not None
+
+
 def test_signaling_details_attrs_on_props() -> None:
     """`agent.prop.source` and `agent.prop.not_facing_ego` (and the
     same on `ego.prop`) read through `AgentProperty.signaling_details`.
