@@ -396,14 +396,21 @@ def build_dsl_tour() -> None:
         md("""
         ## Action flags
 
-        Action types in the corpus encode flags as parenthesized
-        suffixes (`oxd:Walk (jaywalk)`). Flag attributes match either
-        the schema flag field **or** the suffix token.
+        Action types in the schema 2.0.0 corpus encode flags as
+        parenthesized suffixes on the `action_type` string itself
+        (`oxd:Walk (jaywalk)`). The legacy flag-field syntax
+        `action(jaywalk = true)` no longer parses — match the
+        suffix variants directly via literal-string equality or
+        `in (...)`.
         """),
         code("""
         run([
-            "agent(type = ped, action(jaywalk = true))",
-            "agent(action(erratic = true))",
+            "agent(type = ped, action.type in ("
+            '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
+            '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))',
+            "agent.action.type in ("
+            '"oxd:Walk (erratic)", "oxd:Walk (jaywalk, erratic)", '
+            '"oxd:Run (erratic)", "oxd:Run (jaywalk, erratic)")',
         ])
         """),
         md("""
@@ -467,6 +474,104 @@ def build_dsl_tour() -> None:
         run([
             "light(color = yellow, ego_in_on_yellow = true)",
             "light(color = yellow, could_have_cleared = true)",
+        ])
+        """),
+        md("""
+        ## Agent group size — `agent.amount`
+
+        Lone agent vs row/group vs traffic-density tier. Aliases:
+        `single`, `row` (alias `group`), `light_traffic`,
+        `medium_traffic`, `heavy_traffic`, plus the parents
+        `multiple` (everything but `single`) and `traffic` (the
+        three density tiers).
+        """),
+        code("""
+        run([
+            "agent.amount = single",
+            "agent.amount = group",
+            "agent(type = ped, amount = group)",
+        ])
+        """),
+        md("""
+        ## Signaling details on `agent.prop` / `ego.prop`
+
+        Properties of type `signal` carry a `signaling_details`
+        sub-object exposing the source modality (flashing light,
+        hand gesture, holding sign, other) and a `not_facing_ego`
+        boolean. Non-signal properties resolve to `None` so the
+        predicates fall through cleanly.
+        """),
+        code("""
+        run([
+            "agent.prop.source = flashing_light",
+            "agent.prop.source in (flashing_light, holding_sign, other)",
+            "agent.prop.not_facing_ego = false",
+            "agent(prop.source = flashing_light)",
+        ])
+        """),
+        md("""
+        ## Containment flags — `lane_edge`, `near_lane`, `illegal_lane`
+
+        Boolean predicates that match existentially across the
+        entity's containment records. Exposed on both `agent` and
+        `obj`. `lane_edge` is true when any containment carries
+        `edge ∈ {"left","right"}`; `near_lane` and `illegal_lane`
+        mirror the boolean flags directly.
+        """),
+        code("""
+        run([
+            "agent.illegal_lane = true",
+            "agent.lane_edge = true",
+            "obj.lane_edge = true",
+            "agent(type = car, illegal_lane = true)",
+        ])
+        """),
+        md("""
+        ## Causal-link lists — `ego.influenced_by`, action `link_to` / `action_target`
+
+        Three list-valued, ID-keyed attributes that complement the
+        `because_of` *operator*. `because_of` walks
+        `Action.because_of`; these expose the sibling ID lists for
+        explicit membership tests. UUIDs in the corpus carry hyphens
+        and must be quoted (the lexer treats bare `-` as an error).
+        """),
+        code("""
+        # ego.influenced_by is populated on ~72 % of clips; the IDs
+        # are UUIDs, so the membership form is the natural call site.
+        run([
+            'ego.influenced_by in ("00000000-0000-0000-0000-000000000000")',
+            'agent.action.link_to = "00000000-0000-0000-0000-000000000000"',
+        ])
+        """),
+        md("""
+        ## Clip description — `clip.brief_description`
+
+        The annotator's one-line summary. Equality and IN-set only
+        for now; useful for spot-checks rather than aggregation
+        (each clip carries a unique string).
+        """),
+        code("""
+        run([
+            'clip.brief_description = "(no such description)"',
+        ])
+        """),
+        md("""
+        ## Newly-aliased `"Other"` / `"Vehicle"` values
+
+        Four families that previously required the schema-literal
+        escape hatch (`agent.type = "Other"`) now resolve `other`
+        as a friendly alias. The annotator's generic-vehicle
+        fallback `"Vehicle"` (used when an agent is a vehicle that
+        doesn't match any specific subtype) is folded into the
+        `vehicle` parent alias and also reachable as the leaf
+        `generic_vehicle`.
+        """),
+        code("""
+        run([
+            "agent.type = other",
+            "agent.type = generic_vehicle",
+            "env.type = other",
+            "agent.action.type = other",
         ])
         """),
     ]
@@ -643,8 +748,13 @@ def build_statistics() -> None:
         n_red               = ds.count("light.color = red")
         n_red_stop          = ds.count("light.color = red and ego.action = stop")
         n_yellow_clear      = ds.count("light(color = yellow, could_have_cleared = true)")
-        n_jaywalk_clips     = ds.count("agent(type = ped, action(jaywalk = true))")
-        n_jaywalk_entities  = entity_count("agent(type = ped, action(jaywalk = true))")
+        _jaywalk_q = (
+            'agent(type = ped, action.type in ('
+            '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
+            '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))'
+        )
+        n_jaywalk_clips     = ds.count(_jaywalk_q)
+        n_jaywalk_entities  = entity_count(_jaywalk_q)
 
         composite = pd.DataFrame([
             ("ego stops at red light",            n_red_stop,         n_red, n_red_stop / max(n_red, 1)),
@@ -711,7 +821,10 @@ def build_scenarios() -> None:
             Scenario("2",  "Ego yields/stops at crosswalk for a pedestrian",
                      "agent.type = ped and env.type = crosswalk and ego.action in (stop, yield, decel)"),
             Scenario("8",  "Pedestrian jaywalks; ego brakes / yields",
-                     "agent(type = ped, action(jaywalk = true)) and ego.action in (stop, yield, decel)"),
+                     'agent(type = ped, action.type in ('
+                     '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
+                     '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"'
+                     ')) and ego.action in (stop, yield, decel)'),
             Scenario("9",  "Pedestrian crosses while ego is turning",
                      "agent.type = ped and env.type = crosswalk and ego.action in (turn_left, turn_right)"),
             Scenario("12", "Cyclist mid-block in ego's path; ego defensive",
@@ -809,7 +922,12 @@ def build_scenarios() -> None:
         query for any expression you want to drill into.
         """),
         code("""
-        target = "agent(type = ped, action(jaywalk = true)) and ego.action in (stop, yield, decel)"
+        target = (
+            'agent(type = ped, action.type in ('
+            '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
+            '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"'
+            ')) and ego.action in (stop, yield, decel)'
+        )
         clips = sorted(set(ds.find(target).clips()))
 
         print(f"{len(clips)} clips match: {target}\\n")

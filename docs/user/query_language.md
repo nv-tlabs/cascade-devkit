@@ -290,6 +290,83 @@ light.color = red             # every LightState with color = red
 > predicates keep the existing behaviour (any `None` on the LHS → no
 > match).
 
+> **Agent group size — `agent.amount`.** Matches the agent-count
+> annotation: lone agent vs row/group vs density tiers. The aliases
+> are `single`, `row` (or `group`), `light_traffic`, `medium_traffic`,
+> `heavy_traffic`, plus two parents: `multiple` (everything but
+> `single`) and `traffic` (the three density tiers):
+>
+> ```
+> agent.amount = single
+> agent(type = ped, amount = group)
+> agent.amount in (light_traffic, medium_traffic)
+> ```
+
+> **Signaling details on `agent.prop` / `ego.prop`.** Properties of
+> type `signal` carry a `signaling_details` sub-object that names
+> the source modality (flashing light vs hand gesture vs sign) and
+> a `not_facing_ego` boolean. Both surface as predicates on the
+> property sub-entity:
+>
+> ```
+> agent.prop.source = flashing_light
+> agent.prop.source in (flashing_light, holding_sign)
+> agent.prop.not_facing_ego = false
+> agent(prop.source = flashing_light)
+> ```
+>
+> For non-signal properties both attributes resolve to `None` and
+> the predicate falls through, so they compose with the broader
+> property filter without an explicit type guard.
+
+> **Containment flags — `lane_edge`, `near_lane`, `illegal_lane`.**
+> Boolean predicates over the entity's containment records. Match
+> existentially: true iff *any* containment carries the flag. Exposed
+> on both `agent` and `obj`:
+>
+> ```
+> agent.illegal_lane = true                       # illegally parked / stopped
+> obj.lane_edge = true                            # cones / barriers on a lane boundary
+> agent(type = car, illegal_lane = true)
+> ```
+>
+> `lane_edge` is true when `Containment.edge` ∈ `{"left", "right"}`;
+> `near_lane` and `illegal_lane` mirror `Containment.near_flag` and
+> `Containment.illegal_flag` directly. Per §4.11, all three must
+> compare against an explicit boolean.
+
+> **Causal-link lists — `ego.influenced_by`, `action.link_to`,
+> `action.action_target`.** Three list-valued, ID-keyed attributes
+> that complement the existing `because_of` *operator*. `because_of`
+> still walks `Action.because_of`; these expose the sibling ID
+> lists for membership tests:
+>
+> ```
+> ego.influenced_by in (some-id-1, some-id-2)
+> agent.action.link_to = signal-id            # Signal action targeting a specific signal-head
+> ego.action.action_target in (a, b)
+> ```
+>
+> Hyphenated UUIDs in the corpus must be quoted (`"abc-def"`); the
+> lexer treats bare `-` as an error outside string literals.
+
+> **Clip description — `clip.brief_description`.** The annotator's
+> one-line summary of the clip; 100 % populated in current corpora.
+> Equality and IN-set only (no regex):
+>
+> ```
+> clip.brief_description = "ego stops at a red light"
+> clip.brief_description in ("…", "…")
+> ```
+
+> **`"Other"` literals are aliased.** The four families
+> `agent_type`, `action_type`, `env_type`, and `signaling_source`
+> now resolve `other → "Other"` directly, so users no longer have
+> to type the schema literal in quotes. The generic-vehicle literal
+> `"Vehicle"` (annotator's fallback when an agent is a vehicle that
+> doesn't match any specific subtype) is folded into the `vehicle`
+> parent alias and also accessible as the leaf `generic_vehicle`.
+
 ### 4.3 Entity clauses (same-entity grouping)
 
 `<entity>(<expr>)` — match every entity of type `<entity>` such that

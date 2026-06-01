@@ -222,6 +222,13 @@ def _clip_eventful(b: AnnotationBundle, _bundle: AnnotationBundle) -> bool | Non
     return b.annotation.eventful
 
 
+def _clip_brief_description(b: AnnotationBundle, _bundle: AnnotationBundle) -> str:
+    """Annotator-written one-line description of the clip. 100 % populated
+    in the 100json audit corpus. Equality-only matching for now; regex
+    support would arrive as a separate DSL surface."""
+    return b.annotation.brief_description
+
+
 def _agent_type(a: Agent, _bundle: AnnotationBundle) -> str:
     return a.type
 
@@ -304,6 +311,44 @@ def _agent_in(a: Agent, bundle: AnnotationBundle) -> list[str]:
         if env is not None and env.type:
             out.append(env.type)
     return out
+
+
+def _agent_on_lane_edge(a: Agent, _bundle: AnnotationBundle) -> bool:
+    """True if any of this agent's containment records carry a lane-edge
+    flag (`Containment.edge in ("left", "right")`). Common for agents
+    driving close to the lane boundary; 26 % of agents in the 100json
+    audit corpus."""
+    return any(c.edge in ("left", "right") for c in a.containment)
+
+
+def _agent_near_lane(a: Agent, _bundle: AnnotationBundle) -> bool:
+    """True if any containment carries the `near_flag` — typically used
+    to mark agents close to a special lane feature (crosswalk edge,
+    sign post, …)."""
+    return any(c.near_flag for c in a.containment)
+
+
+def _agent_illegal_lane(a: Agent, _bundle: AnnotationBundle) -> bool:
+    """True if any containment carries the `illegal_flag` — e.g. an
+    agent parked in a no-parking lane or stopped where stopping is
+    prohibited."""
+    return any(c.illegal_flag for c in a.containment)
+
+
+def _obj_on_lane_edge(o: TrafficObject, _bundle: AnnotationBundle) -> bool:
+    """Same pattern as `_agent_on_lane_edge`, on traffic objects.
+    Cones and barriers near the edge of a lane are the canonical
+    examples; 55 % of `TrafficObject.containment` records carry an
+    edge value in the 100json corpus."""
+    return any(c.edge in ("left", "right") for c in o.containment)
+
+
+def _obj_near_lane(o: TrafficObject, _bundle: AnnotationBundle) -> bool:
+    return any(c.near_flag for c in o.containment)
+
+
+def _obj_illegal_lane(o: TrafficObject, _bundle: AnnotationBundle) -> bool:
+    return any(c.illegal_flag for c in o.containment)
 
 
 def _agent_signaling(a: Agent, _bundle: AnnotationBundle) -> list[str]:
@@ -437,6 +482,36 @@ def _action_type_attr(action: AgentAction | EgoAction, _bundle: AnnotationBundle
     return action.type
 
 
+def _action_link_to(action: AgentAction | EgoAction, _bundle: AnnotationBundle) -> list[str]:
+    """IDs of entities this action is *linked to* — the signal a `Signal`
+    action signals about, the entity a `Yield`/`Follow`/`Overtake` action
+    affects-as-target. Companion to `action.because_of`; returned as a
+    list for existential matching via `=` / `in (...)`."""
+    return list(action.link_to)
+
+
+def _action_action_target(
+    action: AgentAction | EgoAction, _bundle: AnnotationBundle
+) -> list[str]:
+    """IDs of entities targeted by an action — currently set on
+    `Yield` / `Follow` / `Overtake` to name the affected agent or
+    object. Companion to `action.because_of` and `action.link_to`."""
+    return list(action.action_target)
+
+
+def _ego_influenced_by(e: EgoVehicle, _bundle: AnnotationBundle) -> list[str]:
+    """Flat list of influencer IDs across every `Influence` window on
+    `EgoVehicle.influenced_by`, order-preserving and deduplicated.
+    72 % of clips in the 100json audit carry at least one influence
+    record; today the only way to read them was Python post-filtering."""
+    seen: list[str] = []
+    for inf in e.influenced_by:
+        for influencer_id in inf.influencers:
+            if influencer_id and influencer_id not in seen:
+                seen.append(influencer_id)
+    return seen
+
+
 def _action_illegal(action: AgentAction | EgoAction, _bundle: AnnotationBundle) -> bool:
     """Reader for the ``illegal`` DSL attribute on actions.
 
@@ -451,6 +526,24 @@ def _action_illegal(action: AgentAction | EgoAction, _bundle: AnnotationBundle) 
 
 def _prop_type_attr(p: AgentProperty, _bundle: AnnotationBundle) -> str:
     return p.property_type
+
+
+def _prop_signaling_source(p: AgentProperty, _bundle: AnnotationBundle) -> str | None:
+    """Source modality of a ``Signal`` property — flashing light, hand
+    gesture, holding sign, or other. ``None`` for non-Signal properties
+    or Signal properties whose source wasn't annotated."""
+    if p.signaling_details is None:
+        return None
+    return p.signaling_details.source
+
+
+def _prop_not_facing_ego(p: AgentProperty, _bundle: AnnotationBundle) -> bool | None:
+    """Whether the signal is facing away from ego (e.g. an agent's right
+    blinker visible only because ego is overtaking). ``None`` for non-
+    Signal properties or unannotated cases."""
+    if p.signaling_details is None:
+        return None
+    return p.signaling_details.not_facing_ego
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +570,14 @@ AGENT_ACTION_DESCRIPTOR = EntityDescriptor(
     attributes={
         "type": Attribute(reader=_action_type_attr, alias_family="action_type"),
         "illegal": Attribute(reader=_action_illegal),
+        # ID-link list attributes — companion to the `because_of`
+        # operator. `link_to` names the entity a Signal action signals
+        # about; `action_target` names the affected entity for Yield /
+        # Follow / Overtake. Both are kind="list" so the DSL matches
+        # existentially: `agent.action.link_to = some-id` is true when
+        # `some-id` appears in the list.
+        "link_to": Attribute(reader=_action_link_to, kind="list"),
+        "action_target": Attribute(reader=_action_action_target, kind="list"),
     },
 )
 
@@ -488,6 +589,8 @@ EGO_ACTION_DESCRIPTOR = EntityDescriptor(
     attributes={
         "type": Attribute(reader=_action_type_attr, alias_family="action_type"),
         "illegal": Attribute(reader=_action_illegal),
+        "link_to": Attribute(reader=_action_link_to, kind="list"),
+        "action_target": Attribute(reader=_action_action_target, kind="list"),
     },
 )
 
@@ -498,6 +601,14 @@ AGENT_PROP_DESCRIPTOR = EntityDescriptor(
     interval=_prop_interval_reader,
     attributes={
         "type": Attribute(reader=_prop_type_attr, alias_family="agent_property_type"),
+        # SignalingDetails fields — populated for properties of type
+        # ``Signal``; ``None`` elsewhere. The 100json corpus shows the
+        # source modality on 65 % of Signal props and the
+        # not-facing-ego flag on the same share.
+        "source": Attribute(
+            reader=_prop_signaling_source, alias_family="signaling_source"
+        ),
+        "not_facing_ego": Attribute(reader=_prop_not_facing_ego),
     },
 )
 
@@ -508,6 +619,10 @@ EGO_PROP_DESCRIPTOR = EntityDescriptor(
     interval=_prop_interval_reader,
     attributes={
         "type": Attribute(reader=_prop_type_attr, alias_family="ego_property_type"),
+        "source": Attribute(
+            reader=_prop_signaling_source, alias_family="signaling_source"
+        ),
+        "not_facing_ego": Attribute(reader=_prop_not_facing_ego),
     },
 )
 
@@ -521,6 +636,7 @@ CLIP_DESCRIPTOR = EntityDescriptor(
         "fps": Attribute(reader=_clip_fps),
         "duration": Attribute(reader=_clip_duration),
         "eventful": Attribute(reader=_clip_eventful),
+        "brief_description": Attribute(reader=_clip_brief_description),
     },
 )
 
@@ -537,7 +653,7 @@ AGENT_DESCRIPTOR = EntityDescriptor(
     interval=_agent_interval,
     attributes={
         "type": Attribute(reader=_agent_type, alias_family="agent_type"),
-        "amount": Attribute(reader=_agent_amount),
+        "amount": Attribute(reader=_agent_amount, alias_family="agent_amount"),
         "vis": Attribute(reader=_agent_vis),
         "pos": Attribute(reader=_agent_pos, alias_family="position"),
         "dir": Attribute(reader=_agent_dir, alias_family="direction"),
@@ -556,6 +672,16 @@ AGENT_DESCRIPTOR = EntityDescriptor(
         # behave identically.  See `docs/user/query_language.md` §4.
         "in": _AGENT_CONTAINED_IN,
         "contained_in": _AGENT_CONTAINED_IN,
+        # Boolean containment-flag attributes — read existentially across
+        # the agent's containment records (`any(c.<flag> for c in
+        # a.containment)`). Use `agent.lane_edge = true` for agents on a
+        # lane boundary, `agent.near_lane = true` for the near-flag
+        # (typically agents close to crosswalk edges or other lane
+        # features), and `agent.illegal_lane = true` for parked agents
+        # in no-parking zones or stopped where stopping is prohibited.
+        "lane_edge": Attribute(reader=_agent_on_lane_edge),
+        "near_lane": Attribute(reader=_agent_near_lane),
+        "illegal_lane": Attribute(reader=_agent_illegal_lane),
         "signaling": Attribute(
             reader=_agent_signaling, alias_family="signaling_intent", kind="list"
         ),
@@ -585,6 +711,13 @@ EGO_DESCRIPTOR = EntityDescriptor(
         # a reserved DSL keyword.  Both keys reference the same Attribute.
         "in": _EGO_CONTAINED_IN,
         "contained_in": _EGO_CONTAINED_IN,
+        # Flat, order-preserving list of every distinct influencer ID
+        # across every `Influence` window on `EgoVehicle.influenced_by`.
+        # 72 % of clips in the 100json audit carry at least one influence
+        # record; existential match via `ego.influenced_by = <id>` or
+        # `ego.influenced_by in (<ids>)` lets users join ego behaviour
+        # to the annotated cause-set without falling back to Python.
+        "influenced_by": Attribute(reader=_ego_influenced_by, kind="list"),
     },
 )
 
@@ -640,6 +773,14 @@ OBJ_DESCRIPTOR = EntityDescriptor(
         "open": Attribute(
             reader=_obj_open, alias_family="obj_open_state", kind="list"
         ),
+        # Boolean containment-flag attributes — see AGENT_DESCRIPTOR for
+        # the semantics. `obj.lane_edge` covers cones / barriers on a
+        # lane boundary (55 % of TrafficObject.containment records carry
+        # an edge value in 100json); `obj.near_lane` (61 % True in
+        # 100json) marks objects near a lane feature.
+        "lane_edge": Attribute(reader=_obj_on_lane_edge),
+        "near_lane": Attribute(reader=_obj_near_lane),
+        "illegal_lane": Attribute(reader=_obj_illegal_lane),
     },
 )
 

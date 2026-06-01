@@ -82,6 +82,187 @@ def test_contained_in_is_alias_of_in() -> None:
         assert desc.attributes["in"] is desc.attributes["contained_in"]
 
 
+def test_other_aliases_for_four_unaliased_families() -> None:
+    """The four families that previously lacked an `other` alias now
+    resolve `"other"` to the right `Vocab.OTHER` literal so users
+    don't have to fall back to the schema-literal escape hatch for
+    8 % of the audit corpus's agent/action/env/signaling-source
+    entities."""
+    from cascade_av.query.constants import resolve_alias
+    from cascade_av.spec.schema import (
+        AgentActionTypeVocab,
+        AgentTypeVocab,
+        EnvironmentTypeVocab,
+        SignalSourceVocab,
+    )
+
+    cases = [
+        ("agent_type", AgentTypeVocab.OTHER),
+        ("action_type", AgentActionTypeVocab.OTHER),
+        ("env_type", EnvironmentTypeVocab.OTHER),
+        ("signaling_source", SignalSourceVocab.OTHER),
+    ]
+    for family, expected in cases:
+        resolved = resolve_alias(family, "other")
+        assert expected in resolved, (
+            f"{family}.other resolved to {resolved}, missing {expected!r}"
+        )
+
+
+def test_agent_amount_aliases_resolve_and_descriptor_uses_them() -> None:
+    """`agent.amount` was registered without an alias_family, so users
+    had to spell `agent.amount = "Single"` exactly. The new
+    `agent_amount` family lets them write `agent.amount = single`,
+    `... = group`, `... = traffic`, etc."""
+    from cascade_av.query.constants import resolve_alias
+    from cascade_av.query.entities import AGENT_DESCRIPTOR
+    from cascade_av.spec.schema import AgentAmountVocab
+
+    # Leaves resolve to the canonical Vocab values.
+    assert resolve_alias("agent_amount", "single") == frozenset(
+        {AgentAmountVocab.SINGLE}
+    )
+    assert resolve_alias("agent_amount", "row") == frozenset(
+        {AgentAmountVocab.ROW_GROUP}
+    )
+    assert resolve_alias("agent_amount", "group") == frozenset(
+        {AgentAmountVocab.ROW_GROUP}
+    )
+
+    # `traffic` parent covers the three density tiers (which the 100json
+    # corpus does not exercise yet, but the schema declares).
+    traffic = resolve_alias("agent_amount", "traffic")
+    assert AgentAmountVocab.LIGHT_TRAFFIC in traffic
+    assert AgentAmountVocab.MEDIUM_TRAFFIC in traffic
+    assert AgentAmountVocab.HEAVY_TRAFFIC in traffic
+    assert AgentAmountVocab.SINGLE not in traffic
+
+    # `multiple` is the "not alone" parent.
+    multiple = resolve_alias("agent_amount", "multiple")
+    assert AgentAmountVocab.ROW_GROUP in multiple
+    assert AgentAmountVocab.SINGLE not in multiple
+
+    # Descriptor wires the family in.
+    assert AGENT_DESCRIPTOR.attributes["amount"].alias_family == "agent_amount"
+
+    # Parser accepts the natural call-site forms.
+    for q in (
+        "agent.amount = single",
+        "agent.amount = group",
+        "agent.amount in (row, single)",
+        "agent(type = ped, amount = group)",
+    ):
+        assert parse(q) is not None
+
+
+def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
+    """`agent.type = vehicle` matches the bare `"Vehicle"` literal in
+    addition to the specific subtypes (car, truck, bus, motorcycle,
+    emergency). The leaf alias `generic_vehicle` is the named handle
+    for the literal on its own."""
+    from cascade_av.query.constants import resolve_alias
+    from cascade_av.spec.schema import AgentTypeVocab
+
+    assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "vehicle")
+    assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "generic_vehicle")
+
+
+def test_clip_brief_description_register_and_parse() -> None:
+    """`clip.brief_description` exposes the annotator's one-line
+    summary on `AnnotationBundle.brief_description` (100 % populated
+    in the 100json audit). Scalar string, no alias family — equality
+    only until a regex-match surface arrives."""
+    from cascade_av.query.entities import CLIP_DESCRIPTOR
+
+    attr = CLIP_DESCRIPTOR.attributes["brief_description"]
+    assert attr.kind == "scalar"
+    assert attr.alias_family is None
+
+    for q in (
+        'clip.brief_description = "ego stops at a red light"',
+        'clip.brief_description in ("a", "b")',
+    ):
+        assert parse(q) is not None
+
+
+def test_influence_and_action_id_link_attrs() -> None:
+    """`ego.influenced_by` flattens every Influence window's influencer
+    IDs; `{agent,ego}.action.{link_to,action_target}` expose the
+    companion ID lists to the `because_of` operator. All four are
+    `kind="list"` so the DSL matches existentially."""
+    from cascade_av.query.entities import (
+        AGENT_ACTION_DESCRIPTOR,
+        EGO_ACTION_DESCRIPTOR,
+        EGO_DESCRIPTOR,
+    )
+
+    inf = EGO_DESCRIPTOR.attributes["influenced_by"]
+    assert inf.kind == "list"
+    assert inf.alias_family is None
+
+    for desc in (AGENT_ACTION_DESCRIPTOR, EGO_ACTION_DESCRIPTOR):
+        for name in ("link_to", "action_target"):
+            assert desc.attributes[name].kind == "list"
+            assert desc.attributes[name].alias_family is None
+
+    for q in (
+        # IDs in the corpus carry hyphens (UUIDs), so callers quote them
+        # to bypass the bare-identifier lexer rule.
+        'ego.influenced_by = "abc-def"',
+        "ego.influenced_by in (id1, id2, id3)",
+        "agent.action.link_to = abc",
+        "ego.action.action_target in (a, b)",
+        "agent(action.link_to = abc)",
+    ):
+        assert parse(q) is not None
+
+
+def test_containment_flag_attrs_register_on_agent_and_obj() -> None:
+    """`{agent,obj}.{lane_edge,near_lane,illegal_lane}` expose the three
+    boolean flags carried in `Containment.{edge,near_flag,illegal_flag}`.
+    Boolean attributes (no alias family), read existentially across the
+    entity's containment list."""
+    from cascade_av.query.entities import AGENT_DESCRIPTOR, OBJ_DESCRIPTOR
+
+    for desc in (AGENT_DESCRIPTOR, OBJ_DESCRIPTOR):
+        for name in ("lane_edge", "near_lane", "illegal_lane"):
+            attr = desc.attributes[name]
+            assert attr.alias_family is None
+            assert attr.kind == "scalar"
+
+    for q in (
+        "agent.lane_edge = true",
+        "agent.near_lane = true",
+        "agent.illegal_lane = true",
+        "agent(type = car, illegal_lane = true)",
+        "obj.lane_edge = true",
+        "obj(type = cone, lane_edge = true)",
+    ):
+        assert parse(q) is not None
+
+
+def test_signaling_details_attrs_on_props() -> None:
+    """`agent.prop.source` and `agent.prop.not_facing_ego` (and the
+    same on `ego.prop`) read through `AgentProperty.signaling_details`.
+    Populated for `Signal`-typed properties (65 % of Signal props in
+    100json); ``None`` for non-Signal properties so the predicates
+    cleanly fall through."""
+    from cascade_av.query.entities import AGENT_PROP_DESCRIPTOR, EGO_PROP_DESCRIPTOR
+
+    for desc in (AGENT_PROP_DESCRIPTOR, EGO_PROP_DESCRIPTOR):
+        assert desc.attributes["source"].alias_family == "signaling_source"
+        assert desc.attributes["not_facing_ego"].alias_family is None
+
+    for q in (
+        "agent.prop.source = flashing_light",
+        "agent.prop.source in (flashing_light, holding_sign)",
+        "agent.prop.not_facing_ego = true",
+        "agent(prop.source = flashing_light)",
+        "ego.prop.not_facing_ego = false",
+    ):
+        assert parse(q) is not None
+
+
 def test_pos_any_dir_any_parse_and_register() -> None:
     """`pos_any` / `dir_any` are reachable from the parser and registered
     as `kind="list"` attributes on AGENT_DESCRIPTOR sharing the alias

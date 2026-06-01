@@ -67,13 +67,13 @@ def main() -> None:
     # literal-string equality / `in (...)` on `action.type`.
     show(
         ds,
-        'agent(type = ped, action.type in ('
+        "agent(type = ped, action.type in ("
         '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
         '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))',
     )
     show(
         ds,
-        'agent.action.type in ('
+        "agent.action.type in ("
         '"oxd:Walk (erratic)", "oxd:Walk (jaywalk, erratic)", '
         '"oxd:Run (erratic)", "oxd:Run (jaywalk, erratic)")',
     )
@@ -111,6 +111,39 @@ def main() -> None:
 
     section("Clip-level attributes")
     show(ds, "clip.eventful = true")
+
+    section("Agent group size — `agent.amount`")
+    show(ds, "agent.amount = single")
+    show(ds, "agent.amount = group")
+    show(ds, "agent(type = ped, amount = group)")
+
+    section("Signaling details on `agent.prop` / `ego.prop`")
+    show(ds, "agent.prop.source = flashing_light")
+    show(ds, "agent.prop.source in (flashing_light, holding_sign, other)")
+    show(ds, "agent.prop.not_facing_ego = false")
+
+    section("Containment flags — `lane_edge`, `near_lane`, `illegal_lane`")
+    show(ds, "agent.illegal_lane = true")
+    show(ds, "agent.lane_edge = true")
+    show(ds, "obj.lane_edge = true")
+    show(ds, "agent(type = car, illegal_lane = true)")
+
+    section("Causal-link lists — `ego.influenced_by`, action `link_to` / `action_target`")
+    # `ego.influenced_by` is populated on 72 % of clips; the IDs are
+    # UUIDs, so demonstrate via the in-set membership idiom only.
+    show(ds, 'ego.influenced_by in ("00000000-0000-0000-0000-000000000000")')
+    show(ds, 'agent.action.link_to = "00000000-0000-0000-0000-000000000000"')
+
+    section("Clip description — `clip.brief_description`")
+    # Equality only; the exact string per clip is unique, so this is
+    # most useful for spot-checks rather than aggregation.
+    show(ds, 'clip.brief_description = "(no such description)"')
+
+    section("Newly-aliased 'Other' / 'Vehicle' values")
+    show(ds, "agent.type = other")
+    show(ds, "agent.type = generic_vehicle")
+    show(ds, "env.type = other")
+    show(ds, "agent.action.type = other")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ from typing import Mapping
 from cascade_av.spec.schema import (
     AgentActionTypePedestrianVocab,
     AgentActionTypeVocab,
+    AgentAmountVocab,
     AgentPropertyTypeVocab,
     AgentTypeVocab,
     ConditionTypeVocab,
@@ -66,6 +67,12 @@ AGENT_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
     "ped_wheelchair": frozenset({AgentTypeVocab.PEDESTRIAN_WHEELCHAIR}),
     "ped_other": frozenset({AgentTypeVocab.PEDESTRIAN_OTHER, AgentTypeVocab.PEDESTRIAN}),
     "officer": frozenset({AgentTypeVocab.PEDESTRIAN_OFFICER}),
+    # Generic-vehicle fallback used by the annotator when an agent is a
+    # vehicle that doesn't fit any of the more specific subtypes. Folded
+    # into the ``vehicle`` parent below so ``agent.type = vehicle``
+    # matches both the specific leaves and the generic literal.
+    "generic_vehicle": frozenset({AgentTypeVocab.VEHICLE}),
+    "other": frozenset({AgentTypeVocab.OTHER}),
 }
 
 # Parent categories — unions of the leaf aliases above.
@@ -76,6 +83,7 @@ AGENT_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
         | AGENT_TYPE_ALIASES["bus"]
         | AGENT_TYPE_ALIASES["motorcycle"]
         | AGENT_TYPE_ALIASES["emergency"]
+        | AGENT_TYPE_ALIASES["generic_vehicle"]
     ),
     "cyclist": AGENT_TYPE_ALIASES["bicycle"] | AGENT_TYPE_ALIASES["scooter"],
     "ped": (
@@ -131,6 +139,7 @@ ACTION_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
     "nudge_out": frozenset({EgoActionTypeVocab.NUDGE_OUT_OF_LANE}),
     "nudge": frozenset({"fst:Nudge"}),
     "overtake": frozenset({EgoActionTypeVocab.OVERTAKE}),
+    "other": frozenset({AgentActionTypeVocab.OTHER}),
 }
 
 # Parent categories.
@@ -198,6 +207,7 @@ ENV_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
     "paved_shoulder": frozenset({EnvironmentTypeVocab.PAVED_SHOULDER}),
     "grass_shoulder": frozenset({EnvironmentTypeVocab.GRASS_SHOULDER}),
     "rail_crossing": frozenset({EnvironmentTypeVocab.RAIL_CROSSING}),
+    "other": frozenset({EnvironmentTypeVocab.OTHER}),
 }
 
 ENV_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
@@ -411,6 +421,45 @@ SIGNALING_SOURCE: Mapping[str, frozenset[str]] = {
     "flashing_light": frozenset({SignalSourceVocab.FLASHING_LIGHT}),
     "holding_sign": frozenset({SignalSourceVocab.HOLDING_SIGN}),
     "hand_gesture": frozenset({SignalSourceVocab.HAND_GESTURE}),
+    "other": frozenset({SignalSourceVocab.OTHER}),
+}
+
+# ---------------------------------------------------------------------------
+# Agent amount — single vs row/group vs traffic-density tiers
+#
+# `single` and `row` are the only values present in the 04 / 100json corpus
+# (~40 % of agents are non-default `Row/group`); the three traffic tiers are
+# declared in the schema for future use and get aliases for forward
+# compatibility. `traffic` is the parent over the three density tiers;
+# `multiple` is the parent for "anything other than a lone agent".
+# ---------------------------------------------------------------------------
+
+AGENT_AMOUNT_ALIASES: Mapping[str, frozenset[str]] = {
+    "single": frozenset({AgentAmountVocab.SINGLE}),
+    "row": frozenset({AgentAmountVocab.ROW_GROUP}),
+    "group": frozenset({AgentAmountVocab.ROW_GROUP}),  # synonym for `row`
+    "light_traffic": frozenset({AgentAmountVocab.LIGHT_TRAFFIC}),
+    "medium_traffic": frozenset({AgentAmountVocab.MEDIUM_TRAFFIC}),
+    "heavy_traffic": frozenset({AgentAmountVocab.HEAVY_TRAFFIC}),
+}
+
+AGENT_AMOUNT_PARENTS: Mapping[str, frozenset[str]] = {
+    "traffic": (
+        AGENT_AMOUNT_ALIASES["light_traffic"]
+        | AGENT_AMOUNT_ALIASES["medium_traffic"]
+        | AGENT_AMOUNT_ALIASES["heavy_traffic"]
+    ),
+    "multiple": (
+        AGENT_AMOUNT_ALIASES["row"]
+        | AGENT_AMOUNT_ALIASES["light_traffic"]
+        | AGENT_AMOUNT_ALIASES["medium_traffic"]
+        | AGENT_AMOUNT_ALIASES["heavy_traffic"]
+    ),
+}
+
+AGENT_AMOUNT: Mapping[str, frozenset[str]] = {
+    **AGENT_AMOUNT_ALIASES,
+    **AGENT_AMOUNT_PARENTS,
 }
 
 # ---------------------------------------------------------------------------
@@ -557,6 +606,7 @@ ALIAS_FAMILIES: Mapping[str, Mapping[str, frozenset[str]]] = {
     "ego_property_type": EGO_PROPERTY_TYPE,
     "signaling_intent": SIGNALING_INTENT,
     "signaling_source": SIGNALING_SOURCE,
+    "agent_amount": AGENT_AMOUNT,
     "driving_judgment": DRIVING_JUDGMENT,
 }
 
