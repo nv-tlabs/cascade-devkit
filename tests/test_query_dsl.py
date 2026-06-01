@@ -82,6 +82,45 @@ def test_contained_in_is_alias_of_in() -> None:
         assert desc.attributes["in"] is desc.attributes["contained_in"]
 
 
+def test_other_aliases_for_four_unaliased_families() -> None:
+    """The four families that previously lacked an `other` alias now
+    resolve `"other"` to the right `Vocab.OTHER` literal so users
+    don't have to fall back to the schema-literal escape hatch for
+    8 % of the audit corpus's agent/action/env/signaling-source
+    entities."""
+    from cascade_av.query.constants import resolve_alias
+    from cascade_av.spec.schema import (
+        AgentActionTypeVocab,
+        AgentTypeVocab,
+        EnvironmentTypeVocab,
+        SignalSourceVocab,
+    )
+
+    cases = [
+        ("agent_type", AgentTypeVocab.OTHER),
+        ("action_type", AgentActionTypeVocab.OTHER),
+        ("env_type", EnvironmentTypeVocab.OTHER),
+        ("signaling_source", SignalSourceVocab.OTHER),
+    ]
+    for family, expected in cases:
+        resolved = resolve_alias(family, "other")
+        assert expected in resolved, (
+            f"{family}.other resolved to {resolved}, missing {expected!r}"
+        )
+
+
+def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
+    """`agent.type = vehicle` matches the bare `"Vehicle"` literal in
+    addition to the specific subtypes (car, truck, bus, motorcycle,
+    emergency). The leaf alias `generic_vehicle` is the named handle
+    for the literal on its own."""
+    from cascade_av.query.constants import resolve_alias
+    from cascade_av.spec.schema import AgentTypeVocab
+
+    assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "vehicle")
+    assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "generic_vehicle")
+
+
 def test_pos_any_dir_any_parse_and_register() -> None:
     """`pos_any` / `dir_any` are reachable from the parser and registered
     as `kind="list"` attributes on AGENT_DESCRIPTOR sharing the alias
