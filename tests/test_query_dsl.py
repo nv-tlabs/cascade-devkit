@@ -109,6 +109,52 @@ def test_other_aliases_for_four_unaliased_families() -> None:
         )
 
 
+def test_agent_amount_aliases_resolve_and_descriptor_uses_them() -> None:
+    """`agent.amount` was registered without an alias_family, so users
+    had to spell `agent.amount = "Single"` exactly. The new
+    `agent_amount` family lets them write `agent.amount = single`,
+    `... = group`, `... = traffic`, etc."""
+    from cascade_av.query.constants import resolve_alias
+    from cascade_av.query.entities import AGENT_DESCRIPTOR
+    from cascade_av.spec.schema import AgentAmountVocab
+
+    # Leaves resolve to the canonical Vocab values.
+    assert resolve_alias("agent_amount", "single") == frozenset(
+        {AgentAmountVocab.SINGLE}
+    )
+    assert resolve_alias("agent_amount", "row") == frozenset(
+        {AgentAmountVocab.ROW_GROUP}
+    )
+    assert resolve_alias("agent_amount", "group") == frozenset(
+        {AgentAmountVocab.ROW_GROUP}
+    )
+
+    # `traffic` parent covers the three density tiers (which the 100json
+    # corpus does not exercise yet, but the schema declares).
+    traffic = resolve_alias("agent_amount", "traffic")
+    assert AgentAmountVocab.LIGHT_TRAFFIC in traffic
+    assert AgentAmountVocab.MEDIUM_TRAFFIC in traffic
+    assert AgentAmountVocab.HEAVY_TRAFFIC in traffic
+    assert AgentAmountVocab.SINGLE not in traffic
+
+    # `multiple` is the "not alone" parent.
+    multiple = resolve_alias("agent_amount", "multiple")
+    assert AgentAmountVocab.ROW_GROUP in multiple
+    assert AgentAmountVocab.SINGLE not in multiple
+
+    # Descriptor wires the family in.
+    assert AGENT_DESCRIPTOR.attributes["amount"].alias_family == "agent_amount"
+
+    # Parser accepts the natural call-site forms.
+    for q in (
+        "agent.amount = single",
+        "agent.amount = group",
+        "agent.amount in (row, single)",
+        "agent(type = ped, amount = group)",
+    ):
+        assert parse(q) is not None
+
+
 def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
     """`agent.type = vehicle` matches the bare `"Vehicle"` literal in
     addition to the specific subtypes (car, truck, bus, motorcycle,

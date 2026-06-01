@@ -537,7 +537,7 @@ AGENT_DESCRIPTOR = EntityDescriptor(
     interval=_agent_interval,
     attributes={
         "type": Attribute(reader=_agent_type, alias_family="agent_type"),
-        "amount": Attribute(reader=_agent_amount),
+        "amount": Attribute(reader=_agent_amount, alias_family="agent_amount"),
         "vis": Attribute(reader=_agent_vis),
         "pos": Attribute(reader=_agent_pos, alias_family="position"),
         "dir": Attribute(reader=_agent_dir, alias_family="direction"),
