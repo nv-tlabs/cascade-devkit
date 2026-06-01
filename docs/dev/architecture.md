@@ -1,6 +1,6 @@
 # Architecture
 
-Design decisions, system shape, and rationale for `av-causal-dataset-tools`.
+Design decisions, system shape, and rationale for `cascade-devkit`.
 
 > Read this before proposing or implementing any non-trivial structural change.
 > Add a new section when a decision spans multiple files or locks in a trade-off
