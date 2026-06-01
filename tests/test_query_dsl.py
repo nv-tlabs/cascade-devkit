@@ -167,6 +167,24 @@ def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
     assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "generic_vehicle")
 
 
+def test_clip_brief_description_register_and_parse() -> None:
+    """`clip.brief_description` exposes the annotator's one-line
+    summary on `AnnotationBundle.brief_description` (100 % populated
+    in the 100json audit). Scalar string, no alias family — equality
+    only until a regex-match surface arrives."""
+    from cascade_av.query.entities import CLIP_DESCRIPTOR
+
+    attr = CLIP_DESCRIPTOR.attributes["brief_description"]
+    assert attr.kind == "scalar"
+    assert attr.alias_family is None
+
+    for q in (
+        'clip.brief_description = "ego stops at a red light"',
+        'clip.brief_description in ("a", "b")',
+    ):
+        assert parse(q) is not None
+
+
 def test_influence_and_action_id_link_attrs() -> None:
     """`ego.influenced_by` flattens every Influence window's influencer
     IDs; `{agent,ego}.action.{link_to,action_target}` expose the

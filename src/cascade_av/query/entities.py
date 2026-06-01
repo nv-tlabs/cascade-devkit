@@ -222,6 +222,13 @@ def _clip_eventful(b: AnnotationBundle, _bundle: AnnotationBundle) -> bool | Non
     return b.annotation.eventful
 
 
+def _clip_brief_description(b: AnnotationBundle, _bundle: AnnotationBundle) -> str:
+    """Annotator-written one-line description of the clip. 100 % populated
+    in the 100json audit corpus. Equality-only matching for now; regex
+    support would arrive as a separate DSL surface."""
+    return b.annotation.brief_description
+
+
 def _agent_type(a: Agent, _bundle: AnnotationBundle) -> str:
     return a.type
 
@@ -629,6 +636,7 @@ CLIP_DESCRIPTOR = EntityDescriptor(
         "fps": Attribute(reader=_clip_fps),
         "duration": Attribute(reader=_clip_duration),
         "eventful": Attribute(reader=_clip_eventful),
+        "brief_description": Attribute(reader=_clip_brief_description),
     },
 )
 
