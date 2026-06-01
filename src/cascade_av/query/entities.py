@@ -453,6 +453,24 @@ def _prop_type_attr(p: AgentProperty, _bundle: AnnotationBundle) -> str:
     return p.property_type
 
 
+def _prop_signaling_source(p: AgentProperty, _bundle: AnnotationBundle) -> str | None:
+    """Source modality of a ``Signal`` property — flashing light, hand
+    gesture, holding sign, or other. ``None`` for non-Signal properties
+    or Signal properties whose source wasn't annotated."""
+    if p.signaling_details is None:
+        return None
+    return p.signaling_details.source
+
+
+def _prop_not_facing_ego(p: AgentProperty, _bundle: AnnotationBundle) -> bool | None:
+    """Whether the signal is facing away from ego (e.g. an agent's right
+    blinker visible only because ego is overtaking). ``None`` for non-
+    Signal properties or unannotated cases."""
+    if p.signaling_details is None:
+        return None
+    return p.signaling_details.not_facing_ego
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -498,6 +516,14 @@ AGENT_PROP_DESCRIPTOR = EntityDescriptor(
     interval=_prop_interval_reader,
     attributes={
         "type": Attribute(reader=_prop_type_attr, alias_family="agent_property_type"),
+        # SignalingDetails fields — populated for properties of type
+        # ``Signal``; ``None`` elsewhere. The 100json corpus shows the
+        # source modality on 65 % of Signal props and the
+        # not-facing-ego flag on the same share.
+        "source": Attribute(
+            reader=_prop_signaling_source, alias_family="signaling_source"
+        ),
+        "not_facing_ego": Attribute(reader=_prop_not_facing_ego),
     },
 )
 
@@ -508,6 +534,10 @@ EGO_PROP_DESCRIPTOR = EntityDescriptor(
     interval=_prop_interval_reader,
     attributes={
         "type": Attribute(reader=_prop_type_attr, alias_family="ego_property_type"),
+        "source": Attribute(
+            reader=_prop_signaling_source, alias_family="signaling_source"
+        ),
+        "not_facing_ego": Attribute(reader=_prop_not_facing_ego),
     },
 )
 

@@ -167,6 +167,28 @@ def test_vehicle_parent_includes_generic_vehicle_literal() -> None:
     assert AgentTypeVocab.VEHICLE in resolve_alias("agent_type", "generic_vehicle")
 
 
+def test_signaling_details_attrs_on_props() -> None:
+    """`agent.prop.source` and `agent.prop.not_facing_ego` (and the
+    same on `ego.prop`) read through `AgentProperty.signaling_details`.
+    Populated for `Signal`-typed properties (65 % of Signal props in
+    100json); ``None`` for non-Signal properties so the predicates
+    cleanly fall through."""
+    from cascade_av.query.entities import AGENT_PROP_DESCRIPTOR, EGO_PROP_DESCRIPTOR
+
+    for desc in (AGENT_PROP_DESCRIPTOR, EGO_PROP_DESCRIPTOR):
+        assert desc.attributes["source"].alias_family == "signaling_source"
+        assert desc.attributes["not_facing_ego"].alias_family is None
+
+    for q in (
+        "agent.prop.source = flashing_light",
+        "agent.prop.source in (flashing_light, holding_sign)",
+        "agent.prop.not_facing_ego = true",
+        "agent(prop.source = flashing_light)",
+        "ego.prop.not_facing_ego = false",
+    ):
+        assert parse(q) is not None
+
+
 def test_pos_any_dir_any_parse_and_register() -> None:
     """`pos_any` / `dir_any` are reachable from the parser and registered
     as `kind="list"` attributes on AGENT_DESCRIPTOR sharing the alias
