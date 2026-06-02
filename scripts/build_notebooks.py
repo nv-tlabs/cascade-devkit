@@ -78,6 +78,7 @@ STYLING = """
 # 01 — Quickstart
 # ---------------------------------------------------------------------------
 
+
 def build_quickstart() -> None:
     cells = [
         md("""
@@ -145,14 +146,17 @@ def build_quickstart() -> None:
         > setup cell below.
         """),
         md("## Setup"),
-        code("""
+        code(
+            """
         import os
         from pathlib import Path
 
         from cascade_av.dataset import CascadeDataset
         from cascade_av.io import load_dir
         from cascade_av.query import find_on_bundle
-        """ + STYLING),
+        """
+            + STYLING
+        ),
         code("""
         dataset_root = Path(os.environ["CASCADE_AV_DATASET_ROOT"])
         ds = CascadeDataset(dataset_root)
@@ -281,6 +285,7 @@ def build_quickstart() -> None:
 # 02 — Query DSL tour
 # ---------------------------------------------------------------------------
 
+
 def build_dsl_tour() -> None:
     cells = [
         md("""
@@ -309,12 +314,15 @@ def build_dsl_tour() -> None:
         The full specification lives in `docs/user/query_language.md`.
         """),
         md("## Setup"),
-        code("""
+        code(
+            """
         import os
         from pathlib import Path
 
         from cascade_av.dataset import CascadeDataset
-        """ + STYLING),
+        """
+            + STYLING
+        ),
         code("""
         ds = CascadeDataset(Path(os.environ["CASCADE_AV_DATASET_ROOT"]))
 
@@ -379,6 +387,53 @@ def build_dsl_tour() -> None:
         run([
             "agent(type = vehicle, pos = front)",
             "agent.type = vehicle and agent.pos = front",
+        ])
+        """),
+        md("""
+        ## Ego-relative direction — `agent.dir`
+
+        Direction aliases: `same`, `opposite`, `perpendicular_lr`,
+        `perpendicular_rl`, and the parent `perpendicular` (union of
+        the two perpendicular leaves). Like `agent.pos`, `agent.dir`
+        samples at the agent's visibility-window midpoint.
+        """),
+        code("""
+        run([
+            "agent.dir = same",
+            "agent.dir = opposite",
+            "agent.dir = perpendicular",
+            # Oncoming vehicle — the natural way to ask "is there an
+            # oncoming car?" for unprotected-turn analysis.
+            "agent(type = vehicle, dir = opposite)",
+        ])
+        """),
+        md("""
+        ## Per-interval pose — `pos_any` / `dir_any`
+
+        `agent.pos` / `agent.dir` sample at the **midpoint** of the
+        agent's visibility window (one deterministic value per
+        agent). For agents whose pose changes mid-window — e.g. a
+        vehicle that approaches in front and ends up perpendicular as
+        it crosses an intersection — the midpoint misses the
+        transient. `pos_any` / `dir_any` are `kind="list"` and match
+        if **any** `EgoRelativePose` interval carried the value.
+
+        The delta between the two flavors shows how often pose
+        changes during visibility:
+        """),
+        code("""
+        # Midpoint vs interval — same query, different cardinality.
+        run([
+            "agent.dir = perpendicular",      # midpoint
+            "agent.dir_any = perpendicular",  # any interval
+        ])
+        """),
+        code("""
+        # Composite: vehicles that were either in front OR crossing
+        # at some point during their visibility.
+        run([
+            "agent(type = vehicle, "
+            "pos_any in (front, perpendicular_lr, perpendicular_rl))",
         ])
         """),
         md("""
@@ -603,6 +658,7 @@ def build_dsl_tour() -> None:
 # 03 — Statistics with charts
 # ---------------------------------------------------------------------------
 
+
 def build_statistics() -> None:
     cells = [
         md("""
@@ -617,13 +673,16 @@ def build_statistics() -> None:
         > and `02_query_dsl_tour.ipynb` for the query language itself.
         """),
         md("## Setup"),
-        code("""
+        code(
+            """
         import os
         from collections import Counter
         from pathlib import Path
 
         from cascade_av.dataset import CascadeDataset
-        """ + STYLING),
+        """
+            + STYLING
+        ),
         code("""
         ds = CascadeDataset(Path(os.environ["CASCADE_AV_DATASET_ROOT"]))
         print(f"corpus loaded — {len(ds)} clips")
@@ -793,6 +852,7 @@ def build_statistics() -> None:
 # 04 — Scenario catalog
 # ---------------------------------------------------------------------------
 
+
 def build_scenarios() -> None:
     cells = [
         md("""
@@ -812,13 +872,16 @@ def build_scenarios() -> None:
         > and `02_query_dsl_tour.ipynb` for the DSL grammar.
         """),
         md("## Setup"),
-        code("""
+        code(
+            """
         import os
         from dataclasses import dataclass
         from pathlib import Path
 
         from cascade_av.dataset import CascadeDataset
-        """ + STYLING),
+        """
+            + STYLING
+        ),
         code("""
         ds = CascadeDataset(Path(os.environ["CASCADE_AV_DATASET_ROOT"]))
 
@@ -962,6 +1025,7 @@ def build_scenarios() -> None:
 # 05 — Video inspection: query → match → download → view frames
 # ---------------------------------------------------------------------------
 
+
 def build_video_inspection() -> None:
     cells = [
         md("""
@@ -988,14 +1052,17 @@ def build_video_inspection() -> None:
         > 5–15 seconds depending on your link.
         """),
         md("## Setup"),
-        code("""
+        code(
+            """
         import os
         from pathlib import Path
 
         import numpy as np
 
         from cascade_av.dataset import CascadeDataset
-        """ + STYLING),
+        """
+            + STYLING
+        ),
         code("""
         ds = CascadeDataset(Path(os.environ["CASCADE_AV_DATASET_ROOT"]))
         print(f"corpus loaded — {len(ds)} clips")
@@ -1130,13 +1197,16 @@ def build_visualize() -> None:
         > and can take 5-15 s.
         """),
         md("## Setup"),
-        code("""
+        code(
+            """
         import os
         from pathlib import Path
 
         from cascade_av import viz
         from cascade_av.dataset import CascadeDataset
-        """ + STYLING),
+        """
+            + STYLING
+        ),
         code("""
         ds = CascadeDataset(
             Path(os.environ["CASCADE_AV_DATASET_ROOT"]),

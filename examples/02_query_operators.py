@@ -56,6 +56,37 @@ def main() -> None:
     # Compare: free-floating predicates may match DIFFERENT agents.
     show(ds, "agent.type = vehicle and agent.pos = front")
 
+    section("Ego-relative direction — `agent.dir`")
+    # Direction aliases: `same`, `opposite`, `perpendicular_lr`,
+    # `perpendicular_rl`, plus the parent `perpendicular` (the union
+    # of the two perpendicular leaves).
+    show(ds, "agent.dir = same")
+    show(ds, "agent.dir = opposite")
+    show(ds, "agent.dir = perpendicular")
+    # Oncoming vehicle — the natural way to ask "is there an oncoming
+    # car?" for unprotected-turn analysis.
+    show(ds, "agent(type = vehicle, dir = opposite)")
+
+    section("Per-interval pose — `pos_any` / `dir_any`")
+    # `pos` / `dir` sample at the agent's visibility-window MIDPOINT
+    # (one deterministic value per agent). For agents whose relative
+    # pose changes mid-window — e.g. a vehicle that approaches in
+    # front and ends up perpendicular as it crosses the intersection
+    # — the midpoint reading misses the transient. `pos_any` /
+    # `dir_any` are `kind="list"` and match if ANY pose interval
+    # carried the value.
+    #
+    # The delta between the two flavors on this corpus shows how
+    # often pose changes during visibility:
+    show(ds, "agent.dir = perpendicular")  # midpoint-sampled
+    show(ds, "agent.dir_any = perpendicular")  # any interval
+    # Composite: vehicles that were either in front OR crossing at
+    # some point during their visibility.
+    show(
+        ds,
+        "agent(type = vehicle, pos_any in (front, perpendicular_lr, perpendicular_rl))",
+    )
+
     section("Boolean operators")
     show(ds, "agent.type = ped and env.type = crosswalk")
     show(ds, "ego.action = stop or ego.action = yield")
