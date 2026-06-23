@@ -229,3 +229,357 @@ def test_agents_in_position_smoke(rich_bundle: AnnotationBundle) -> None:
             break
     # Soft assertion — corpus is real data, not guaranteed to hit all positions.
     assert isinstance(found, bool)
+
+
+# ---------------------------------------------------------------------------
+# influenced_by — synthetic-bundle semantics
+# ---------------------------------------------------------------------------
+
+
+def _bundle_for_influence(
+    *,
+    traffic_objects=None,
+    traffic_lights=None,
+    agents=None,
+    ego_influences=None,
+    duration_s: float = 10.0,
+):
+    """Build a synthetic AnnotationBundle from focused inputs. The
+    ``influenced_by`` tests want to control exactly which Influence
+    windows + influencer IDs + traffic objects / lights exist; the
+    helper avoids tying tests to the real corpus and keeps each assertion
+    local to its setup."""
+    from cascade_av.spec import AnnotationBundle
+
+    payload: dict = {
+        "video": {"clip_id": "influenced-by-test", "duration_s": duration_s},
+    }
+    bundle = AnnotationBundle.model_validate(payload)
+    if traffic_objects:
+        bundle.annotation.traffic_objects.extend(traffic_objects)
+    if traffic_lights:
+        bundle.annotation.traffic_lights.extend(traffic_lights)
+    if agents:
+        bundle.annotation.agents.extend(agents)
+    if ego_influences:
+        bundle.annotation.ego_vehicle.influenced_by.extend(ego_influences)
+    return bundle
+
+
+def test_influenced_by_traffic_object_dispatch() -> None:
+    """A bare TrafficObject influencer resolves through `obj` and the
+    RHS predicate matches on `obj.type`. The match interval is the
+    Influence window, not the object's visibility — verifies the
+    invariant called out in the design doc."""
+    from cascade_av.query import evaluate, parse
+    from cascade_av.spec import EgoVehicle, Influence, TrafficObject
+
+    yield_obj = TrafficObject(
+        id="obj-yield",
+        type="fst:YieldSign",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:9.5",
+    )
+    infl = Influence(
+        id="i1",
+        influencers=["obj-yield"],
+        start_timestamp="0:1.0",
+        end_timestamp="0:3.0",
+    )
+    bundle = _bundle_for_influence(
+        traffic_objects=[yield_obj], ego_influences=[infl]
+    )
+
+    ms = evaluate(parse("ego influenced_by obj.type = yield_sign"), bundle)
+    assert len(ms) == 1
+    m = ms.matches[0]
+    # Owner of the match is the EgoVehicle.
+    assert isinstance(m.entity, EgoVehicle)
+    # Interval is the Influence window (1.0 – 3.0), not the wider
+    # visibility window of the object (0.0 – 9.5).
+    assert m.interval is not None
+    assert m.interval.start == pytest.approx(1.0)
+    assert m.interval.end == pytest.approx(3.0)
+
+    # And the negative case: predicate that doesn't hit the influencer
+    # produces zero matches without raising.
+    ms = evaluate(parse("ego influenced_by obj.type = stop_sign"), bundle)
+    assert len(ms) == 0
+
+
+def test_influenced_by_mixed_kind_dispatch() -> None:
+    """One Influence window with two influencer IDs — a signal head
+    (expanded to LightStates with color=Red) and a TrafficObject
+    (`fst:StopSign`). Each RHS predicate must dispatch to the matching
+    kind: `light.color = red` picks up the signal-head expansion,
+    `obj.type = stop_sign` picks up the traffic object, and the
+    parenthesised OR matches against either."""
+    from cascade_av.query import evaluate, parse
+    from cascade_av.spec import (
+        Influence,
+        LightStates,
+        SignalHead,
+        TrafficLight,
+        TrafficObject,
+    )
+
+    head = SignalHead(
+        id="sh-1",
+        state_sequence=[
+            LightStates(
+                id="ls-1", color="Red",
+                start_timestamp="0:1.0", end_timestamp="0:4.0",
+            ),
+        ],
+        affects_ego="True",
+    )
+    tl = TrafficLight(id="tl-1", signal_heads=[head])
+    stop_obj = TrafficObject(
+        id="obj-stop",
+        type="fst:StopSign",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:5.0",
+    )
+    infl = Influence(
+        id="i1",
+        influencers=["sh-1", "obj-stop"],
+        start_timestamp="0:1.0",
+        end_timestamp="0:4.0",
+    )
+    bundle = _bundle_for_influence(
+        traffic_objects=[stop_obj],
+        traffic_lights=[tl],
+        ego_influences=[infl],
+    )
+
+    # light dispatches; obj dispatches; cross-kind disjunction matches
+    # via the first satisfying candidate in the Influence's influencer
+    # list.
+    assert len(evaluate(parse("ego influenced_by light.color = red"), bundle)) == 1
+    assert len(evaluate(parse("ego influenced_by obj.type = stop_sign"), bundle)) == 1
+    assert len(evaluate(parse("ego influenced_by obj.type = yield_sign"), bundle)) == 0
+    # Parenthesised compound: matches because at least one influencer
+    # satisfies one disjunct.
+    assert len(
+        evaluate(
+            parse("ego influenced_by (light.color = red or obj.type = stop_sign)"),
+            bundle,
+        )
+    ) == 1
+
+
+def test_influenced_by_while_composition_uses_influence_window() -> None:
+    """`influenced_by … while …` intersects the Influence window with
+    the right-hand match's window. A signal head with a red state spans
+    (0.0, 5.0); a ped agent is visible (2.0, 8.0). The composed match
+    interval is the overlap of the Influence window (0.0, 5.0) with the
+    agent's visibility window (2.0, 8.0) — i.e. (2.0, 5.0). This
+    locks the design-doc invariant that influencer expansion does NOT
+    pull the light-state's own interval into the match."""
+    from cascade_av.query import evaluate, parse
+    from cascade_av.spec import (
+        Agent,
+        EgoRelativePose,
+        Influence,
+        LightStates,
+        SignalHead,
+        TrafficLight,
+    )
+
+    head = SignalHead(
+        id="sh-1",
+        state_sequence=[
+            LightStates(
+                id="ls-1", color="Red",
+                # Light-state interval intentionally narrower than the
+                # Influence window to prove we don't read it: if we did,
+                # the composed interval would clamp to (2.0, 4.0)
+                # instead of (2.0, 5.0).
+                start_timestamp="0:0.0", end_timestamp="0:4.0",
+            ),
+        ],
+    )
+    tl = TrafficLight(id="tl-1", signal_heads=[head])
+    infl = Influence(
+        id="i1",
+        influencers=["sh-1"],
+        start_timestamp="0:0.0",
+        end_timestamp="0:5.0",
+    )
+    ped = Agent(
+        id="a-ped",
+        type="Pedestrian (Adult)",  # canonical "ped" alias target
+        visibility_start_timestamp="0:2.0",
+        visibility_end_timestamp="0:8.0",
+        ego_relative_pose=[
+            EgoRelativePose(
+                position_rel_to_ego="In front",
+                start_timestamp="0:2.0",
+                end_timestamp="0:8.0",
+            ),
+        ],
+    )
+    bundle = _bundle_for_influence(
+        traffic_lights=[tl], agents=[ped], ego_influences=[infl],
+    )
+
+    ms = evaluate(
+        parse("ego influenced_by light.color = red while agent.type = ped"),
+        bundle,
+    )
+    assert len(ms) == 1
+    iv = ms.matches[0].interval
+    assert iv is not None
+    assert iv.start == pytest.approx(2.0)
+    assert iv.end == pytest.approx(5.0)
+
+
+def test_influenced_by_signal_head_filters_by_window() -> None:
+    """A signal head cycling Green → Red across the clip must NOT match
+    every colour predicate for every Influence window. Only LightStates
+    whose own interval overlaps the Influence window we're currently
+    evaluating against may contribute to the RHS dispatch.
+
+    Setup: one SignalHead with two LightStates — Green (0.0, 2.0) and
+    Red (2.0, 5.0) — referenced by one Influence window (3.0, 4.0).
+    The Red state overlaps; the Green state does not. So
+    `light.color = red` must match and `light.color = green` must NOT.
+    Before the fix both matched, inflating red/green counts on the
+    real corpus by ~25-60%."""
+    from cascade_av.query import evaluate, parse
+    from cascade_av.spec import (
+        Influence,
+        LightStates,
+        SignalHead,
+        TrafficLight,
+    )
+
+    head = SignalHead(
+        id="sh-1",
+        state_sequence=[
+            LightStates(
+                id="ls-green", color="Green",
+                start_timestamp="0:0.0", end_timestamp="0:2.0",
+            ),
+            LightStates(
+                id="ls-red", color="Red",
+                start_timestamp="0:2.0", end_timestamp="0:5.0",
+            ),
+        ],
+    )
+    tl = TrafficLight(id="tl-1", signal_heads=[head])
+    infl = Influence(
+        id="i1",
+        influencers=["sh-1"],
+        start_timestamp="0:3.0",
+        end_timestamp="0:4.0",
+    )
+    bundle = _bundle_for_influence(
+        traffic_lights=[tl], ego_influences=[infl],
+    )
+
+    # Red state overlaps (3.0,4.0) ⊂ (2.0,5.0) — matches.
+    assert len(evaluate(parse("ego influenced_by light.color = red"), bundle)) == 1
+    # Green state (0.0,2.0) does not overlap the Influence window (3.0,4.0).
+    assert len(evaluate(parse("ego influenced_by light.color = green"), bundle)) == 0
+
+
+def test_influenced_by_agent_multiple_windows() -> None:
+    """One ego with two distinct Influence windows, both pointing at
+    different red-light influencers, must produce TWO matches —
+    cardinality is per (subject, Influence-window) pair. Locks the
+    semantics that overlapping or sequential influence windows aren't
+    collapsed."""
+    from cascade_av.query import evaluate, parse
+    from cascade_av.spec import (
+        Influence,
+        LightStates,
+        SignalHead,
+        TrafficLight,
+    )
+
+    head_a = SignalHead(
+        id="sh-a",
+        state_sequence=[
+            LightStates(
+                id="ls-a", color="Red",
+                start_timestamp="0:0.0", end_timestamp="0:3.0",
+            ),
+        ],
+    )
+    head_b = SignalHead(
+        id="sh-b",
+        state_sequence=[
+            LightStates(
+                id="ls-b", color="Red",
+                start_timestamp="0:4.0", end_timestamp="0:7.0",
+            ),
+        ],
+    )
+    tl = TrafficLight(id="tl-1", signal_heads=[head_a, head_b])
+    infl_1 = Influence(
+        id="i1", influencers=["sh-a"],
+        start_timestamp="0:1.0", end_timestamp="0:2.0",
+    )
+    infl_2 = Influence(
+        id="i2", influencers=["sh-b"],
+        start_timestamp="0:5.0", end_timestamp="0:6.0",
+    )
+    bundle = _bundle_for_influence(
+        traffic_lights=[tl], ego_influences=[infl_1, infl_2],
+    )
+
+    ms = evaluate(parse("ego influenced_by light.color = red"), bundle)
+    assert len(ms) == 2
+    intervals = sorted((m.interval.start, m.interval.end) for m in ms.matches)
+    assert intervals[0] == pytest.approx((1.0, 2.0))
+    assert intervals[1] == pytest.approx((5.0, 6.0))
+
+
+def test_influenced_by_second_influencer_wins() -> None:
+    """One Influence window with two influencers where only the SECOND
+    satisfies the RHS predicate. The evaluator must keep scanning the
+    influencer list and emit one match — verifies the inner loop does
+    not short-circuit before reaching the second candidate."""
+    from cascade_av.query import evaluate, parse
+    from cascade_av.spec import (
+        Influence,
+        LightStates,
+        SignalHead,
+        TrafficLight,
+    )
+
+    head_green = SignalHead(
+        id="sh-green",
+        state_sequence=[
+            LightStates(
+                id="ls-g", color="Green",
+                start_timestamp="0:0.0", end_timestamp="0:5.0",
+            ),
+        ],
+    )
+    head_red = SignalHead(
+        id="sh-red",
+        state_sequence=[
+            LightStates(
+                id="ls-r", color="Red",
+                start_timestamp="0:0.0", end_timestamp="0:5.0",
+            ),
+        ],
+    )
+    tl = TrafficLight(id="tl-1", signal_heads=[head_green, head_red])
+    infl = Influence(
+        id="i1",
+        # First influencer fails RHS (green); second satisfies (red).
+        influencers=["sh-green", "sh-red"],
+        start_timestamp="0:1.0", end_timestamp="0:4.0",
+    )
+    bundle = _bundle_for_influence(
+        traffic_lights=[tl], ego_influences=[infl],
+    )
+
+    ms = evaluate(parse("ego influenced_by light.color = red"), bundle)
+    assert len(ms) == 1
+    iv = ms.matches[0].interval
+    assert iv is not None
+    assert (iv.start, iv.end) == pytest.approx((1.0, 4.0))

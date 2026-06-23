@@ -116,13 +116,35 @@ class BecauseOf:
 
 
 @dataclass(frozen=True)
+class InfluencedBy:
+    left: "Expr"
+    right: "Expr"
+
+
+@dataclass(frozen=True)
+class EntityRef:
+    """A bare-entity reference (`ego` or `agent`) used as the LHS of
+    :class:`InfluencedBy`. Distinct from :class:`EntityClause` because no
+    inner constraint expression is attached — the entity is named in
+    isolation so an operator can dispatch on it.
+
+    Produced only by the short-circuit in ``_parse_primary`` when a naked
+    ``ego``/``agent`` ident is followed by ``influenced_by``; rejected
+    elsewhere by the existing comparison-op-expected error path.
+    """
+
+    entity: str  # "ego" or "agent"
+
+
+@dataclass(frozen=True)
 class Within:
     window: "Expr"
     body: "Expr"
 
 
 Expr = Union[
-    AttrPredicate, EntityClause, And, Or, Not, While, Then, BecauseOf, Within
+    AttrPredicate, EntityClause, EntityRef, And, Or, Not, While, Then,
+    BecauseOf, InfluencedBy, Within,
 ]
 
 
@@ -132,8 +154,8 @@ Expr = Union[
 
 
 _KEYWORDS = frozenset({
-    "and", "or", "not", "in", "while", "then", "because_of", "within",
-    "true", "false",
+    "and", "or", "not", "in", "while", "then", "because_of", "influenced_by",
+    "within", "true", "false",
 })
 
 # Single-character punctuation tokens.
@@ -410,6 +432,9 @@ class _Parser:
             elif self._match("BECAUSE_OF"):
                 right = self.parse_unary()
                 left = BecauseOf(left, right)
+            elif self._match("INFLUENCED_BY"):
+                right = self.parse_unary()
+                left = InfluencedBy(left, right)
             else:
                 break
         return left
@@ -438,6 +463,13 @@ class _Parser:
         #   - else read dotted path → attribute predicate
         first = self._advance()
         head = first.value.lower()
+
+        # Bare-entity short-circuit for `influenced_by`'s LHS: a naked
+        # `ego` or `agent` token followed by `influenced_by` is the only
+        # way for the parser to produce an `EntityRef`. Anywhere else
+        # the regular comparison-or-clause path applies.
+        if head in ("ego", "agent") and self._check("INFLUENCED_BY"):
+            return EntityRef(entity=head)
 
         # If we're inside an entity clause and the head matches a
         # sub-entity attribute of the bound entity (e.g. `action` inside
@@ -802,12 +834,14 @@ __all__ = [
     "AttrPredicate",
     "AttrRef",
     "EntityClause",
+    "EntityRef",
     "And",
     "Or",
     "Not",
     "While",
     "Then",
     "BecauseOf",
+    "InfluencedBy",
     "Within",
     "Expr",
 ]

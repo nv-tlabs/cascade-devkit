@@ -23,9 +23,12 @@ from cascade_av.query.dsl import (
     AttrRef,
     BecauseOf,
     EntityClause,
+    EntityRef,
     Expr,
+    InfluencedBy,
     Not,
     Or,
+    QueryParseError,
     Then,
     While,
     Within,
@@ -316,6 +319,8 @@ def _eval(expr: Expr, ctx: _Context) -> MatchSet:
         return _eval_attr(expr, ctx)
     if isinstance(expr, EntityClause):
         return _eval_entity(expr, ctx)
+    if isinstance(expr, EntityRef):
+        return _eval_entity_ref(expr, ctx)
     if isinstance(expr, And):
         return _eval_and(expr, ctx)
     if isinstance(expr, Or):
@@ -328,6 +333,8 @@ def _eval(expr: Expr, ctx: _Context) -> MatchSet:
         return _eval_then(expr, ctx)
     if isinstance(expr, BecauseOf):
         return _eval_because_of(expr, ctx)
+    if isinstance(expr, InfluencedBy):
+        return _eval_influenced_by(expr, ctx)
     if isinstance(expr, Within):
         return _eval_within(expr, ctx)
     raise TypeError(f"unknown AST node: {type(expr).__name__}")
@@ -655,6 +662,290 @@ def _eval_because_of(node: BecauseOf, ctx: _Context) -> MatchSet:
             out.append(Match(a.clip_id, action, a.interval))
             out.append(Match(b.clip_id, b.entity, b.interval))
     return MatchSet(tuple(out))
+
+
+# ---------------------------------------------------------------------------
+# influenced_by — bare-entity LHS, schema influencer dispatch
+# ---------------------------------------------------------------------------
+
+
+def _is_valid_influenced_by_lhs(expr: Expr) -> bool:
+    """Validate that ``expr`` reduces to a shape the influenced_by
+    operator can read: a bare-entity reference or an entity clause
+    rooted at ``ego`` / ``agent``. Sub-entity clauses, action / property
+    predicates, etc. are rejected — the operator's contract is "pull the
+    influenced_by list off the subject," and that field only lives on
+    EgoVehicle and Agent.
+    """
+    if isinstance(expr, EntityRef) and expr.entity in ("ego", "agent"):
+        return True
+    if isinstance(expr, EntityClause) and expr.entity in ("ego", "agent"):
+        return True
+    return False
+
+
+def _rhs_target_entities(expr: Expr) -> frozenset[str]:
+    """Return the set of top-level entity names referenced in any
+    ``AttrPredicate.entity`` or ``EntityClause.entity`` within ``expr``.
+
+    Used to skip influencer candidates whose kind doesn't match the RHS
+    predicate (e.g. don't evaluate ``light.color = red`` against a
+    ``TrafficObject``). Returning an empty set means "no constraint" —
+    every candidate kind is fair game.
+    """
+    if isinstance(expr, AttrPredicate):
+        return frozenset({expr.entity})
+    if isinstance(expr, EntityClause):
+        return frozenset({expr.entity})
+    if isinstance(expr, (And, Or)):
+        return _rhs_target_entities(expr.left) | _rhs_target_entities(expr.right)
+    if isinstance(expr, Not):
+        return _rhs_target_entities(expr.expr)
+    if isinstance(expr, (While, Then, BecauseOf, InfluencedBy)):
+        return _rhs_target_entities(expr.left) | _rhs_target_entities(expr.right)
+    if isinstance(expr, Within):
+        return _rhs_target_entities(expr.body)
+    return frozenset()
+
+
+def _light_state_overlaps_window(state: Any, window: Interval) -> bool:
+    """True if ``state``'s own time interval overlaps ``window``.
+    Permissive on unparseable / missing timestamps — returns True so
+    the state is still considered, matching the convention used
+    elsewhere in the engine for time-bearing schema entries with
+    partial annotations.
+    """
+    iv = Interval.from_strings(
+        getattr(state, "start_timestamp", None),
+        getattr(state, "end_timestamp", None),
+    )
+    if iv is None:
+        return True
+    return iv.overlaps(window)
+
+
+def _resolve_influencer_candidates(
+    subject: Any,
+    ctx: _Context,
+    head_to_tl: dict[str, Any],
+    infl_iv: Interval,
+) -> list[tuple[str, Any]]:
+    """Expand a referenced influencer ``Subject`` into ``(entity_name,
+    candidate)`` pairs the RHS predicate can be evaluated against.
+
+    Most kinds map 1:1: a ``traffic_object`` becomes ``("obj", obj)``;
+    an ``agent`` becomes ``("agent", agent)``; an ``ego`` becomes
+    ``("ego", ego)``; a ``light_state`` is already a ``LightStates``
+    instance ready to evaluate as ``("light", state)``. The interesting
+    cases are ``signal_head`` and ``traffic_light`` — both fan out to
+    only those ``LightStates`` whose own interval overlaps
+    ``infl_iv`` (the Influence window we're currently evaluating). A
+    light cycling G→Y→R must not match `light.color = red` AND
+    `light.color = green` AND `light.color = yellow` for the same
+    Influence window — only the colour that was actually showing
+    during the window should count. Each expanded state is stamped
+    with the same ``_owner_signal_head`` (and ``_owner_traffic_light``)
+    backref that ``_light_candidates`` sets, so attributes like
+    ``affects_ego`` resolve correctly.
+
+    Kinds the corpus doesn't currently use as influencers (env / cond /
+    properties / actions / containments / object states) return an
+    empty list — the evaluator simply skips them. Future schema
+    additions extend the dispatch here.
+    """
+    if subject.kind == "traffic_object":
+        return [("obj", subject.obj)]
+    if subject.kind == "agent":
+        return [("agent", subject.obj)]
+    if subject.kind == "ego":
+        return [("ego", subject.obj)]
+    if subject.kind == "light_state":
+        # Bare LightStates influencer: only contribute if its own
+        # interval overlaps the Influence window (permissive on
+        # unparseable timestamps).
+        if _light_state_overlaps_window(subject.obj, infl_iv):
+            return [("light", subject.obj)]
+        return []
+    if subject.kind == "signal_head":
+        head = subject.obj
+        tl = head_to_tl.get(head.id)
+        out: list[tuple[str, Any]] = []
+        for state in head.state_sequence:
+            if not _light_state_overlaps_window(state, infl_iv):
+                continue
+            object.__setattr__(state, "_owner_signal_head", head)
+            if tl is not None:
+                object.__setattr__(state, "_owner_traffic_light", tl)
+            out.append(("light", state))
+        return out
+    if subject.kind == "traffic_light":
+        tl = subject.obj
+        out = []
+        for head in tl.signal_heads:
+            for state in head.state_sequence:
+                if not _light_state_overlaps_window(state, infl_iv):
+                    continue
+                object.__setattr__(state, "_owner_signal_head", head)
+                object.__setattr__(state, "_owner_traffic_light", tl)
+                out.append(("light", state))
+        return out
+    return []
+
+
+def _build_head_to_tl(ctx: _Context) -> dict[str, Any]:
+    """One-pass index mapping signal-head ID to its owning traffic-light
+    Pydantic model. Cheap to rebuild per call; the bundle's traffic-light
+    tree is small.
+    """
+    out: dict[str, Any] = {}
+    for tl in ctx.bundle.annotation.traffic_lights:
+        for head in tl.signal_heads:
+            if head.id:
+                out[head.id] = tl
+    return out
+
+
+def _influenced_by_owner_pairs(
+    node_left: Expr, ctx: _Context
+) -> list[tuple[Any, list[Any]]]:
+    """Gather ``(owner_entity, influenced_by_list)`` tuples from the LHS
+    shape. ``owner_entity`` is the schema EgoVehicle / Agent instance
+    whose ``influenced_by`` field supplies the windows; the second
+    element is that field's value (a list of ``Influence`` records).
+
+    For ``EntityClause(entity='agent', …)`` we filter the agent list
+    through the inner constraint via ``_candidate_satisfies`` — same
+    machinery used by ``_eval_entity`` — so ``agent(type=vehicle)
+    influenced_by …`` only walks vehicle agents. For ``ego`` clauses we
+    confirm the single ego candidate satisfies the inner predicate
+    before pairing.
+    """
+    ann = ctx.bundle.annotation
+    if isinstance(node_left, EntityRef):
+        if node_left.entity == "ego":
+            return [(ann.ego_vehicle, list(ann.ego_vehicle.influenced_by))]
+        # agent
+        return [(a, list(a.influenced_by)) for a in ann.agents]
+
+    # EntityClause path — entity guaranteed to be 'ego' or 'agent'
+    assert isinstance(node_left, EntityClause)
+    if node_left.entity == "agent":
+        out: list[tuple[Any, list[Any]]] = []
+        for agent in ann.agents:
+            if _candidate_satisfies("agent", agent, node_left.inner, ctx):
+                out.append((agent, list(agent.influenced_by)))
+        return out
+    # ego clause: filter on the inner predicate against the ego vehicle.
+    ego = ann.ego_vehicle
+    if _candidate_satisfies("ego", ego, node_left.inner, ctx):
+        return [(ego, list(ego.influenced_by))]
+    return []
+
+
+def _eval_influenced_by(node: InfluencedBy, ctx: _Context) -> MatchSet:
+    """Match where the LHS subject is influenced over a window by some
+    entity satisfying the RHS predicate.
+
+    The LHS must reduce to a bare ``ego``/``agent`` or an entity clause
+    rooted at one of them; anything else raises ``QueryParseError``
+    (different from ``because_of``'s silent-skip policy because the
+    operator's contract on the LHS is a small fixed contract).
+
+    For each ``Influence`` window on each LHS owner we resolve every
+    ``influencer`` ID through :class:`IdIndex` and dispatch it via
+    :func:`_resolve_influencer_candidates` into one or more
+    ``(entity_name, candidate)`` pairs. The RHS expression is evaluated
+    against each candidate via the existing
+    :func:`_candidate_satisfies` helper; the first satisfying candidate
+    in a window emits one ``Match`` and the window is done.
+
+    Match interval is the **Influence window** (intersected with
+    ``ctx.window`` when ``within`` scopes the query) — *not* the
+    influencer's own lifetime. That makes ``within X: ego influenced_by
+    Y`` and ``ego influenced_by Y while Z`` compose correctly: the
+    influencer is a static traffic sign or fixed light; the period
+    where it actually modulates ego behaviour is the Influence window
+    the annotator authored.
+    """
+    if not _is_valid_influenced_by_lhs(node.left):
+        raise QueryParseError(
+            1, 1,
+            f"influenced_by LHS must be `ego`, `agent`, or `agent(...)` — "
+            f"got {type(node.left).__name__}",
+        )
+
+    expected_entities = _rhs_target_entities(node.right)
+    head_to_tl = _build_head_to_tl(ctx)
+    owners = _influenced_by_owner_pairs(node.left, ctx)
+
+    matches: list[Match] = []
+    for owner, infl_list in owners:
+        for infl in infl_list:
+            infl_iv = _interval_from_strings_or_clip_influence(infl, ctx.bundle)
+            iv = _intersect_window(infl_iv, ctx.window)
+            if iv is None or iv.duration <= 0:
+                continue
+            for influencer_id in infl.influencers:
+                subject = ctx.id_index.get(influencer_id)
+                if subject is None:
+                    continue
+                # Pass the raw Influence window (pre-`within` intersection)
+                # so light-state expansion filters by whether the state's
+                # own interval overlaps the Influence window — keeps a
+                # cycling head from matching every colour at once.
+                candidates = _resolve_influencer_candidates(
+                    subject, ctx, head_to_tl, infl_iv
+                )
+                hit = False
+                for entity_name, candidate in candidates:
+                    if expected_entities and entity_name not in expected_entities:
+                        continue
+                    if _candidate_satisfies(entity_name, candidate, node.right, ctx):
+                        matches.append(
+                            Match(ctx.bundle.video.clip_id, owner, iv)
+                        )
+                        hit = True
+                        break
+                if hit:
+                    break
+    return MatchSet(tuple(matches))
+
+
+def _interval_from_strings_or_clip_influence(
+    infl: Any, bundle: AnnotationBundle
+) -> Interval:
+    """Influence-record interval reader. Falls back to the clip span
+    when ``start_timestamp`` / ``end_timestamp`` are missing or
+    unparseable — mirrors the convention used by other temporal-bearing
+    schema entries.
+    """
+    iv = Interval.from_strings(
+        getattr(infl, "start_timestamp", None),
+        getattr(infl, "end_timestamp", None),
+    )
+    return iv if iv is not None else _clip_span(bundle)
+
+
+def _eval_entity_ref(node: EntityRef, ctx: _Context) -> MatchSet:
+    """Defensive evaluator for a top-level ``EntityRef``. The parser
+    only emits ``EntityRef`` as ``influenced_by``'s LHS today, so this
+    path is unreachable from a well-formed query; we still cover it so
+    a future operator can reuse the AST node without surprises.
+
+    Semantics: every candidate of the named entity matches over its
+    natural interval (mirroring a trivially-true entity clause).
+    """
+    desc = ENTITIES[node.entity]
+    matches: list[Match] = []
+    for c in desc.candidates(ctx.bundle):
+        iv = desc.interval(c, ctx.bundle)
+        iv = _intersect_window(iv, ctx.window)
+        if iv is None and ctx.window is not None:
+            continue
+        if iv is not None and iv.duration <= 0:
+            continue
+        matches.append(Match(ctx.bundle.video.clip_id, c, iv))
+    return MatchSet(tuple(matches))
 
 
 # ---------------------------------------------------------------------------
