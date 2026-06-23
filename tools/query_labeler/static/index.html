@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CASCADE query labeler</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --panel: #fff;
+    --border: #e2e2e2;
+    --muted: #777;
+    --accent: #3a82f7;
+    --tp: #1ea25b;
+    --fp: #d04141;
+    --skip: #b08020;
+  }
+  * { box-sizing: border-box; }
+  body { font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: #222; }
+  #app { display: grid; grid-template-columns: 420px 1fr; height: 100vh; }
+  /* Left pane: queries list */
+  #queries { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; }
+  #queries header { padding: 10px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  #queries header h2 { margin: 0 0 6px; font-size: 14px; }
+  #search { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; }
+  .qrow { padding: 8px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .qrow:hover { background: #f0f4ff; }
+  .qrow.active { background: #e8efff; }
+  .qrow .name { font-weight: 600; }
+  .qrow .qstr { color: var(--muted); font-family: ui-monospace, Menlo, Monaco, monospace; font-size: 11px; word-break: break-all; margin-top: 2px; }
+  .qrow .stats { color: var(--muted); font-size: 11px; margin-top: 3px; }
+  .qrow .stats .prog { color: var(--accent); font-weight: 600; }
+  /* Right pane */
+  #panel { display: flex; flex-direction: column; overflow: hidden; }
+  #panel header { padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  #panel header h1 { margin: 0; font-size: 16px; }
+  #panel header .desc { color: var(--muted); margin-top: 4px; }
+  #panel header .qs { font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin-top: 6px; padding: 4px 8px; background: #f4f4f4; border-radius: 4px; }
+  #clip-area { flex: 1; display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px; overflow: hidden; }
+  #video-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  #video { width: 100%; max-height: 70vh; background: #000; border-radius: 4px; }
+  #video-status { color: var(--muted); font-size: 12px; min-height: 16px; }
+  #meta { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 12px; overflow-y: auto; }
+  #meta dl { display: grid; grid-template-columns: 90px 1fr; gap: 4px 10px; margin: 0; }
+  #meta dt { color: var(--muted); }
+  #meta dd { margin: 0; word-break: break-word; }
+  #meta .label-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-weight: 600; font-size: 11px; color: #fff; }
+  #meta .label-badge.tp { background: var(--tp); }
+  #meta .label-badge.fp { background: var(--fp); }
+  #meta .label-badge.skip { background: var(--skip); }
+  /* Controls */
+  #controls { padding: 12px 18px; border-top: 1px solid var(--border); background: var(--panel); display: flex; gap: 12px; align-items: center; }
+  #controls .progress { color: var(--muted); flex: 1; }
+  #controls button { padding: 8px 16px; border: 1px solid var(--border); background: #fff; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 13px; }
+  #controls button:hover { background: #f4f4f4; }
+  #controls button.tp { color: var(--tp); border-color: var(--tp); }
+  #controls button.fp { color: var(--fp); border-color: var(--fp); }
+  #controls button.skip { color: var(--skip); border-color: var(--skip); }
+  #controls button.tp:hover { background: var(--tp); color: #fff; }
+  #controls button.fp:hover { background: var(--fp); color: #fff; }
+  #controls button.skip:hover { background: var(--skip); color: #fff; }
+  #controls .nav { display: flex; gap: 6px; }
+  #empty { padding: 60px 20px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="queries">
+    <header>
+      <h2>Queries <span id="q-summary" style="font-weight: normal; color: var(--muted);"></span></h2>
+      <input id="search" placeholder="filter…" />
+    </header>
+    <div id="qlist"></div>
+  </aside>
+  <main id="panel">
+    <div id="empty">Pick a query from the left to start labeling.</div>
+  </main>
+</div>
+
+<script>
+const state = {
+  queries: [],
+  filtered: [],
+  selectedIdx: null,
+  matches: [],
+  clipIdx: 0,
+};
+
+async function loadQueries() {
+  const r = await fetch("/api/queries");
+  state.queries = await r.json();
+  state.filtered = state.queries.slice();
+  renderQueryList();
+  document.getElementById("q-summary").textContent =
+    `(${state.queries.length})`;
+}
+
+function renderQueryList() {
+  const el = document.getElementById("qlist");
+  el.innerHTML = "";
+  for (const q of state.filtered) {
+    const row = document.createElement("div");
+    row.className = "qrow" + (q.idx === state.selectedIdx ? " active" : "");
+    const name = q.scenario_name || q.description || `query #${q.idx}`;
+    row.innerHTML = `
+      <div class="name">${escapeHtml(name)}</div>
+      <div class="qstr">${escapeHtml(q.query)}</div>
+      <div class="stats">
+        ${q.matches} matches · <span class="prog">${q.labeled}/${q.matches} labeled</span> · ${escapeHtml(q.theme || "—")}
+      </div>
+    `;
+    row.onclick = () => selectQuery(q.idx);
+    el.appendChild(row);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+document.getElementById("search").addEventListener("input", (e) => {
+  const term = e.target.value.toLowerCase();
+  state.filtered = state.queries.filter(q =>
+    q.query.toLowerCase().includes(term)
+    || (q.description || "").toLowerCase().includes(term)
+    || (q.scenario_name || "").toLowerCase().includes(term)
+    || (q.theme || "").toLowerCase().includes(term)
+  );
+  renderQueryList();
+});
+
+async function selectQuery(idx) {
+  state.selectedIdx = idx;
+  state.clipIdx = 0;
+  renderQueryList();
+  const r = await fetch(`/api/query/${idx}/matches`);
+  const data = await r.json();
+  state.matches = data.clips;
+  renderPanel(data);
+}
+
+function renderPanel(data) {
+  const panel = document.getElementById("panel");
+  if (state.matches.length === 0) {
+    panel.innerHTML = `<div id="empty">No matches for this query.</div>`;
+    return;
+  }
+  panel.innerHTML = `
+    <header>
+      <h1>${escapeHtml(data.scenario_name || data.description || "query #" + data.idx)}</h1>
+      <div class="desc">${escapeHtml(data.description || "")}</div>
+      <div class="qs">${escapeHtml(data.query)}</div>
+    </header>
+    <div id="clip-area">
+      <div id="video-wrap">
+        <video id="video" controls autoplay muted></video>
+        <div id="video-status"></div>
+      </div>
+      <div id="meta"></div>
+    </div>
+    <div id="controls">
+      <div class="progress" id="progress"></div>
+      <div class="nav">
+        <button id="prev">◀ Prev</button>
+        <button id="next">Next ▶</button>
+      </div>
+      <button class="skip" id="bt-skip">Skip (S)</button>
+      <button class="fp" id="bt-fp">False positive (F)</button>
+      <button class="tp" id="bt-tp">True positive (T)</button>
+    </div>
+  `;
+  document.getElementById("prev").onclick = () => move(-1);
+  document.getElementById("next").onclick = () => move(1);
+  document.getElementById("bt-tp").onclick = () => label("tp");
+  document.getElementById("bt-fp").onclick = () => label("fp");
+  document.getElementById("bt-skip").onclick = () => label("skip");
+  renderClip();
+}
+
+function renderClip() {
+  if (state.matches.length === 0) return;
+  const c = state.matches[state.clipIdx];
+  const labelBadge = c.label
+    ? `<span class="label-badge ${c.label}">${c.label.toUpperCase()}</span>`
+    : `<span style="color: var(--muted)">unlabeled</span>`;
+  document.getElementById("meta").innerHTML = `
+    <dl>
+      <dt>clip_id</dt><dd style="font-family: ui-monospace, monospace; font-size: 11px;">${escapeHtml(c.clip_id)}</dd>
+      <dt>label</dt><dd>${labelBadge}</dd>
+      <dt>brief</dt><dd>${escapeHtml(c.brief_description || "—")}</dd>
+      <dt>duration</dt><dd>${c.duration_s?.toFixed(1) ?? "?"}s @ ${c.fps?.toFixed(1) ?? "?"}fps</dd>
+      <dt>ego.actions</dt><dd>${c.ego_actions.map(escapeHtml).join(", ") || "—"}</dd>
+      <dt>agents</dt><dd>${c.agent_types.map(escapeHtml).join(", ") || "—"}</dd>
+      <dt>lights</dt><dd>${c.light_colors.map(escapeHtml).join(", ") || "—"}</dd>
+      <dt>objs</dt><dd>${c.obj_types.map(escapeHtml).join(", ") || "—"}</dd>
+      <dt>conds</dt><dd>${c.cond_types.map(escapeHtml).join(", ") || "—"}</dd>
+    </dl>
+  `;
+  const v = document.getElementById("video");
+  v.src = `/api/clip/${encodeURIComponent(c.clip_id)}/video`;
+  v.load();
+  pollStatus(c.clip_id);
+  const labeled = state.matches.filter(m => m.label != null).length;
+  document.getElementById("progress").textContent =
+    `${state.clipIdx + 1} / ${state.matches.length}  ·  ${labeled} labeled`;
+}
+
+let statusTimer = null;
+function pollStatus(clipId) {
+  if (statusTimer) clearInterval(statusTimer);
+  const el = document.getElementById("video-status");
+  if (!el) return;
+  let cleared = false;
+  statusTimer = setInterval(async () => {
+    try {
+      const r = await fetch(`/api/clip/${encodeURIComponent(clipId)}/video/status`);
+      const s = await r.json();
+      if (s.stage === "ready" || s.stage === "idle") {
+        if (!cleared) { el.textContent = ""; cleared = true; }
+        clearInterval(statusTimer); statusTimer = null;
+      } else {
+        el.textContent = `${s.stage}${s.message ? ": " + s.message : ""}…`;
+      }
+    } catch (_) {}
+  }, 800);
+}
+
+function move(delta) {
+  const n = state.matches.length;
+  state.clipIdx = ((state.clipIdx + delta) % n + n) % n;
+  renderClip();
+}
+
+async function label(value) {
+  const c = state.matches[state.clipIdx];
+  const query = state.queries.find(q => q.idx === state.selectedIdx).query;
+  const r = await fetch("/api/labels", {
+    method: "POST",
+    headers: {"content-type": "application/json"},
+    body: JSON.stringify({query, clip_id: c.clip_id, label: value}),
+  });
+  if (!r.ok) {
+    alert("label failed: " + r.status);
+    return;
+  }
+  const { row } = await r.json();
+  c.label = row.label;
+  c.label_ts = row.ts;
+  c.labeler = row.labeler;
+  // refresh query list 'labeled' counts
+  const q = state.queries.find(qq => qq.idx === state.selectedIdx);
+  q.labeled = state.matches.filter(m => m.label != null).length;
+  renderQueryList();
+  // advance to next unlabeled
+  const nextUnlabeled = state.matches.findIndex((m, i) =>
+    i > state.clipIdx && m.label == null);
+  if (nextUnlabeled >= 0) {
+    state.clipIdx = nextUnlabeled;
+  } else {
+    state.clipIdx = (state.clipIdx + 1) % state.matches.length;
+  }
+  renderClip();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if (state.selectedIdx == null) return;
+  if (e.key === "t" || e.key === "T") label("tp");
+  if (e.key === "f" || e.key === "F") label("fp");
+  if (e.key === "s" || e.key === "S") label("skip");
+  if (e.key === "ArrowLeft" || e.key === "j") move(-1);
+  if (e.key === "ArrowRight" || e.key === "k" || e.key === " ") { e.preventDefault(); move(1); }
+});
+
+loadQueries();
+</script>
+</body>
+</html>
