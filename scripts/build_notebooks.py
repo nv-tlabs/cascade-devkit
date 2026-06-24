@@ -309,6 +309,7 @@ def build_dsl_tour() -> None:
         | `A while B` | A and B with intersecting intervals |
         | `A then(K) B` | B starts during A or within K seconds after |
         | `A because_of B` | A's `because_of` edge points at a B |
+        | `A influenced_by B` | A's `Influence` side-channel points at a B |
         | `within W: E` | restrict E's time window to W's intervals |
 
         The full specification lives in `docs/user/query_language.md`.
@@ -508,6 +509,22 @@ def build_dsl_tour() -> None:
         run([
             "ego.action = decel because_of agent.type = ped",
             "ego.action = drive because_of agent.type = ped",
+        ])
+        """),
+        md("""
+        ## Relational — `influenced_by`
+
+        Walks the schema's `Influence.influencers` side-channel (distinct
+        from action-rooted `because_of`): "this entity *was under the
+        influence of* B". The LHS is a bare entity (`ego` / `agent(...)`)
+        and the match interval is the influence window, so it composes
+        with `while` / `then`. A `light.color` RHS is scoped to that window.
+        """),
+        code("""
+        run([
+            "ego influenced_by light.color = red",
+            "agent(type = vehicle) influenced_by obj.type = stop_sign",
+            "ego influenced_by (obj.type = stop_sign or light.color = red)",
         ])
         """),
         md("""

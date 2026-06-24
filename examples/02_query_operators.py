@@ -139,6 +139,19 @@ def main() -> None:
         "(agent.action.type = fst:DrivingInLane or agent.action.type = oxd:ChangeLane)",
     )
 
+    section("Relational: 'A influenced_by B' — A's Influence side-channel points to B")
+    # `influenced_by` walks the schema's `Influence.influencers` list, which is
+    # distinct from action-rooted `because_of`: it reads "this entity *was
+    # under the influence of* B", regardless of a specific action. The LHS is a
+    # bare entity (`ego` / `agent(...)`); the match interval is the influence
+    # window, so it composes with `while` / `then`. A LightStates RHS is scoped
+    # to that window (a head cycling green→red matches `light.color = red` only
+    # while the influence window overlaps the red phase).
+    show(ds, "ego influenced_by light.color = red")
+    show(ds, "agent(type = vehicle) influenced_by obj.type = stop_sign")
+    show(ds, "ego influenced_by (obj.type = stop_sign or light.color = red)")
+    show(ds, "ego influenced_by light.color = red and ego.action = stop")
+
     section("Window scoping: 'within W: E' — restrict E's time to W's intervals")
     show(ds, "within light.color = red: not ego.action = stop")
     show(ds, "within env.type = crosswalk: agent.type = ped")
