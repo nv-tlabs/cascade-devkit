@@ -66,6 +66,13 @@ Single Python package: `cascade_av`. Sub-packages mirror the data flow.
   clip's bundle joined with egomotion + video features). If the
   `[hf]` extra is missing, `CascadeDataset` and `Sequence` import as
   `None` at the package root so non-corpus code paths still work.
+  The parent interface is initialized **lazily**: the constructor only
+  scans local annotation JSON, and the gated-repo metadata download in
+  `PhysicalAIAVDatasetInterface.__init__` is deferred to `_ensure_parent`,
+  called by the feature/video entry points (`get_sequence`,
+  `download_clips`). This keeps the query API (`find` / `count` /
+  `group_by`, which read only `_by_clip`) zero-network and token-free; an
+  HF token is required only once you reach for clip video/egomotion.
 - **`query/`** — the DSL and evaluator. Layered:
   - `time.py` — `Interval` and timestamp parsing.
   - `index.py` — `IdIndex`, the by-ID lookup of every addressable

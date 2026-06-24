@@ -84,6 +84,61 @@ def test_flat_corpus_yields_none_batch(patched_parent: None) -> None:
     assert any(b is None for b in batches)
 
 
+def test_query_api_does_not_initialize_parent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pure-annotation query API must work with *zero* parent init.
+
+    Constructing a dataset and running `find` / `count` / `group_by` reads
+    only local JSON — it must never trigger the gated-repo network I/O in
+    `PhysicalAIAVDatasetInterface.__init__`. We make that init explode and
+    assert the query paths sail past it; this is what lets query-only
+    notebooks (01–04) run with no HF token.
+    """
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    def _boom(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("parent (network) init must not run for query-only use")
+
+    monkeypatch.setattr(PhysicalAIAVDatasetInterface, "__init__", _boom)
+
+    ds = CascadeDataset(CORPUS)
+    assert ds._parent_ready is False
+    assert isinstance(ds.count("agent.type = ped"), int)
+    assert isinstance(len(ds.find("agent.type = ped")), int)
+    assert isinstance(ds.group_by("agent.type = vehicle", key="agent.type"), dict)
+    # Still deferred after queries, and `repr` is parent-free (no network).
+    assert ds._parent_ready is False
+    assert "parent-deferred" in repr(ds)
+
+
+def test_get_sequence_initializes_parent_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`get_sequence` brings the parent up lazily — exactly once."""
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+
+    calls: list[str] = []
+
+    def _record_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append("init")
+
+    def _no_feature(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        # Make egomotion look uncached so `Sequence.__init__` skips it
+        # (it swallows FileNotFoundError) and we don't hit real I/O.
+        raise FileNotFoundError
+
+    monkeypatch.setattr(PhysicalAIAVDatasetInterface, "__init__", _record_init)
+    monkeypatch.setattr(PhysicalAIAVDatasetInterface, "get_clip_feature", _no_feature)
+
+    ds = CascadeDataset(CORPUS)
+    assert ds._parent_ready is False
+
+    ds.get_sequence(ds.list_sequences()[0])
+    assert calls == ["init"]
+    assert ds._parent_ready is True
+
+    # Idempotent: a second access does not re-initialize the parent.
+    ds.get_sequence(ds.list_sequences()[1])
+    assert calls == ["init"]
+
+
 def test_state_at_instant_and_range() -> None:
     # Pick an arbitrary corpus file — the largest, so we know it has content.
     path = max(CORPUS.glob("*.json"), key=lambda p: p.stat().st_size)
