@@ -656,7 +656,7 @@ def test_influenced_by_runs_on_live_corpus(patched_parent: None) -> None:
     clause-LHS forms. We don't pin to a specific count; the only
     contract here is "the operator wires through the dataset surface."
     """
-    ds = CascadeDataset(CORPUS)
+    ds = CascadeDataset(_skip_if_no_corpus())
     for q in (
         "ego influenced_by light.color = red",
         "agent influenced_by obj.type = stop_sign",
