@@ -54,7 +54,14 @@ _MC = ConfigDict(extra="allow", populate_by_name=True)
 
 
 class Containment(BaseModel):
-    """Containment of an entity within an environment / lane over a window."""
+    """Containment of an entity within an environment / lane over a window.
+
+    Optional throughout the schema: every ``containment`` list defaults to
+    empty and is not guaranteed per entity. ``env_id`` may also be blank —
+    some annotation scopes (e.g. ego-centric batches) record containment
+    windows without linking them to an annotated :class:`Environment`, and
+    the ego often carries no containment at all.
+    """
 
     model_config = _MC
 
@@ -381,6 +388,9 @@ class SilAvAnnotation(BaseModel):
     eventful_reason: str | None = None
     eventful_reason_other: str = ""  # free text when eventful_reason == "other"
     brief_description: str = ""
+    # Optional spatial layer — may be empty. Density depends on annotation
+    # scope: ego-centric batches focus on ego/agent behavior and carry few or
+    # no environments/conditions (and little containment; see Containment).
     environments: list[Environment] = Field(default_factory=list)
     conditions: list[Condition] = Field(default_factory=list)
     traffic_objects: list[TrafficObject] = Field(default_factory=list)
