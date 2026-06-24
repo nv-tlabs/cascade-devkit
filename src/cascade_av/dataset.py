@@ -104,18 +104,53 @@ class CascadeDataset(PhysicalAIAVDatasetInterface):
         # the parent's metadata download.
         annotation_paths, annotation_root = self._resolve_annotation_paths(annotations)
 
-        super().__init__(
-            revision=revision,
-            token=token,
-            cache_dir=cache_dir,
-            local_dir=local_dir,
-            confirm_download_threshold_gb=confirm_download_threshold_gb,
-        )
+        # Defer the parent `PhysicalAIAVDatasetInterface.__init__` — it does
+        # gated-repo network I/O (downloads `clip_index.parquet` /
+        # `feature_presence.parquet` from `nvidia/PhysicalAI-Autonomous-Vehicles`)
+        # that the pure-annotation query API (`find` / `count` / `group_by`)
+        # never needs. We initialize the parent lazily on the first call that
+        # actually reads clip features or video — `get_sequence` /
+        # `download_clips` — via `_ensure_parent`. This lets query-only
+        # workflows (e.g. notebooks 01–04) construct the dataset with no HF
+        # token and no network. See `_ensure_parent`.
+        self._parent_init_kwargs: dict[str, object] = {
+            "revision": revision,
+            "token": token,
+            "cache_dir": cache_dir,
+            "local_dir": local_dir,
+            "confirm_download_threshold_gb": confirm_download_threshold_gb,
+        }
+        self._parent_ready = False
 
         self.annotation_camera = annotation_camera
         # _by_clip[clip_id] = (path, batch_name_or_None, bundle)
         self._by_clip: dict[str, tuple[Path, str | None, AnnotationBundle]] = {}
         self._scan(annotation_paths, annotation_root)
+
+    def _ensure_parent(self) -> None:
+        """Initialize the parent HF dataset interface on first use.
+
+        Idempotent: the underlying `super().__init__` (which contacts the
+        gated parent repo for clip metadata) runs at most once. The query
+        API never calls this; feature/video access (`get_sequence`,
+        `download_clips`) does, so a token/network is only required when you
+        actually reach for clip data. Re-raises the parent's errors verbatim
+        (e.g. `GatedRepoError` when the HF token is missing or lacks access).
+        """
+        if self._parent_ready:
+            return
+        super().__init__(**self._parent_init_kwargs)
+        self._parent_ready = True
+
+    def __repr__(self) -> str:
+        # The parent's `__repr__` reads `repo_snapshot_info`, which doesn't
+        # exist until `_ensure_parent` runs. Provide a parent-free repr so
+        # `repr(ds)` is safe (and informative) for query-only datasets.
+        state = "parent-initialized" if self._parent_ready else "parent-deferred"
+        return (
+            f"CascadeDataset({len(self._by_clip)} clips, "
+            f"annotation_camera={self.annotation_camera!r}, {state})"
+        )
 
     # -- annotation loading ---------------------------------------------------
 
@@ -202,6 +237,9 @@ class CascadeDataset(PhysicalAIAVDatasetInterface):
         """
         if clip_id not in self._by_clip:
             raise KeyError(f"clip_id not in dataset: {clip_id}")
+        # `Sequence` eagerly reads egomotion off the parent, so the parent
+        # interface must be live before we build it.
+        self._ensure_parent()
         path, batch, bundle = self._by_clip[clip_id]
         seq = Sequence(
             annotation=bundle,
@@ -285,6 +323,8 @@ class CascadeDataset(PhysicalAIAVDatasetInterface):
             feats = [self.annotation_camera, *self.DEFAULT_DOWNLOAD_FEATURES]
         else:
             feats = list(features)
+        # Downloading reads the parent repo's feature index — bring it up now.
+        self._ensure_parent()
         self.download_clip_features(ids, features=feats)
 
     def context_for(self, match: Match) -> ContextWindow:
