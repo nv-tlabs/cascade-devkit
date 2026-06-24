@@ -90,15 +90,15 @@ def _clip_span(bundle: AnnotationBundle) -> Interval:
 
 
 def _interval_from_strings_or_clip(
-    obj: Any, bundle: AnnotationBundle,
-    start: str = "start_timestamp", end: str = "end_timestamp",
+    obj: Any,
+    bundle: AnnotationBundle,
+    start: str = "start_timestamp",
+    end: str = "end_timestamp",
 ) -> Interval | None:
     """Try to parse `obj.<start>` / `obj.<end>` into an Interval; fall back
     to the clip span if either field is missing or unparseable.
     """
-    iv = Interval.from_strings(
-        getattr(obj, start, None), getattr(obj, end, None)
-    )
+    iv = Interval.from_strings(getattr(obj, start, None), getattr(obj, end, None))
     if iv is not None:
         return iv
     return _clip_span(bundle)
@@ -192,12 +192,8 @@ def _generic_interval(obj: Any, bundle: AnnotationBundle) -> Interval:
     return iv if iv is not None else _clip_span(bundle)
 
 
-def _object_visibility_interval(
-    obj: TrafficObject, bundle: AnnotationBundle
-) -> Interval:
-    iv = Interval.from_strings(
-        obj.visibility_start_timestamp, obj.visibility_end_timestamp
-    )
+def _object_visibility_interval(obj: TrafficObject, bundle: AnnotationBundle) -> Interval:
+    iv = Interval.from_strings(obj.visibility_start_timestamp, obj.visibility_end_timestamp)
     return iv if iv is not None else _clip_span(bundle)
 
 
@@ -220,6 +216,10 @@ def _clip_duration(b: AnnotationBundle, _bundle: AnnotationBundle) -> float:
 
 def _clip_eventful(b: AnnotationBundle, _bundle: AnnotationBundle) -> bool | None:
     return b.annotation.eventful
+
+
+def _clip_eventful_reason(b: AnnotationBundle, _bundle: AnnotationBundle) -> str | None:
+    return b.annotation.eventful_reason
 
 
 def _clip_brief_description(b: AnnotationBundle, _bundle: AnnotationBundle) -> str:
@@ -450,15 +450,11 @@ def _light_on_ego_path(ls: LightStates, _bundle: AnnotationBundle) -> bool | Non
     return ls.yellow_on_ego_path
 
 
-def _light_ego_in_on_yellow(
-    ls: LightStates, _bundle: AnnotationBundle
-) -> bool | None:
+def _light_ego_in_on_yellow(ls: LightStates, _bundle: AnnotationBundle) -> bool | None:
     return ls.ego_in_intersection_on_yellow
 
 
-def _light_could_have_cleared(
-    ls: LightStates, _bundle: AnnotationBundle
-) -> bool | None:
+def _light_could_have_cleared(ls: LightStates, _bundle: AnnotationBundle) -> bool | None:
     return ls.ego_could_have_cleared_safely
 
 
@@ -528,9 +524,7 @@ def _action_link_to(action: AgentAction | EgoAction, _bundle: AnnotationBundle) 
     return list(action.link_to)
 
 
-def _action_action_target(
-    action: AgentAction | EgoAction, _bundle: AnnotationBundle
-) -> list[str]:
+def _action_action_target(action: AgentAction | EgoAction, _bundle: AnnotationBundle) -> list[str]:
     """IDs of entities targeted by an action — currently set on
     `Yield` / `Follow` / `Overtake` to name the affected agent or
     object. Companion to `action.because_of` and `action.link_to`."""
@@ -630,9 +624,7 @@ AGENT_PROP_DESCRIPTOR = EntityDescriptor(
         # ``Signal``; ``None`` elsewhere. The 100json corpus shows the
         # source modality on 65 % of Signal props and the
         # not-facing-ego flag on the same share.
-        "source": Attribute(
-            reader=_prop_signaling_source, alias_family="signaling_source"
-        ),
+        "source": Attribute(reader=_prop_signaling_source, alias_family="signaling_source"),
         "not_facing_ego": Attribute(reader=_prop_not_facing_ego),
     },
 )
@@ -644,9 +636,7 @@ EGO_PROP_DESCRIPTOR = EntityDescriptor(
     interval=_prop_interval_reader,
     attributes={
         "type": Attribute(reader=_prop_type_attr, alias_family="ego_property_type"),
-        "source": Attribute(
-            reader=_prop_signaling_source, alias_family="signaling_source"
-        ),
+        "source": Attribute(reader=_prop_signaling_source, alias_family="signaling_source"),
         "not_facing_ego": Attribute(reader=_prop_not_facing_ego),
     },
 )
@@ -661,6 +651,7 @@ CLIP_DESCRIPTOR = EntityDescriptor(
         "fps": Attribute(reader=_clip_fps),
         "duration": Attribute(reader=_clip_duration),
         "eventful": Attribute(reader=_clip_eventful),
+        "eventful_reason": Attribute(reader=_clip_eventful_reason, alias_family="eventful_reason"),
         "brief_description": Attribute(reader=_clip_brief_description),
     },
 )
@@ -710,12 +701,8 @@ AGENT_DESCRIPTOR = EntityDescriptor(
         "signaling": Attribute(
             reader=_agent_signaling, alias_family="signaling_intent", kind="list"
         ),
-        "action": Attribute(
-            reader=_agent_actions, kind="sub_entity", sub_entity="agent.action"
-        ),
-        "prop": Attribute(
-            reader=_agent_props, kind="sub_entity", sub_entity="agent.prop"
-        ),
+        "action": Attribute(reader=_agent_actions, kind="sub_entity", sub_entity="agent.action"),
+        "prop": Attribute(reader=_agent_props, kind="sub_entity", sub_entity="agent.prop"),
     },
 )
 
@@ -725,12 +712,8 @@ EGO_DESCRIPTOR = EntityDescriptor(
     candidates=_ego_candidates,
     interval=_clip_interval,
     attributes={
-        "action": Attribute(
-            reader=_ego_actions, kind="sub_entity", sub_entity="ego.action"
-        ),
-        "prop": Attribute(
-            reader=_ego_props, kind="sub_entity", sub_entity="ego.prop"
-        ),
+        "action": Attribute(reader=_ego_actions, kind="sub_entity", sub_entity="ego.action"),
+        "prop": Attribute(reader=_ego_props, kind="sub_entity", sub_entity="ego.prop"),
         "judgment": Attribute(reader=_ego_judgment, alias_family="driving_judgment"),
         # See AGENT_DESCRIPTOR — the alias is needed because `in` is also
         # a reserved DSL keyword.  Both keys reference the same Attribute.
@@ -796,12 +779,8 @@ OBJ_DESCRIPTOR = EntityDescriptor(
     interval=_object_visibility_interval,
     attributes={
         "type": Attribute(reader=_obj_type, alias_family="obj_type"),
-        "state": Attribute(
-            reader=_obj_state, alias_family="obj_motion_state", kind="list"
-        ),
-        "open": Attribute(
-            reader=_obj_open, alias_family="obj_open_state", kind="list"
-        ),
+        "state": Attribute(reader=_obj_state, alias_family="obj_motion_state", kind="list"),
+        "open": Attribute(reader=_obj_open, alias_family="obj_open_state", kind="list"),
         # Boolean containment-flag attributes — see AGENT_DESCRIPTOR for
         # the semantics. `obj.lane_edge` covers cones / barriers on a
         # lane boundary (55 % of TrafficObject.containment records carry
@@ -831,7 +810,13 @@ ENTITIES: Mapping[str, EntityDescriptor] = {
 
 # Top-level entities the parser exposes (without the "agent.action" forms).
 TOP_LEVEL_ENTITIES: tuple[str, ...] = (
-    "clip", "agent", "ego", "env", "cond", "light", "obj",
+    "clip",
+    "agent",
+    "ego",
+    "env",
+    "cond",
+    "light",
+    "obj",
 )
 
 

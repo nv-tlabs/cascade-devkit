@@ -35,6 +35,7 @@ from cascade_av.spec.schema import (
     EgoActionTypeVocab,
     EgoPropertyTypeVocab,
     EnvironmentTypeVocab,
+    EventfulReasonVocab,
     LightColorVocab,
     LightShapeVocab,
     LightStateTypeVocab,
@@ -98,8 +99,7 @@ AGENT_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
 }
 AGENT_TYPE_PARENTS = {
     **AGENT_TYPE_PARENTS,
-    "vru": AGENT_TYPE_PARENTS["ped"]
-    | AGENT_TYPE_PARENTS["cyclist"],
+    "vru": AGENT_TYPE_PARENTS["ped"] | AGENT_TYPE_PARENTS["cyclist"],
 }
 
 AGENT_TYPE: Mapping[str, frozenset[str]] = {**AGENT_TYPE_ALIASES, **AGENT_TYPE_PARENTS}
@@ -126,7 +126,7 @@ ACTION_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
     "creep": frozenset({EgoActionTypeVocab.CREEP}),
     "enter": frozenset({EgoActionTypeVocab.ENTER}),
     "follow": frozenset({EgoActionTypeVocab.FOLLOW_ROAD_USER}),
-    "not_move": frozenset({EgoActionTypeVocab.NOT_MOVE}),
+    "not_move": frozenset({EgoActionTypeVocab.NOT_MOVE}),  # DEPRECATED upstream value
     "abort": frozenset({EgoActionTypeVocab.MANEUVER_ABORT}),
     "reverse": frozenset({EgoActionTypeVocab.REVERSE}),
     "turn_left": frozenset({"oxd:MakeALeftTurn"}),
@@ -139,6 +139,10 @@ ACTION_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
     "nudge_out": frozenset({EgoActionTypeVocab.NUDGE_OUT_OF_LANE}),
     "nudge": frozenset({"fst:Nudge"}),
     "overtake": frozenset({EgoActionTypeVocab.OVERTAKE}),
+    # Standalone base verb (NOT the `(jaywalk)` parenthesized suffix flag —
+    # that stays in ACTION_FLAG_TOKENS). Keyed `jaywalk_action` to avoid
+    # colliding with the suffix-flag token `jaywalk`.
+    "jaywalk_action": frozenset({AgentActionTypePedestrianVocab.JAYWALK}),
     "other": frozenset({AgentActionTypeVocab.OTHER}),
 }
 
@@ -150,9 +154,7 @@ ACTION_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
         | ACTION_TYPE_ALIASES["uturn"]
     ),
     "stop_yield_decel": (
-        ACTION_TYPE_ALIASES["stop"]
-        | ACTION_TYPE_ALIASES["yield"]
-        | ACTION_TYPE_ALIASES["decel"]
+        ACTION_TYPE_ALIASES["stop"] | ACTION_TYPE_ALIASES["yield"] | ACTION_TYPE_ALIASES["decel"]
     ),
 }
 
@@ -207,6 +209,8 @@ ENV_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
     "paved_shoulder": frozenset({EnvironmentTypeVocab.PAVED_SHOULDER}),
     "grass_shoulder": frozenset({EnvironmentTypeVocab.GRASS_SHOULDER}),
     "rail_crossing": frozenset({EnvironmentTypeVocab.RAIL_CROSSING}),
+    "speed_bump": frozenset({EnvironmentTypeVocab.SPEED_BUMP}),
+    "light_rail_lane": frozenset({EnvironmentTypeVocab.LIGHT_RAIL_LANE}),
     "other": frozenset({EnvironmentTypeVocab.OTHER}),
 }
 
@@ -300,6 +304,7 @@ OBJ_TYPE_ALIASES: Mapping[str, frozenset[str]] = {
     "dirt": frozenset({TrafficObjectTypeVocab.DIRT}),
     "other_debris": frozenset({TrafficObjectTypeVocab.OTHER_DEBRIS}),
     "not_identifiable": frozenset({TrafficObjectTypeVocab.NOT_IDENTIFIABLE}),
+    "boom_gate": frozenset({TrafficObjectTypeVocab.BOOM_GATE}),
     "other": frozenset({TrafficObjectTypeVocab.OTHER}),
 }
 
@@ -315,9 +320,7 @@ OBJ_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
         | OBJ_TYPE_ALIASES["adjacent_lanes_ahead"]
     ),
     "debris": (
-        OBJ_TYPE_ALIASES["other_debris"]
-        | OBJ_TYPE_ALIASES["trash"]
-        | OBJ_TYPE_ALIASES["dirt"]
+        OBJ_TYPE_ALIASES["other_debris"] | OBJ_TYPE_ALIASES["trash"] | OBJ_TYPE_ALIASES["dirt"]
     ),
     "barrier": (
         OBJ_TYPE_ALIASES["barrier"]
@@ -326,9 +329,7 @@ OBJ_TYPE_PARENTS: Mapping[str, frozenset[str]] = {
         | OBJ_TYPE_ALIASES["cone"]
     ),
     "fallen": (
-        OBJ_TYPE_ALIASES["toy"]
-        | OBJ_TYPE_ALIASES["ball"]
-        | OBJ_TYPE_ALIASES["fallen_object"]
+        OBJ_TYPE_ALIASES["toy"] | OBJ_TYPE_ALIASES["ball"] | OBJ_TYPE_ALIASES["fallen_object"]
     ),
 }
 
@@ -368,8 +369,7 @@ DIRECTION_ALIASES: Mapping[str, frozenset[str]] = {
 
 DIRECTION_PARENTS: Mapping[str, frozenset[str]] = {
     "perpendicular": (
-        DIRECTION_ALIASES["perpendicular_rl"]
-        | DIRECTION_ALIASES["perpendicular_lr"]
+        DIRECTION_ALIASES["perpendicular_rl"] | DIRECTION_ALIASES["perpendicular_lr"]
     ),
 }
 
@@ -389,6 +389,7 @@ AGENT_PROPERTY_TYPE: Mapping[str, frozenset[str]] = {
     "on_duty": frozenset({AgentPropertyTypeVocab.ON_DUTY}),
     "double_parked": frozenset({AgentPropertyTypeVocab.DOUBLE_PARKED}),
     "outside_camera": frozenset({AgentPropertyTypeVocab.OUTSIDE_CAMERA_VIEW}),
+    "stopped": frozenset({AgentPropertyTypeVocab.STOPPED}),
     "other": frozenset({AgentPropertyTypeVocab.OTHER}),
 }
 
@@ -402,18 +403,21 @@ EGO_PROPERTY_TYPE: Mapping[str, frozenset[str]] = {
     "on_duty": frozenset({EgoPropertyTypeVocab.ON_DUTY}),
     "double_parked": frozenset({EgoPropertyTypeVocab.DOUBLE_PARKED}),
     "outside_camera": frozenset({EgoPropertyTypeVocab.OUTSIDE_CAMERA_VIEW}),
+    "stopped": frozenset({EgoPropertyTypeVocab.STOPPED}),
     "other": frozenset({EgoPropertyTypeVocab.OTHER}),
 }
 
 SIGNALING_INTENT: Mapping[str, frozenset[str]] = {
     "proceed": frozenset({SignalIntentVocab.PROCEED}),
-    "turn": frozenset({SignalIntentVocab.TURN}),
+    "turn": frozenset({SignalIntentVocab.TURN}),  # DEPRECATED upstream value
     "stop": frozenset({SignalIntentVocab.STOP}),
     "caution": frozenset({SignalIntentVocab.CAUTION}),
     "slow": frozenset({SignalIntentVocab.SLOW_DOWN}),
     "follow": frozenset({SignalIntentVocab.FOLLOW}),
     "danger": frozenset({SignalIntentVocab.DANGER}),
     "unclear": frozenset({SignalIntentVocab.UNCLEAR}),
+    "signal_left": frozenset({SignalIntentVocab.LEFT_INDICATOR}),
+    "signal_right": frozenset({SignalIntentVocab.RIGHT_INDICATOR}),
     "other": frozenset({SignalIntentVocab.OTHER}),
 }
 
@@ -438,9 +442,9 @@ AGENT_AMOUNT_ALIASES: Mapping[str, frozenset[str]] = {
     "single": frozenset({AgentAmountVocab.SINGLE}),
     "row": frozenset({AgentAmountVocab.ROW_GROUP}),
     "group": frozenset({AgentAmountVocab.ROW_GROUP}),  # synonym for `row`
-    "light_traffic": frozenset({AgentAmountVocab.LIGHT_TRAFFIC}),
-    "medium_traffic": frozenset({AgentAmountVocab.MEDIUM_TRAFFIC}),
-    "heavy_traffic": frozenset({AgentAmountVocab.HEAVY_TRAFFIC}),
+    "light_traffic": frozenset({AgentAmountVocab.LIGHT_TRAFFIC}),  # DEPRECATED upstream value
+    "medium_traffic": frozenset({AgentAmountVocab.MEDIUM_TRAFFIC}),  # DEPRECATED upstream value
+    "heavy_traffic": frozenset({AgentAmountVocab.HEAVY_TRAFFIC}),  # DEPRECATED upstream value
 }
 
 AGENT_AMOUNT_PARENTS: Mapping[str, frozenset[str]] = {
@@ -470,6 +474,17 @@ DRIVING_JUDGMENT: Mapping[str, frozenset[str]] = {
     "good": frozenset({DrivingJudgmentVocab.GOOD}),
     "neutral": frozenset({DrivingJudgmentVocab.NEUTRAL}),
     "bad": frozenset({DrivingJudgmentVocab.BAD}),
+}
+
+# ---------------------------------------------------------------------------
+# Eventful reason — why a clip was flagged eventful (clip.eventful_reason)
+# ---------------------------------------------------------------------------
+
+EVENTFUL_REASON: Mapping[str, frozenset[str]] = {
+    "ego_adapts": frozenset({EventfulReasonVocab.EGO_ADAPTS}),
+    "special_env": frozenset({EventfulReasonVocab.SPECIAL_ENVIRONMENT}),
+    "agent_adapts": frozenset({EventfulReasonVocab.AGENT_ADAPTS}),
+    "other": frozenset({EventfulReasonVocab.OTHER}),
 }
 
 # ---------------------------------------------------------------------------
@@ -608,6 +623,7 @@ ALIAS_FAMILIES: Mapping[str, Mapping[str, frozenset[str]]] = {
     "signaling_source": SIGNALING_SOURCE,
     "agent_amount": AGENT_AMOUNT,
     "driving_judgment": DRIVING_JUDGMENT,
+    "eventful_reason": EVENTFUL_REASON,
 }
 
 
