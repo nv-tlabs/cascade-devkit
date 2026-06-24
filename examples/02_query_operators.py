@@ -183,15 +183,6 @@ def main() -> None:
     show(ds, "obj.lane_edge = true")
     show(ds, "agent(type = car, illegal_lane = true)")
 
-    section("Action target list — `action.action_target`")
-    # IDs are UUIDs, so the membership idiom is the natural call site.
-    show(ds, 'ego.action.action_target in ("00000000-0000-0000-0000-000000000000")')
-
-    section("Clip description — `clip.brief_description`")
-    # Equality only; the exact string per clip is unique, so this is
-    # most useful for spot-checks rather than aggregation.
-    show(ds, 'clip.brief_description = "(no such description)"')
-
     section("Newly-aliased 'Other' / 'Vehicle' values")
     show(ds, "agent.type = other")
     show(ds, "agent.type = generic_vehicle")
