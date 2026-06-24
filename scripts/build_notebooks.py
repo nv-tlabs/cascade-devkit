@@ -197,7 +197,7 @@ def build_quickstart() -> None:
         queries = [
             "agent.type = ped",
             "agent.type = vehicle",
-            "agent.type = ped and env.type = crosswalk",
+            "agent.type = ped and ego.action in (stop, yield, decel)",
             "ego.action = stop and light.color = red",
         ]
         pd.DataFrame(
@@ -213,7 +213,7 @@ def build_quickstart() -> None:
         each column individually.
         """),
         code("""
-        matches = ds.find("agent.type = ped and env.type = crosswalk")
+        matches = ds.find("agent.type = ped and ego.action in (stop, yield, decel)")
         clips = sorted(set(matches.clips()))
 
         print(f"{len(matches)} matches across {len(clips)} distinct clips")
@@ -444,9 +444,9 @@ def build_dsl_tour() -> None:
         """),
         code("""
         run([
-            "agent.type = ped and env.type = crosswalk",
+            "agent.type = ped and ego.action in (stop, yield, decel)",
             "ego.action = stop or ego.action = yield",
-            "agent.type = ped and not env.type = crosswalk",
+            "agent.type = ped and not ego.action = drive",
         ])
         """),
         md("""
@@ -507,8 +507,12 @@ def build_dsl_tour() -> None:
         """),
         code("""
         run([
-            "ego.action = decel because_of agent.type = ped",
-            "ego.action = drive because_of agent.type = ped",
+            # `because_of` holds the IDs of *actions / states / objects*
+            # that caused an action — never agent IDs directly. Point at
+            # the agent's action, a signal state, or a traffic object.
+            "ego.action = stop because_of light.color = red",
+            "ego.action in (stop, yield, decel) because_of "
+            'agent.action.type in ("oxd:Walk", "oxd:Stand")',
         ])
         """),
         md("""
@@ -523,7 +527,7 @@ def build_dsl_tour() -> None:
         code("""
         run([
             "ego influenced_by light.color = red",
-            "agent(type = vehicle) influenced_by obj.type = stop_sign",
+            "agent(type = vehicle) influenced_by light.color = red",
             "ego influenced_by (obj.type = stop_sign or light.color = red)",
         ])
         """),
@@ -537,7 +541,7 @@ def build_dsl_tour() -> None:
         code("""
         run([
             "within light.color = red: not ego.action = stop",
-            "within env.type = crosswalk: agent.type = ped",
+            "within env.type = road: agent.type = ped",
         ])
         """),
         md("""
@@ -766,9 +770,9 @@ def build_statistics() -> None:
             ("cyclist",                 "agent.type = cyclist"),
             ("stop sign",               "obj.type = stop_sign"),
             ("yield sign",              "obj.type = yield_sign"),
-            ("crosswalk environment",   "env.type = crosswalk"),
-            ("intersection environment", "env.type = intersection"),
-            ("roundabout environment",  "env.type = roundabout"),
+            ("road environment",        "env.type = road"),
+            ("other environment",       "env.type = other"),
+            ("multi-lane environment",  "env.lanes >= 2"),
         ]
         headline = pd.DataFrame(
             [(label, ds.count(q), entity_count(q)) for label, q in primitives],
@@ -934,15 +938,15 @@ def build_scenarios() -> None:
         ## The catalog
 
         Twenty scenarios spanning pedestrian interactions, traffic
-        signals, signage, lane changes, roundabouts, and explicit
+        signals, signage, lane changes, junctions, and explicit
         causal queries.
         """),
         code("""
         SCENARIOS = [
-            Scenario("1",  "Ego drives through crosswalk while pedestrian present",
-                     "agent.type = ped and env.type = crosswalk and ego.action = drive"),
-            Scenario("2",  "Ego yields/stops at crosswalk for a pedestrian",
-                     "agent.type = ped and env.type = crosswalk and ego.action in (stop, yield, decel)"),
+            Scenario("1",  "Ego drives on while a pedestrian is present (no yield)",
+                     "agent.type = ped and ego.action = drive"),
+            Scenario("2",  "Ego yields/stops/brakes for a pedestrian",
+                     "agent.type = ped and ego.action in (stop, yield, decel)"),
             Scenario("8",  "Pedestrian jaywalks; ego brakes / yields",
                      # Post-0.6.1, `Jaywalk` is a standalone action
                      # (alias jaywalk_action); the combined-suffix forms
@@ -952,14 +956,14 @@ def build_scenarios() -> None:
                      '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
                      '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"'
                      ')) and ego.action in (stop, yield, decel)'),
-            Scenario("9",  "Pedestrian crosses while ego is turning",
-                     "agent.type = ped and env.type = crosswalk and ego.action in (turn_left, turn_right)"),
+            Scenario("9",  "Pedestrian present while ego is turning",
+                     "agent.type = ped and ego.action in (turn_left, turn_right)"),
             Scenario("12", "Cyclist mid-block in ego's path; ego defensive",
                      "agent.type = cyclist and ego.action in (stop, yield, decel)"),
             Scenario("14", "Ego stops at a red traffic light (nominal)",
-                     "light.color = red and ego.action = stop and env.type = intersection"),
-            Scenario("16", "Signal blackout — ego treats as all-way stop",
-                     "light.state = off and ego.action = stop and env.type = intersection"),
+                     "light.color = red and ego.action = stop"),
+            Scenario("16", "Ego proceeds through a green light",
+                     "light.color = green and ego.action = drive"),
             Scenario("20", "Ego already in intersection when yellow begins, proceeds",
                      "light(color = yellow, ego_in_on_yellow = true) and ego.action in (drive, enter, creep)"),
             Scenario("21", "Ego approaches intersection, yellow appears, ego stops",
@@ -970,21 +974,21 @@ def build_scenarios() -> None:
                      "obj.type = stop_sign and ego.action = stop"),
             Scenario("yield-basic", "Ego yields at a yield sign",
                      "obj.type = yield_sign and ego.action = yield"),
-            Scenario("76", "Vehicle stopped in front of ego, ego nudges or changes lane",
-                     "agent(type = vehicle, pos = front, action(type in (stop, not_move))) "
+            Scenario("76", "Stopped vehicle ahead; ego nudges or changes lane",
+                     "agent(type = vehicle, action(type in (stop, not_move))) "
                      "and ego.action in (nudge, change_lane_left, change_lane_right)"),
             Scenario("lane-multi", "Multi-lane road, ego changes lane",
                      "env(type = road, lanes >= 2) and ego.action in (change_lane_left, change_lane_right)"),
-            Scenario("officer-stop", "Officer signaling stop; ego stops",
-                     "agent(type = officer, signaling = stop) and ego.action = stop"),
-            Scenario("144", "Ego transits roundabout without yielding",
-                     "env.type = roundabout and ego.action = drive"),
-            Scenario("142", "Vehicle cuts in at roundabout exit; ego brakes",
-                     "env.type = roundabout "
-                     "and agent(type = vehicle, action(type in (change_lane, change_lane_left, change_lane_right))) "
+            Scenario("emergency-vehicle", "Emergency / hazard vehicle (flashing lights) present; ego brakes",
+                     "agent(type = vehicle, prop.source = flashing_light) "
+                     "and ego.action in (stop, yield, decel)"),
+            Scenario("junction-turn", "Ego turns at a junction",
+                     "env.type = road and ego.action in (turn_left, turn_right)"),
+            Scenario("vehicle-cut-in", "Vehicle cuts in / changes lane ahead; ego brakes",
+                     "agent(type = vehicle, action(type in (change_lane, change_lane_left, change_lane_right))) "
                      "and ego.action in (decel, stop, nudge)"),
-            Scenario("decel-because-ped", "Ego decelerates BECAUSE OF a pedestrian (causal edge)",
-                     "ego.action = decel because_of agent.type = ped"),
+            Scenario("stop-because-red", "Ego stops BECAUSE OF a red light (causal edge)",
+                     "ego.action = stop because_of light.color = red"),
             Scenario("yellow-then-stop", "Yellow light followed by ego stop within 3s",
                      "light.color = yellow then(3) ego.action = stop"),
             Scenario("red-without-stop", "During red light, ego never stops (potential violation)",

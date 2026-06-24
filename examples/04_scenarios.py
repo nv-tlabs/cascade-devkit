@@ -37,15 +37,14 @@ class Scenario:
 SCENARIOS: list[Scenario] = [
     # ===== VRU Interactions =====
     Scenario(
-        id="ped-crosswalk-drive",
-        title="Ego drives through crosswalk while pedestrian present",
-        query="agent.type = ped and env.type = crosswalk and ego.action = drive",
+        id="ped-present-drive",
+        title="Ego drives on while a pedestrian is present (no yield)",
+        query="agent.type = ped and ego.action = drive",
     ),
     Scenario(
-        id="ped-crosswalk-yield",
-        title="Ego yields/stops at crosswalk for a pedestrian",
-        query="agent.type = ped and env.type = crosswalk "
-              "and ego.action in (stop, yield, decel)",
+        id="ped-yield",
+        title="Ego yields/stops/brakes for a pedestrian",
+        query="agent.type = ped and ego.action in (stop, yield, decel)",
     ),
     Scenario(
         id="ped-jaywalk-yield",
@@ -63,10 +62,9 @@ SCENARIOS: list[Scenario] = [
               "and ego.action in (stop, yield, decel)",
     ),
     Scenario(
-        id="ped-crosswalk-turn",
-        title="Pedestrian crosses while ego is turning",
-        query="agent.type = ped and env.type = crosswalk "
-              "and ego.action in (turn_left, turn_right)",
+        id="ped-while-turning",
+        title="Pedestrian present while ego is turning",
+        query="agent.type = ped and ego.action in (turn_left, turn_right)",
     ),
     Scenario(
         id="cyclist-defensive",
@@ -78,12 +76,12 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         id="red-light-stop",
         title="Ego stops at a red traffic light (nominal)",
-        query="light.color = red and ego.action = stop and env.type = intersection",
+        query="light.color = red and ego.action = stop",
     ),
     Scenario(
-        id="signal-blackout-stop",
-        title="Signal blackout — ego treats as all-way stop",
-        query="light.state = off and ego.action = stop and env.type = intersection",
+        id="green-light-go",
+        title="Ego proceeds through a green light",
+        query="light.color = green and ego.action = drive",
     ),
     Scenario(
         id="yellow-in-intersection",
@@ -116,15 +114,15 @@ SCENARIOS: list[Scenario] = [
 
     # ===== Obstacle Avoidance & Lane Adjustment =====
     Scenario(
-        id="vehicle-stopped-front-nudge",
-        title="Vehicle stopped in front of ego, ego nudges or changes lane",
-        query="agent(type = vehicle, pos = front, action(type in (stop, not_move))) "
+        id="vehicle-stopped-nudge",
+        title="Stopped vehicle ahead; ego nudges or changes lane",
+        query="agent(type = vehicle, action(type in (stop, not_move))) "
               "and ego.action in (nudge, change_lane_left, change_lane_right)",
     ),
     Scenario(
-        id="vehicle-front-signaling-left",
-        title="Vehicle in front of ego is signaling left",
-        query="agent(type = vehicle, pos = front, signaling = turn)",
+        id="vehicle-turning",
+        title="A vehicle ahead is turning (indicating a maneuver)",
+        query="agent(type = vehicle, action.type in (oxd:MakeARightTurn, oxd:MakeALeftTurn))",
     ),
 
     # ===== Highway & Lane Dynamics =====
@@ -137,22 +135,22 @@ SCENARIOS: list[Scenario] = [
 
     # ===== Authority & Emergency =====
     Scenario(
-        id="officer-stop",
-        title="Officer signaling stop; ego stops",
-        query="agent(type = officer, signaling = stop) and ego.action = stop",
+        id="emergency-vehicle-present",
+        title="Emergency / hazard vehicle (flashing lights) present; ego brakes",
+        query="agent(type = vehicle, prop.source = flashing_light) "
+              "and ego.action in (stop, yield, decel)",
     ),
 
-    # ===== Roundabouts =====
+    # ===== Junctions & Turns =====
     Scenario(
-        id="roundabout-transit",
-        title="Ego transits roundabout without yielding",
-        query="env.type = roundabout and ego.action = drive",
+        id="junction-turn",
+        title="Ego turns at a junction",
+        query="env.type = road and ego.action in (turn_left, turn_right)",
     ),
     Scenario(
-        id="roundabout-cut-in",
-        title="Vehicle cuts in at roundabout exit; ego brakes",
-        query="env.type = roundabout "
-              "and agent(type = vehicle, action(type in (change_lane, change_lane_left, change_lane_right))) "
+        id="vehicle-cut-in-brake",
+        title="Vehicle cuts in / changes lane ahead; ego brakes",
+        query="agent(type = vehicle, action(type in (change_lane, change_lane_left, change_lane_right))) "
               "and ego.action in (decel, stop, nudge)",
     ),
 
@@ -227,11 +225,11 @@ SCENARIOS: list[Scenario] = [
         query="ego.action = decel because_of obj.type in (cone, barrier, debris)",
     ),
     Scenario(
-        id="crosswalk-ped-causes-ego-decel",
-        title="Ego decels because of ped walk/run AND pedestrian is in a crosswalk "
+        id="group-ped-causes-ego-decel",
+        title="Ego decels because of ped walk/run AND a group of pedestrians is present "
               "(combines causal edge with entity predicate)",
         query='ego.action = decel because_of agent.action.type in ("oxd:Walk", "oxd:Run") '
-              "and agent.type = ped and env.type = crosswalk",
+              "and agent.type = ped and agent.amount = group",
     ),
     Scenario(
         id="while-ped-ego-decel-causal",

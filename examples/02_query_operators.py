@@ -88,9 +88,9 @@ def main() -> None:
     )
 
     section("Boolean operators")
-    show(ds, "agent.type = ped and env.type = crosswalk")
+    show(ds, "agent.type = ped and ego.action in (stop, yield, decel)")
     show(ds, "ego.action = stop or ego.action = yield")
-    show(ds, "agent.type = ped and not env.type = crosswalk")
+    show(ds, "agent.type = ped and not ego.action = drive")
 
     section("Action-type suffixes (schema 2.0.0 single source of truth)")
     # Flags are encoded as parenthesized suffixes on `action_type` —
@@ -148,13 +148,13 @@ def main() -> None:
     # to that window (a head cycling green→red matches `light.color = red` only
     # while the influence window overlaps the red phase).
     show(ds, "ego influenced_by light.color = red")
-    show(ds, "agent(type = vehicle) influenced_by obj.type = stop_sign")
+    show(ds, "agent(type = vehicle) influenced_by light.color = red")
     show(ds, "ego influenced_by (obj.type = stop_sign or light.color = red)")
     show(ds, "ego influenced_by light.color = red and ego.action = stop")
 
     section("Window scoping: 'within W: E' — restrict E's time to W's intervals")
     show(ds, "within light.color = red: not ego.action = stop")
-    show(ds, "within env.type = crosswalk: agent.type = ped")
+    show(ds, "within env.type = road: agent.type = ped")
 
     section("Light flags (annotator-tagged temporal correlations)")
     show(ds, "light(color = yellow, ego_in_on_yellow = true)")

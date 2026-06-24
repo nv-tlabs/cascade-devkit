@@ -155,9 +155,9 @@ def main() -> None:
 
     show(ds,
          'ego.action = decel because_of agent.action.type in ("oxd:Walk", "oxd:Run") '
-         "and agent.type = ped and env.type = crosswalk",
+         "and agent.type = ped and agent.amount = group",
          "ego decels because of a walking/running pedestrian, AND a pedestrian "
-         "is present, AND the environment is a crosswalk — three-way enrichment")
+         "is present, AND it is a group of pedestrians — three-way enrichment")
 
     # =========================================================================
     section("5) Causality scoped to a time window")

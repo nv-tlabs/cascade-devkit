@@ -36,8 +36,8 @@ def main() -> None:
     print(f"clips with at least one pedestrian: {n}")
 
     # `find()` returns the full MatchSet — clips, entities, intervals.
-    matches = ds.find("agent.type = ped and env.type = crosswalk")
-    print(f"pedestrian × crosswalk: {len(matches)} matches across {len(set(matches.clips()))} clips")
+    matches = ds.find("agent.type = ped and ego.action in (stop, yield, decel)")
+    print(f"pedestrian × ego braking: {len(matches)} matches across {len(set(matches.clips()))} clips")
     for clip_id in list(set(matches.clips()))[:3]:
         print(f"  e.g. {clip_id}")
 
