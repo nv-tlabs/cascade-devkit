@@ -19,9 +19,12 @@ from cascade_av.query import (
     AttrPredicate,
     AttrRef,
     EntityClause,
+    EntityRef,
+    InfluencedBy,
     Match,
     MatchSet,
     QueryParseError,
+    While,
     evaluate,
     parse,
 )
@@ -515,6 +518,154 @@ def test_because_of_parses_and_runs(patched_parent: None) -> None:
     n = ds.count("ego.action = decel because_of agent.type = ped")
     assert isinstance(n, int)
     assert n >= 0
+
+
+# ---------------------------------------------------------------------------
+# influenced_by — parser acceptance + LHS rejection + live-corpus smoke
+# ---------------------------------------------------------------------------
+
+
+def test_influenced_by_parser_accepts_target_queries() -> None:
+    """Every shape the operator advertises (bare ego / bare agent / agent
+    clause LHS; atomic and compound RHS via `or`, `in`, parenthesised
+    groups; composition with `while` and `and`) parses and roots at the
+    expected AST node. Covers the 11 motivating queries from the design
+    doc one-by-one so a future grammar regression is loud."""
+    bare_lhs_cases = [
+        "ego influenced_by obj.type = yield_sign",
+        "ego influenced_by obj.type = stop_sign",
+        "ego influenced_by light.color = red",
+        "ego influenced_by light.color = green",
+        "ego influenced_by obj.type in (yield_sign, stop_sign)",
+        "ego influenced_by (obj.type = stop_sign or light.color = red)",
+        "agent influenced_by obj.type = stop_sign",
+        "agent influenced_by light.color = red",
+        "agent(type = vehicle) influenced_by light.color = red",
+    ]
+    for q in bare_lhs_cases:
+        ast = parse(q)
+        assert isinstance(ast, InfluencedBy), f"{q!r} -> {type(ast).__name__}"
+
+    # `while` and `and` bind looser than `influenced_by`, so the root is
+    # the boolean / temporal node and InfluencedBy lives inside.
+    composed = parse("ego influenced_by obj.type = yield_sign while agent.type = ped")
+    assert isinstance(composed, While)
+    assert isinstance(composed.left, InfluencedBy)
+
+    ast_and = parse("ego influenced_by light.color = red and ego.action = stop")
+    from cascade_av.query.dsl import And as _And  # local import to avoid top-level noise
+
+    assert isinstance(ast_and, _And)
+    assert isinstance(ast_and.left, InfluencedBy)
+
+    # Bare LHS rewrites to `EntityRef(...)`; the parser MUST NOT emit an
+    # `EntityClause` here (no `(...)` was written).
+    ast = parse("ego influenced_by light.color = red")
+    assert isinstance(ast.left, EntityRef) and ast.left.entity == "ego"
+    ast = parse("agent influenced_by light.color = red")
+    assert isinstance(ast.left, EntityRef) and ast.left.entity == "agent"
+
+    # Clause LHS keeps the EntityClause shape — the short-circuit only
+    # fires when no `(` follows the head.
+    ast = parse("agent(type = vehicle) influenced_by light.color = red")
+    assert isinstance(ast.left, EntityClause) and ast.left.entity == "agent"
+
+
+def _expect_lhs_rejection(query: str) -> None:
+    """Helper: ``query`` must be rejected with ``QueryParseError`` either
+    at parse time (the parser's existing "expected comparison op…" path
+    catches the bare-LHS pseudo-shapes like ``clip influenced_by …``
+    before they reach the evaluator) or at evaluation time (the
+    evaluator's ``_is_valid_influenced_by_lhs`` guard rejects shapes
+    that parse but aren't a valid subject).
+    """
+    try:
+        ast = parse(query)
+    except QueryParseError:
+        return  # parse-time rejection is sufficient
+    with pytest.raises(QueryParseError) as exc_info:
+        evaluate(ast, _empty_bundle())
+    assert "influenced_by LHS" in exc_info.value.message, (
+        f"{query!r}: expected influenced_by LHS rejection, "
+        f"got {exc_info.value.message!r}"
+    )
+
+
+def test_influenced_by_rejects_invalid_lhs() -> None:
+    """LHS shapes that aren't a bare ego / agent or an ego/agent clause
+    must be rejected — the operator's dispatch is rooted at those two
+    subject kinds and silently filtering an invalid shape would mask a
+    typo. Some shapes are caught by the existing parser machinery (e.g.
+    ``clip influenced_by …`` reads ``clip`` as the head of an attribute
+    path and expects a comparison op next); the rest are caught by the
+    evaluator-side validator. The literal-RHS case bottoms out in the
+    unary parser before the operator's right-hand side ever resolves."""
+
+    # `clip influenced_by ...` — clip isn't a subject; the parser
+    # catches it as "expected comparison op after 'clip'".
+    _expect_lhs_rejection("clip influenced_by light.color = red")
+
+    # RHS-shaped LHS — an attribute predicate isn't a valid subject.
+    _expect_lhs_rejection("obj.type = stop_sign influenced_by ego")
+
+    # Sub-entity descent on the LHS — `agent.action.type = walk` reduces
+    # to an attribute predicate, not a bare agent / agent clause.
+    _expect_lhs_rejection("agent.action.type = walk influenced_by ego")
+
+    # Light predicate as LHS — not a subject kind that carries
+    # influencer windows.
+    _expect_lhs_rejection("light.color = red influenced_by ego")
+
+    # Literal RHS — parser-time error: the unary parser tries to read a
+    # primary and hits a NUMBER token where an entity-name / '(' is
+    # expected.
+    with pytest.raises(QueryParseError):
+        parse("ego influenced_by 5")
+
+
+def test_influenced_by_evaluator_guard_rejects_paren_attr_lhs() -> None:
+    """A parenthesised attribute predicate is a syntactically-valid
+    expression that the parser happily reads as `InfluencedBy`'s LHS —
+    so `(agent.type = ped) influenced_by light.color = red` parses
+    fine but must be rejected by the evaluator's
+    `_is_valid_influenced_by_lhs` guard. Without this test the guard
+    is reachable from no test case; the other LHS-rejection cases all
+    fail at parse time."""
+    ast = parse("(agent.type = ped) influenced_by light.color = red")
+    # Sanity: the parser produced an InfluencedBy whose LHS is an
+    # AttrPredicate, not an EntityRef / EntityClause — exactly the
+    # shape the evaluator guard is meant to reject.
+    assert isinstance(ast, InfluencedBy)
+    from cascade_av.query.dsl import AttrPredicate as _AP
+
+    assert isinstance(ast.left, _AP)
+    with pytest.raises(QueryParseError, match="influenced_by LHS must be"):
+        evaluate(ast, _empty_bundle())
+
+
+def _empty_bundle() -> AnnotationBundle:
+    """A minimal bundle wired up enough for the evaluator to run; used
+    by the LHS-rejection tests where we only care that the validator
+    raises before any real work happens."""
+    return AnnotationBundle.model_validate({"video": {"clip_id": "lhs-reject"}})
+
+
+def test_influenced_by_runs_on_live_corpus(patched_parent: None) -> None:
+    """Smoke test mirroring `test_because_of_parses_and_runs` —
+    `ds.count(...)` must execute without raising for both bare-LHS and
+    clause-LHS forms. We don't pin to a specific count; the only
+    contract here is "the operator wires through the dataset surface."
+    """
+    ds = CascadeDataset(_skip_if_no_corpus())
+    for q in (
+        "ego influenced_by light.color = red",
+        "agent influenced_by obj.type = stop_sign",
+        "agent(type = vehicle) influenced_by light.color = red",
+        "ego influenced_by (obj.type = stop_sign or light.color = red)",
+    ):
+        n = ds.count(q)
+        assert isinstance(n, int)
+        assert n >= 0
 
 
 def test_dataset_count_and_group_by(patched_parent: None) -> None:

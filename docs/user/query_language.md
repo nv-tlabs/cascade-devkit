@@ -39,7 +39,7 @@ within light.color = red: not ego.action = stop
 # multi-lane road, ego changes lane
 env(type = road, lanes >= 2) and ego.action in (change_lane_left, change_lane_right)
 
-# action with a flag (suffix encoded in the type string — see §4.9)
+# action with a flag (suffix encoded in the type string — see §4.10)
 agent(type = ped, action.type = "oxd:Walk (jaywalk)")
 
 # light with a flag (the "defining yellow" of the scenarios doc)
@@ -112,7 +112,7 @@ same.
 
 **Reserved words** (never usable as identifiers):
 ```
-and  or  not  in  while  then  because_of  within  true  false
+and  or  not  in  while  then  because_of  influenced_by  within  true  false
 ```
 
 **Comments** start with `#` and run to end of line. Allowed anywhere
@@ -139,13 +139,17 @@ temporal_expr   := unary_expr ( temporal_op unary_expr )*
 temporal_op     := 'while'
                  | 'then' ( '(' NUMBER 's'? ')' )?
                  | 'because_of'
+                 | 'influenced_by'
 
 unary_expr      := 'not' unary_expr
                  | primary
 
 primary         := entity_clause
+                 | entity_ref
                  | attribute_predicate
                  | '(' expression ')'
+
+entity_ref      := ('ego' | 'agent')              # only as influenced_by LHS
 
 entity_clause   := IDENT '(' expression ')'
 
@@ -176,12 +180,12 @@ the LHS entity; otherwise it falls through to a literal value atom).
 | 1 | `within W: E` |
 | 2 | `or` |
 | 3 | `and` |
-| 4 | `while`, `then(K)`, `because_of` |
+| 4 | `while`, `then(K)`, `because_of`, `influenced_by` |
 | 5 | `not` |
-| 6 | entity clause, attribute predicate, parentheses |
+| 6 | entity clause, entity ref, attribute predicate, parentheses |
 
-`while`, `then`, `because_of` are **left-associative** (same level —
-chainable left-to-right).
+`while`, `then`, `because_of`, `influenced_by` are **left-associative**
+(same level — chainable left-to-right).
 
 ---
 
@@ -461,7 +465,7 @@ agent(type = vehicle and pos = front)
 
 agent(type = ped, action.type = "oxd:Walk (jaywalk)")
 # every Agent of type ped that has at least one action of that exact type
-# (see §4.9 for the parenthesized-suffix convention)
+# (see §4.10 for the parenthesized-suffix convention)
 
 light(color = yellow, ego_in_on_yellow = true)
 # every LightState with color=yellow AND ego_in_on_yellow=true
@@ -501,7 +505,7 @@ are equivalent; the comma form matches the worked examples in §1.
 - **Chainable**: `A then(2) B then(3) C` parses left-to-right as
   `(A then(2) B) then(3) C`.
 
-### 4.6 Relational operator
+### 4.6 Relational operator — `because_of`
 
 - `A because_of B` — pairs where A's matched entity is an action and B's
   matched entity is referenced in `action.because_of`. Both halves are
@@ -510,7 +514,61 @@ are equivalent; the comma form matches the worked examples in §1.
     `(clip, mB.entity, mB.interval)`.
   Uses only the `because_of` edge.
 
-### 4.7 Window scoping
+### 4.7 Relational operator — `influenced_by`
+
+- `S influenced_by P` — match every clip where the LHS subject `S` (the
+  ego vehicle or an agent) has at least one `Influence` window
+  populated with an `influencers` list that contains an entity
+  satisfying the RHS predicate `P`.
+
+The LHS is intentionally narrow: it must be one of
+
+- the bare entity reference `ego` or `agent`, **or**
+- an entity clause rooted at `ego` or `agent`
+  (e.g. `agent(type = vehicle)`).
+
+Any other LHS shape — clip-level predicates, attribute predicates,
+sub-entity descent, light / object predicates — raises
+`QueryParseError` with a message starting `influenced_by LHS must be …`.
+Walks the schema's `EgoVehicle.influenced_by` / `Agent.influenced_by`
+edge, which carries a per-window list of influencer IDs that the
+annotator believed modulated the subject's behaviour.
+
+```
+ego influenced_by obj.type = stop_sign            # ego yielded at a stop sign
+ego influenced_by light.color = red               # ego acted on a red light
+ego influenced_by obj.type in (yield_sign, stop_sign)
+ego influenced_by (obj.type = stop_sign or light.color = red)
+agent(type = vehicle) influenced_by light.color = red
+ego influenced_by obj.type = yield_sign while agent.type = ped
+```
+
+Resolution rules:
+
+- The RHS is evaluated against each `influencer_id` in the window via
+  the bundle's `IdIndex`. Dangling IDs are silently skipped — the
+  corpus carries some.
+- `signal_head` and `traffic_light` influencer IDs expand to their
+  `LightStates`, but only states whose own interval **overlaps the
+  Influence window** are considered — so a head cycling
+  Green → Yellow → Red across the clip matches `light.color = red`
+  for an Influence window over the red phase and `light.color = green`
+  for one over the green phase, never both for the same window. The
+  expanded states are stamped with the same `_owner_signal_head` /
+  `_owner_traffic_light` back-refs used by `light.affects_ego`.
+- The **match interval is the `Influence` window**, *not* the
+  influencer's own lifetime. This is what makes `within W: S
+  influenced_by P` and `S influenced_by P while Q` compose
+  correctly — the influencer is usually a static sign or fixed light
+  whose own interval spans the whole clip; the annotator's `Influence`
+  window is the period that actually mattered.
+- One match per `Influence` window per subject — the first satisfying
+  influencer wins. Multi-influencer windows do not multiply matches.
+
+Owner of each match is the subject (`EgoVehicle` for `ego`, the
+matched `Agent` for `agent`).
+
+### 4.8 Window scoping
 
 - `within W: E` — restricts the temporal window of E to the union of
   intervals from W's match set. All interval-aware operators inside E
@@ -522,7 +580,7 @@ within light.color = red: not ego.action = stop
 # clips where, during any red-light interval, ego never stops
 ```
 
-### 4.8 Value aliasing
+### 4.9 Value aliasing
 
 The DSL accepts short aliases (`ped`) and full literals (`oxd:Pedestrian`)
 interchangeably. Aliases live in `cascade_av.query.constants`, with
@@ -535,7 +593,7 @@ agent.type = vehicle
 # expands to agent.type in (car, truck, bus, motorcycle, …)
 ```
 
-### 4.9 Action type suffixes (corpus convention)
+### 4.10 Action type suffixes (corpus convention)
 
 Action types in schema `2.0.0` encode optional flags as **parenthesized
 suffixes** baked into the `action_type` string — the suffix is the
@@ -637,9 +695,9 @@ checked on either side):
 > agent(prop.type = aggressive) while agent.action.type = "oxd:ChangeLane (left)"
 > ```
 >
-> See §4.10 for the property sub-entity.
+> See §4.11 for the property sub-entity.
 
-### 4.10 Property sub-entity (`agent.prop`, `ego.prop`)
+### 4.11 Property sub-entity (`agent.prop`, `ego.prop`)
 
 Agents and the ego carry a `properties` list of `AgentProperty` entries
 — each is a typed flag spanning a time window. The DSL surfaces them
@@ -659,7 +717,7 @@ Properties carry their own start/end timestamps, so
 `while` / `then` / `because_of` over `agent.prop` works the same as
 over actions.
 
-### 4.11 Booleans must be explicit
+### 4.12 Booleans must be explicit
 
 Boolean attributes always carry an explicit `=true` / `=false`:
 
@@ -668,7 +726,7 @@ light(color = yellow, ego_in_on_yellow = true)    # correct
 light(color = yellow, ego_in_on_yellow)           # SYNTAX ERROR
 ```
 
-### 4.12 Clip-level attributes
+### 4.13 Clip-level attributes
 
 `clip` is a virtual entity for clip-level metadata:
 
