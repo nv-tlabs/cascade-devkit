@@ -144,11 +144,14 @@ def main() -> None:
     print(f"  yellows ego could have cleared safely: {n_yellow_clear}")
 
     # Flags (jaywalk, erratic, unprotected, …) live as parenthesized
-    # suffixes on `action_type` post schema 2.0.0 — enumerate the four
-    # combined strings to count pedestrians jaywalking with or without
-    # erratic motion. See examples/02_query_operators.py for the canon.
+    # suffixes on `action_type` post schema 2.0.0. Post-0.6.1, `Jaywalk`
+    # is also a standalone action (alias `jaywalk_action`) — enumerate it
+    # alongside the four combined strings (walk/run × with/without
+    # erratic), which are deprecated but still match, to count pedestrians
+    # jaywalking. See examples/02_query_operators.py for the canon.
     jaywalk_query = (
         'agent(type = ped, action.type in ('
+        '"Jaywalk", '
         '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
         '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))'
     )

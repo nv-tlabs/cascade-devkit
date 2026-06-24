@@ -457,10 +457,15 @@ def build_dsl_tour() -> None:
         `action(jaywalk = true)` no longer parses — match the
         suffix variants directly via literal-string equality or
         `in (...)`.
+
+        Post-0.6.1, `Jaywalk` is also a standalone action (alias
+        `jaywalk_action`); the combined-suffix forms are deprecated but
+        still match, so a complete jaywalk query enumerates both.
         """),
         code("""
         run([
             "agent(type = ped, action.type in ("
+            '"Jaywalk", '
             '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
             '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))',
             "agent.action.type in ("
@@ -596,6 +601,19 @@ def build_dsl_tour() -> None:
         run([
             'agent.action.link_to = "00000000-0000-0000-0000-000000000000"',
             'ego.action.action_target in ("00000000-0000-0000-0000-000000000000")',
+        ])
+        """),
+        md("""
+        ## Clip-level attributes — `clip.eventful` / `clip.eventful_reason`
+
+        The boolean `clip.eventful` flags clips worth a closer look.
+        Post-0.6.1, `clip.eventful_reason` is queryable alongside it —
+        values: `ego_adapts`, `special_env`, `agent_adapts`, `other`.
+        """),
+        code("""
+        run([
+            "clip.eventful = true",
+            "clip.eventful_reason = ego_adapts",
         ])
         """),
         md("""
@@ -828,8 +846,12 @@ def build_statistics() -> None:
         n_red               = ds.count("light.color = red")
         n_red_stop          = ds.count("light.color = red and ego.action = stop")
         n_yellow_clear      = ds.count("light(color = yellow, could_have_cleared = true)")
+        # Post-0.6.1, `Jaywalk` is a standalone action (alias
+        # `jaywalk_action`); the combined-suffix forms are deprecated but
+        # still match, so enumerate the standalone action alongside them.
         _jaywalk_q = (
             'agent(type = ped, action.type in ('
+            '"Jaywalk", '
             '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
             '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))'
         )
@@ -905,7 +927,11 @@ def build_scenarios() -> None:
             Scenario("2",  "Ego yields/stops at crosswalk for a pedestrian",
                      "agent.type = ped and env.type = crosswalk and ego.action in (stop, yield, decel)"),
             Scenario("8",  "Pedestrian jaywalks; ego brakes / yields",
+                     # Post-0.6.1, `Jaywalk` is a standalone action
+                     # (alias jaywalk_action); the combined-suffix forms
+                     # are deprecated but still match, so enumerate both.
                      'agent(type = ped, action.type in ('
+                     '"Jaywalk", '
                      '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
                      '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"'
                      ')) and ego.action in (stop, yield, decel)'),
@@ -1008,6 +1034,7 @@ def build_scenarios() -> None:
         code("""
         target = (
             'agent(type = ped, action.type in ('
+            '"Jaywalk", '
             '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
             '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"'
             ')) and ego.action in (stop, yield, decel)'

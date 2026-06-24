@@ -23,6 +23,7 @@ DEFAULT_CORPUS = Path("/home/horde/01_json_annotations")
 
 def _collect(bundles: list[AnnotationBundle]) -> dict[str, Counter]:
     out: dict[str, Counter] = {
+        "clip.eventful_reason": Counter(),
         "agent.type": Counter(),
         "agent_action.action_type": Counter(),
         "agent_property.property_type": Counter(),
@@ -49,6 +50,9 @@ def _collect(bundles: list[AnnotationBundle]) -> dict[str, Counter]:
 
     for b in bundles:
         ann = b.annotation
+
+        if ann.eventful_reason:
+            out["clip.eventful_reason"][ann.eventful_reason] += 1
 
         for agent in ann.agents:
             if agent.type:

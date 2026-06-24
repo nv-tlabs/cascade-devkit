@@ -52,6 +52,7 @@ _MC = ConfigDict(extra="allow", populate_by_name=True)
 # Shared atoms
 # -----------------------------------------------------------------------------
 
+
 class Containment(BaseModel):
     """Containment of an entity within an environment / lane over a window."""
 
@@ -105,6 +106,8 @@ class SignalingDetails(BaseModel):
     other_source_description: str = ""
     other_intent_description: str = ""
     other_sign_description: str = ""
+    # Intentionally KEPT active: signaling targets still link here (not deprecated,
+    # unlike the action-level `link_to` on AgentAction / EgoAction).
     link_to: list[str] = Field(default_factory=list)
     not_facing_ego: bool | None = None
     target_agent_ids: list[str] | None = None  # deprecated; superseded by link_to
@@ -124,6 +127,7 @@ class EgoRelativePose(BaseModel):
 # -----------------------------------------------------------------------------
 # Environment & condition
 # -----------------------------------------------------------------------------
+
 
 class Environment(BaseModel):
     """A semantic road-scene element (road, intersection, sidewalk, ...)."""
@@ -177,6 +181,7 @@ class Condition(BaseModel):
 # Traffic objects (signs, cones, debris, barriers, ...)
 # -----------------------------------------------------------------------------
 
+
 class ObjectStateEntry(BaseModel):
     """One contiguous state interval for a traffic object."""
 
@@ -212,6 +217,7 @@ class TrafficObject(BaseModel):
 # -----------------------------------------------------------------------------
 # Traffic lights
 # -----------------------------------------------------------------------------
+
 
 class LightStates(BaseModel):
     """One state interval for a signal head (color + shape + state type)."""
@@ -267,6 +273,7 @@ class TrafficLight(BaseModel):
 # Actions, properties, agents
 # -----------------------------------------------------------------------------
 
+
 class AgentProperty(BaseModel):
     """A property of an agent or the ego vehicle (Signal*, Parked, ...)."""
 
@@ -297,6 +304,7 @@ class AgentAction(BaseModel):
     action_type: str = ""  # see AgentActionTypeVocab / AgentActionTypePedestrianVocab
     other_description: str = ""
     because_of: list[str] = Field(default_factory=list)
+    # DEPRECATED on actions (annotator <=0.6.1): use because_of / action_target.
     link_to: list[str] = Field(default_factory=list)
     action_target: list[str] = Field(default_factory=list)
     start_timestamp: str = ""
@@ -336,6 +344,7 @@ class EgoAction(BaseModel):
     turn_other_description: str = ""
     action_other_description: str = ""
     because_of: list[str] = Field(default_factory=list)
+    # DEPRECATED on actions (annotator <=0.6.1): use because_of / action_target.
     link_to: list[str] = Field(default_factory=list)
     action_target: list[str] = Field(default_factory=list)
     illegal_flag: bool = False
@@ -360,12 +369,17 @@ class EgoVehicle(BaseModel):
 # Top-level annotation container
 # -----------------------------------------------------------------------------
 
+
 class SilAvAnnotation(BaseModel):
     """The annotation payload for one clip."""
 
     model_config = _MC
 
     eventful: bool | None = None
+    # Added post-2.0.0 (annotator internal 0.6.x). Categorical rationale for `eventful`;
+    # see EventfulReasonVocab. Advisory vocab only (field stays an open str).
+    eventful_reason: str | None = None
+    eventful_reason_other: str = ""  # free text when eventful_reason == "other"
     brief_description: str = ""
     environments: list[Environment] = Field(default_factory=list)
     conditions: list[Condition] = Field(default_factory=list)
@@ -485,6 +499,7 @@ def _reset_version_warn_cache_for_tests() -> None:
 # and must be kept byte-for-byte in sync.
 # -----------------------------------------------------------------------------
 
+
 class AgentTypeVocab:
     """Known values for ``Agent.type``. Advisory, not exhaustive; field is ``str``."""
 
@@ -519,7 +534,7 @@ class AgentActionTypeVocab:
     MANEUVER_ABORT = "fst:ManeuverAbort"
     PARK = "fst:Park"
     STOP = "oxd:Stop"
-    NOT_MOVE = "oxd:NotMove"
+    NOT_MOVE = "oxd:NotMove"  # DEPRECATED (annotator <=0.6.1): retired; producers emit oxd:Stop
     ENTER = "fst:Enter"
     EXIT = "fst:Exit"
     CREEP = "fst:Creep"
@@ -558,13 +573,24 @@ class AgentActionTypePedestrianVocab:
     DECELERATE = "oxd:Decelerate"
     FOLLOW_ROAD_USER = "oxd:FollowRoadUser"
     WALK = "oxd:Walk"
-    WALK_JAYWALK = "oxd:Walk (jaywalk)"
-    WALK_ERRATIC = "oxd:Walk (erratic)"
-    WALK_JAYWALK_ERRATIC = "oxd:Walk (jaywalk, erratic)"
+    JAYWALK = "Jaywalk"
+    # DEPRECATED (annotator <=0.6.1): combined erratic/jaywalk forms; standalone
+    # Jaywalk + Erratic property now used.
+    WALK_JAYWALK = (
+        "oxd:Walk (jaywalk)"  # DEPRECATED (annotator <=0.6.1): combined erratic/jaywalk form
+    )
+    WALK_ERRATIC = (
+        "oxd:Walk (erratic)"  # DEPRECATED (annotator <=0.6.1): combined erratic/jaywalk form
+    )
+    WALK_JAYWALK_ERRATIC = "oxd:Walk (jaywalk, erratic)"  # DEPRECATED (annotator <=0.6.1): combined erratic/jaywalk form
     RUN = "oxd:Run"
-    RUN_JAYWALK = "oxd:Run (jaywalk)"
-    RUN_ERRATIC = "oxd:Run (erratic)"
-    RUN_JAYWALK_ERRATIC = "oxd:Run (jaywalk, erratic)"
+    RUN_JAYWALK = (
+        "oxd:Run (jaywalk)"  # DEPRECATED (annotator <=0.6.1): combined erratic/jaywalk form
+    )
+    RUN_ERRATIC = (
+        "oxd:Run (erratic)"  # DEPRECATED (annotator <=0.6.1): combined erratic/jaywalk form
+    )
+    RUN_JAYWALK_ERRATIC = "oxd:Run (jaywalk, erratic)"  # DEPRECATED (annotator <=0.6.1): combined erratic/jaywalk form
     OTHER = "Other"
 
 
@@ -573,7 +599,7 @@ class EgoActionTypeVocab:
 
     MANEUVER_ABORT = "fst:ManeuverAbort"
     STOP = "oxd:Stop"
-    NOT_MOVE = "oxd:NotMove"
+    NOT_MOVE = "oxd:NotMove"  # DEPRECATED (annotator <=0.6.1): retired; producers emit oxd:Stop
     ENTER = "fst:Enter"
     EXIT = "fst:Exit"
     CREEP = "fst:Creep"
@@ -619,6 +645,8 @@ class EnvironmentTypeVocab:
     PEDESTRIAN_CROSSING = "oxd:PedestrianCrossing"
     RAIL_CROSSING = "oxd:RailCrossing"
     CYCLE_LANE = "oxd:CycleLane"
+    SPEED_BUMP = "fst:SpeedBump"
+    LIGHT_RAIL_LANE = "fst:LightRailLane"
     OTHER = "Other"
 
 
@@ -663,6 +691,7 @@ class TrafficObjectTypeVocab:
     TRASH = "Trash"
     OTHER_DEBRIS = "Other oxd:Debris"
     NOT_IDENTIFIABLE = "Not identifiable"
+    BOOM_GATE = "Boom gate"
     OTHER = "Other"
 
 
@@ -706,6 +735,7 @@ class AgentPropertyTypeVocab:
     DOUBLE_PARKED = "Double Parked"
     SIGNAL = "Signal"
     OUTSIDE_CAMERA_VIEW = "Outside Camera View"
+    STOPPED = "Stopped"
     OTHER = "Other"
 
 
@@ -726,6 +756,7 @@ class EgoPropertyTypeVocab:
     DOUBLE_PARKED = "Double Parked"
     SIGNAL = "Signal"
     OUTSIDE_CAMERA_VIEW = "Outside Camera View"
+    STOPPED = "Stopped"
     OTHER = "Other"
 
 
@@ -741,7 +772,9 @@ class SignalSourceVocab:
 class SignalIntentVocab:
     """Known values for ``SignalingDetails.intent``."""
 
-    TURN = "Turn"
+    TURN = "Turn"  # DEPRECATED (annotator <=0.6.1): superseded by Left/Right Indicator
+    LEFT_INDICATOR = "Left Indicator"
+    RIGHT_INDICATOR = "Right Indicator"
     STOP = "Stop"
     SLOW_DOWN = "Slow Down"
     PROCEED = "Proceed"
@@ -791,9 +824,15 @@ class AgentAmountVocab:
 
     SINGLE = "Single"
     ROW_GROUP = "Row/group"
-    LIGHT_TRAFFIC = "Light traffic"
-    MEDIUM_TRAFFIC = "Medium traffic"
-    HEAVY_TRAFFIC = "Heavy traffic"
+    LIGHT_TRAFFIC = (
+        "Light traffic"  # DEPRECATED (annotator <=0.6.1): traffic-density tier no longer produced
+    )
+    MEDIUM_TRAFFIC = (
+        "Medium traffic"  # DEPRECATED (annotator <=0.6.1): traffic-density tier no longer produced
+    )
+    HEAVY_TRAFFIC = (
+        "Heavy traffic"  # DEPRECATED (annotator <=0.6.1): traffic-density tier no longer produced
+    )
 
 
 class PositionRelToEgoVocab:
@@ -835,6 +874,15 @@ class DrivingJudgmentVocab:
     BAD = "bad"
 
 
+class EventfulReasonVocab:
+    """Known values for ``SilAvAnnotation.eventful_reason``. Advisory; field is ``str``."""
+
+    EGO_ADAPTS = "ego_adapts"
+    SPECIAL_ENVIRONMENT = "special_environment"
+    AGENT_ADAPTS = "agent_adapts"
+    OTHER = "other"
+
+
 __all__ = [
     "Agent",
     "AgentAction",
@@ -858,6 +906,7 @@ __all__ = [
     "EgoVehicle",
     "Environment",
     "EnvironmentTypeVocab",
+    "EventfulReasonVocab",
     "Influence",
     "Keypoint",
     "LightColorVocab",
