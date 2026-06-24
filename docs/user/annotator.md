@@ -331,13 +331,12 @@ of the video player's controls. Each is a single coloured letter; the
 button is dimmed when the arrow type is hidden.
 
 The "family key" column matches the kwarg keys the DevKit's `arrows={}`
-filter accepts — so the same five names are used in the UI, in the
+filter accepts — so the same family names are used in the UI, in the
 visualization API, and on disk.
 
 | Button | Family key | Meaning |
 |---|---|---|
 | **B** | `because_of` | Action A happens because of entity B (causality). |
-| **L** | `link_to` | Action A is directed at agent / ego B. |
 | **C** | `containment` | Containment row points at the environment that contains it. |
 | **I** | `influence` | Ego or agent influence row points at its influencers. |
 | **T** | `action_target` | Action whose target is a specific entity (e.g. "follow this agent"). |
@@ -365,8 +364,8 @@ panel — Ctrl+click is just the timeline shortcut.
 
 1. Select an **action** or a **property** segment (ego or agent).
 2. **Shift+click** on the target's agent main bar (or the ego row).
-3. The target's ID is added to the segment's `link_to` (or, for
-   signalling properties, `signaling_details.link_to`).
+3. The target's ID is recorded on the segment (for signalling
+   properties, on its signaling details).
 
 This is also how you say "the ego is following *this* car" or "this
 pedestrian is signalling *that* driver".
@@ -434,7 +433,7 @@ video toolbar does **not** delete the relationship.
   **Delete** in the right panel.
 - Deleting a parent entity (an agent, a traffic light, etc.) also
   removes its children **and** scrubs any references to its ID from
-  `because_of` / `link_to` / `influencers` elsewhere in the bundle.
+  `because_of` / `influencers` elsewhere in the bundle.
 
 ### 6.4 Mark a segment as illegal
 

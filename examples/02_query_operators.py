@@ -183,9 +183,8 @@ def main() -> None:
     show(ds, "obj.lane_edge = true")
     show(ds, "agent(type = car, illegal_lane = true)")
 
-    section("Action ID-link lists — `action.link_to` / `action_target`")
+    section("Action target list — `action.action_target`")
     # IDs are UUIDs, so the membership idiom is the natural call site.
-    show(ds, 'agent.action.link_to = "00000000-0000-0000-0000-000000000000"')
     show(ds, 'ego.action.action_target in ("00000000-0000-0000-0000-000000000000")')
 
     section("Clip description — `clip.brief_description`")
