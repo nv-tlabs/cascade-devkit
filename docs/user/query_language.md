@@ -301,6 +301,11 @@ light.color = red             # every LightState with color = red
 > agent(type = ped, amount = group)
 > agent.amount in (light_traffic, medium_traffic)
 > ```
+>
+> The three density tiers `light_traffic` / `medium_traffic` /
+> `heavy_traffic` (and the `traffic` parent over them) are
+> **deprecated upstream** — the annotator no longer emits them — but
+> stay resolvable for older bundles.
 
 > **Signaling details on `agent.prop` / `ego.prop`.** Properties of
 > type `signal` carry a `signaling_details` sub-object that names
@@ -318,6 +323,36 @@ light.color = red             # every LightState with color = red
 > For non-signal properties both attributes resolve to `None` and
 > the predicate falls through, so they compose with the broader
 > property filter without an explicit type guard.
+
+> **Signaling intent — `agent.signaling`.** The list-valued
+> `agent.signaling` attribute collects the *intent* of every Signal
+> property the agent carries (the modelled meaning of the gesture /
+> indicator), matched existentially. Intent aliases live in the
+> `signaling_intent` family:
+>
+> | Alias | Resolves to |
+> |---|---|
+> | `proceed` | `Proceed` |
+> | `stop` | `Stop` |
+> | `caution` | `Caution` |
+> | `slow` | `Slow down` |
+> | `follow` | `Follow` |
+> | `danger` | `Danger` |
+> | `unclear` | `Unclear` |
+> | `signal_left` | `Left Indicator` |
+> | `signal_right` | `Right Indicator` |
+> | `turn` | `Turn` — **deprecated upstream**, still resolvable |
+> | `other` | `Other` |
+>
+> ```
+> agent(type = vehicle, pos = front, signaling = signal_left)
+> agent.signaling in (signal_left, signal_right)
+> ```
+>
+> `signal_left` / `signal_right` were added when the annotator split
+> the old combined `Turn` intent into explicit Left/Right indicators;
+> `turn` (→ `"Turn"`) is kept resolvable for older bundles but is
+> deprecated upstream — prefer the directional aliases.
 
 > **Containment flags — `lane_edge`, `near_lane`, `illegal_lane`.**
 > Boolean predicates over the entity's containment records. Match
@@ -368,6 +403,26 @@ light.color = red             # every LightState with color = red
 > `"Vehicle"` (annotator's fallback when an agent is a vehicle that
 > doesn't match any specific subtype) is folded into the `vehicle`
 > parent alias and also accessible as the leaf `generic_vehicle`.
+
+> **Newer environment and object aliases.** The annotator (internal
+> 0.5/0.6.x) added a few vocab values the DevKit's 2.0.0 spec now
+> covers in place. New `env_type` aliases:
+>
+> | Alias | Resolves to |
+> |---|---|
+> | `speed_bump` | `fst:SpeedBump` |
+> | `light_rail_lane` | `fst:LightRailLane` |
+>
+> New `obj` (traffic-object) type alias:
+>
+> | Alias | Resolves to |
+> |---|---|
+> | `boom_gate` | `Boom gate` |
+>
+> ```
+> env.type = speed_bump
+> obj.type = boom_gate
+> ```
 
 > **Condition → environment lookup — `cond.env_type` /
 > `cond.env_lanes` / `cond.env_one_way` / `cond.env_id`.** Each
@@ -545,6 +600,31 @@ checked on either side):
   agent.action.type in ("oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", "oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)")
   ```
 
+> **Standalone `Jaywalk` verb vs. the `(jaywalk)` suffix.** Upstream
+> (annotator internal 0.5/0.6.x) split jaywalking out into a **standalone
+> base verb** `"Jaywalk"` — a distinct `action_type`, not a suffix on
+> `oxd:Walk` / `oxd:Run`. It has its own alias `jaywalk_action`:
+>
+> ```
+> agent(type = ped, action.type = jaywalk_action)   # standalone "Jaywalk"
+> ```
+>
+> This is keyed `jaywalk_action` (not `jaywalk`) so it doesn't collide
+> with the suffix-flag token `jaywalk` used by the base-verb prefix
+> match. The older combined forms — `"oxd:Walk (jaywalk)"`,
+> `"oxd:Walk (jaywalk, erratic)"`, `"oxd:Run (jaywalk)"`,
+> `"oxd:Run (jaywalk, erratic)"` (and their `(erratic)`-only siblings)
+> — **remain matchable** via the suffix path above, but are
+> **deprecated upstream**: producers now emit the standalone `Jaywalk`
+> verb plus an `Erratic` property (§4.10) instead. The Scenario 8 query
+> in §1.2 still resolves, but new queries should prefer
+> `action.type = jaywalk_action`.
+
+> **Deprecated `not_move`.** The ego-action alias `not_move`
+> (→ `oxd:NotMove`, used in Scenario 76 of §1.2) is **deprecated
+> upstream** — the annotator now emits `oxd:Stop` instead. It stays
+> resolvable for older bundles; prefer `stop` for new queries.
+
 > **Aggression and cut-in are not actions.** The dropped
 > `is_aggressive_or_cut_in` flag is replaced by an `AgentProperty` whose
 > `property_type = "Aggressive"`. A "cut-in" is decomposed as a
@@ -574,7 +654,8 @@ agent(type = ped, prop.type = erratic) # a pedestrian agent flagged Erratic
 Property-type aliases live in the `agent_property_type` /
 `ego_property_type` families: `signal`, `slow`, `fast`, `aggressive`,
 `erratic`, `emergency`, `on_duty`, `double_parked`, `outside_camera`,
-`other`. Properties carry their own start/end timestamps, so
+`stopped` (→ `"Stopped"`, on both `agent` and `ego`), `other`.
+Properties carry their own start/end timestamps, so
 `while` / `then` / `because_of` over `agent.prop` works the same as
 over actions.
 
@@ -593,12 +674,34 @@ light(color = yellow, ego_in_on_yellow)           # SYNTAX ERROR
 
 ```
 clip.eventful = true
+clip.eventful_reason = ego_adapts
 clip.duration >= 10
 clip.id = "00f2c7d3..."
 ```
 
 A `clip` predicate matches the bundle itself; the entity_ref is the
 bundle, the interval is the whole clip.
+
+> **`clip.eventful_reason`.** A categorical rationale for why a clip
+> was flagged `eventful` (added upstream in annotator internal 0.6.x).
+> Aliases live in the `eventful_reason` family, with four values:
+>
+> | Alias | Meaning |
+> |---|---|
+> | `ego_adapts` | ego adapts its behaviour to the scene |
+> | `special_env` | a special/unusual environment drove the event |
+> | `agent_adapts` | another agent adapts, prompting the event |
+> | `other` | none of the above |
+>
+> ```
+> clip(eventful = true, eventful_reason = special_env)
+> clip.eventful_reason in (ego_adapts, agent_adapts)
+> ```
+>
+> A sibling free-text field `eventful_reason_other` carries the
+> annotator's note when `eventful_reason = other`; it is not exposed
+> as a queryable attribute (no equality/regex predicate), only
+> read off the parsed bundle.
 
 ---
 
