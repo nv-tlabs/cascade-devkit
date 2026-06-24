@@ -608,23 +608,6 @@ def build_dsl_tour() -> None:
         ])
         """),
         md("""
-        ## Action target list — `action.action_target`
-
-        A list-valued, ID-keyed attribute that complements the
-        `because_of` *operator*. `because_of` walks
-        `Action.because_of`; `action_target` exposes the sibling ID
-        list of entities an action is directed at, for explicit
-        membership tests. UUIDs in the corpus carry hyphens and must
-        be quoted (the lexer treats bare `-` as an error).
-        """),
-        code("""
-        # IDs are UUIDs, so the membership form is the natural call
-        # site.
-        run([
-            'ego.action.action_target in ("00000000-0000-0000-0000-000000000000")',
-        ])
-        """),
-        md("""
         ## Clip-level attributes — `clip.eventful` / `clip.eventful_reason`
 
         The boolean `clip.eventful` flags clips worth a closer look.
@@ -635,18 +618,6 @@ def build_dsl_tour() -> None:
         run([
             "clip.eventful = true",
             "clip.eventful_reason = ego_adapts",
-        ])
-        """),
-        md("""
-        ## Clip description — `clip.brief_description`
-
-        The annotator's one-line summary. Equality and IN-set only
-        for now; useful for spot-checks rather than aggregation
-        (each clip carries a unique string).
-        """),
-        code("""
-        run([
-            'clip.brief_description = "(no such description)"',
         ])
         """),
         md("""
