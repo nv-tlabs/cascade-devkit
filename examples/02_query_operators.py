@@ -96,9 +96,16 @@ def main() -> None:
     # Flags are encoded as parenthesized suffixes on `action_type` —
     # `(jaywalk)`, `(erratic)`, `(jaywalk, erratic)`. Match them with
     # literal-string equality / `in (...)` on `action.type`.
+    #
+    # Post-0.6.1, `Jaywalk` is also a standalone action (alias
+    # `jaywalk_action`); include it alongside the combined-suffix forms.
+    # The `oxd:Walk (jaywalk)` / `oxd:Run (jaywalk)` suffix variants are
+    # deprecated but still match, so a complete jaywalk query enumerates
+    # both the standalone action and the combined forms.
     show(
         ds,
         "agent(type = ped, action.type in ("
+        '"Jaywalk", '
         '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
         '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)"))',
     )
@@ -142,6 +149,10 @@ def main() -> None:
 
     section("Clip-level attributes")
     show(ds, "clip.eventful = true")
+    # `clip.eventful_reason` (post-0.6.1) is now queryable alongside the
+    # boolean `clip.eventful`; values: ego_adapts, special_env,
+    # agent_adapts, other.
+    show(ds, "clip.eventful_reason = ego_adapts")
 
     section("Agent group size — `agent.amount`")
     show(ds, "agent.amount = single")

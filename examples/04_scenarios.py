@@ -50,11 +50,14 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         id="ped-jaywalk-yield",
         title="Pedestrian jaywalks; ego brakes / yields",
-        # Post schema-2.0.0, `jaywalk` is a parenthesized suffix on
-        # `action_type` rather than a flag — enumerate the four combined
-        # strings (walk/run × with/without erratic). Same canon as
-        # examples/02_query_operators.py.
+        # Post-0.6.1, `Jaywalk` is a standalone action (alias
+        # `jaywalk_action`); the combined-suffix forms `oxd:Walk
+        # (jaywalk)` / `oxd:Run (jaywalk)` are deprecated but still
+        # match. Enumerate the standalone action alongside the four
+        # combined strings (walk/run × with/without erratic). Same canon
+        # as examples/02_query_operators.py.
         query='agent(type = ped, action.type in ('
+              '"Jaywalk", '
               '"oxd:Walk (jaywalk)", "oxd:Walk (jaywalk, erratic)", '
               '"oxd:Run (jaywalk)", "oxd:Run (jaywalk, erratic)")) '
               "and ego.action in (stop, yield, decel)",
@@ -275,7 +278,9 @@ def main() -> None:
 
     print()
     print("# To inspect a scenario's matching clips:")
-    print('# matches = ds.find(\'agent(type = ped, action.type = "oxd:Walk (jaywalk)")\')')
+    # Standalone `Jaywalk` is the post-0.6.1 form; `oxd:Walk (jaywalk)`
+    # is the deprecated combined suffix (still matched).
+    print('# matches = ds.find(\'agent(type = ped, action.type = "Jaywalk")\')')
     print("# print(set(matches.clips()))")
 
 
