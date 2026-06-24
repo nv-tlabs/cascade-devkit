@@ -29,7 +29,6 @@ import argparse
 import getpass
 import json
 import logging
-import os
 import sys
 import time
 import uuid
@@ -42,7 +41,6 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from annotator.server.video import VideoResolver  # noqa: E402
-from cascade_av.dataset import CascadeDataset  # noqa: E402
 from cascade_av.io import iter_dir  # noqa: E402
 from cascade_av.query import find_on_bundle  # noqa: E402
 from cascade_av.spec import AnnotationBundle  # noqa: E402
