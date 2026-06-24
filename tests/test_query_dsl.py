@@ -122,6 +122,82 @@ def test_other_aliases_for_four_unaliased_families() -> None:
         )
 
 
+def test_drift_0_6x_vocab_aliases_resolve() -> None:
+    """The 0.6.x schema-drift vocab additions each resolve from their
+    alias to the right `Vocab` constant. `agent_property_type` /
+    `ego_property_type` gain `stopped`; `action_type` gains the
+    standalone `jaywalk_action` leaf; `env_type` gains `speed_bump` /
+    `light_rail_lane`; `obj_type` gains `boom_gate`; `signaling_intent`
+    gains `signal_left` / `signal_right`; and the brand-new
+    `eventful_reason` family covers `ego_adapts` and friends."""
+    from cascade_av.query.constants import resolve_alias
+    from cascade_av.spec.schema import (
+        AgentActionTypePedestrianVocab,
+        AgentPropertyTypeVocab,
+        EgoPropertyTypeVocab,
+        EnvironmentTypeVocab,
+        EventfulReasonVocab,
+        SignalIntentVocab,
+        TrafficObjectTypeVocab,
+    )
+
+    # Property-type `stopped` lands on both the agent and ego families.
+    assert AgentPropertyTypeVocab.STOPPED in resolve_alias("agent_property_type", "stopped")
+    assert EgoPropertyTypeVocab.STOPPED in resolve_alias("ego_property_type", "stopped")
+
+    # `jaywalk_action` is a single-value leaf, so it resolves to exactly
+    # that one literal (it must NOT pull in the deprecated `(jaywalk)`
+    # suffix forms).
+    assert resolve_alias("action_type", "jaywalk_action") == frozenset(
+        {AgentActionTypePedestrianVocab.JAYWALK}
+    )
+
+    # New environment types.
+    assert EnvironmentTypeVocab.SPEED_BUMP in resolve_alias("env_type", "speed_bump")
+    assert EnvironmentTypeVocab.LIGHT_RAIL_LANE in resolve_alias("env_type", "light_rail_lane")
+
+    # New traffic-object type.
+    assert TrafficObjectTypeVocab.BOOM_GATE in resolve_alias("obj_type", "boom_gate")
+
+    # Left/Right indicator superseded the deprecated combined `Turn` intent.
+    assert SignalIntentVocab.LEFT_INDICATOR in resolve_alias("signaling_intent", "signal_left")
+    assert SignalIntentVocab.RIGHT_INDICATOR in resolve_alias("signaling_intent", "signal_right")
+
+    # Brand-new `eventful_reason` family.
+    assert EventfulReasonVocab.EGO_ADAPTS in resolve_alias("eventful_reason", "ego_adapts")
+    assert EventfulReasonVocab.SPECIAL_ENVIRONMENT in resolve_alias(
+        "eventful_reason", "special_env"
+    )
+    assert EventfulReasonVocab.AGENT_ADAPTS in resolve_alias("eventful_reason", "agent_adapts")
+    assert EventfulReasonVocab.OTHER in resolve_alias("eventful_reason", "other")
+
+
+def test_clip_eventful_reason_uses_eventful_reason_family() -> None:
+    """`clip.eventful_reason` wires the new `eventful_reason` alias family
+    onto `AnnotationBundle.annotation.eventful_reason`, so callers can
+    write `clip.eventful_reason = ego_adapts` instead of the raw string."""
+    from cascade_av.query.entities import CLIP_DESCRIPTOR
+
+    assert CLIP_DESCRIPTOR.attributes["eventful_reason"].alias_family == "eventful_reason"
+
+    for q in (
+        "clip.eventful_reason = ego_adapts",
+        "clip.eventful_reason in (ego_adapts, agent_adapts)",
+    ):
+        assert parse(q) is not None
+
+
+def test_standalone_jaywalk_distinct_from_deprecated_suffix() -> None:
+    """The real matcher distinguishes the standalone `Jaywalk` base verb
+    from the deprecated `oxd:Walk (jaywalk)` suffix form. Because
+    `Jaywalk` has no parens, prefix matching is disabled, so it matches
+    only the exact literal — not `oxd:Walk (jaywalk)`."""
+    from cascade_av.query.entities import action_type_matches
+
+    assert action_type_matches("Jaywalk", frozenset({"Jaywalk"})) is True
+    assert action_type_matches("oxd:Walk (jaywalk)", frozenset({"Jaywalk"})) is False
+
+
 def test_agent_amount_aliases_resolve_and_descriptor_uses_them() -> None:
     """`agent.amount` was registered without an alias_family, so users
     had to spell `agent.amount = "Single"` exactly. The new

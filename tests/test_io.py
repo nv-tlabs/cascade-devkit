@@ -291,6 +291,36 @@ def test_hf_iter_split_raises_on_unknown_sub_split(
         list(repo.iter_split("cascade-v0.1", "test"))
 
 
+def test_round_trip_preserves_eventful_reason(tmp_path: Path) -> None:
+    """A fabricated bundle carrying the post-2.0.0 `eventful_reason` /
+    `eventful_reason_other` fields survives a `save_file` → `load_file`
+    round-trip. In-memory only — no corpus needed (though the module-wide
+    skipif still gates this on `CASCADE_AV_DATASET_ROOT` being set)."""
+    from cascade_av.spec.schema import (
+        AnnotationBundle,
+        EventfulReasonVocab,
+        SilAvAnnotation,
+        VideoMeta,
+    )
+
+    bundle = AnnotationBundle(
+        schema_version="2.0.0",
+        video=VideoMeta(clip_id="eventful-rt", fps=30.0, duration_s=10.0),
+        annotation=SilAvAnnotation(
+            eventful=True,
+            eventful_reason=EventfulReasonVocab.EGO_ADAPTS,
+            eventful_reason_other="x",
+        ),
+    )
+
+    out = tmp_path / "eventful.json"
+    save_file(bundle, out)
+    reloaded = load_file(out)
+
+    assert reloaded.annotation.eventful_reason == EventfulReasonVocab.EGO_ADAPTS
+    assert reloaded.annotation.eventful_reason_other == "x"
+
+
 def test_condition_type_accepts_bare_string() -> None:
     """Some corpora write `conditions[].type` as a bare string ("Construction
     Zone") rather than the canonical list shape. The schema coerces it so
