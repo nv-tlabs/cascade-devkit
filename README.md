@@ -11,8 +11,8 @@ timeline.
 from cascade_av.dataset import CascadeDataset
 
 ds = CascadeDataset("/path/to/json_annotations")
-ds.count("ego.action = decel because_of agent.type = ped")
-# → number of clips where the ego decelerates *because of* a pedestrian
+ds.count("ego.action = stop because_of light.color = red")
+# → number of clips where the ego stops *because of* a red light
 ```
 
 ## What's annotated
@@ -132,7 +132,7 @@ ds = CascadeDataset("/path/to/json_annotations")
 print(f"{len(ds)} clips")
 
 # Count clips matching a query
-ds.count("agent.type = ped and env.type = crosswalk")
+ds.count("agent.type = ped and ego.action in (stop, yield, decel)")
 
 # Get the full MatchSet — a tuple of (clip_id, entity, interval) `Match`es
 matches = ds.find("light.color = red and ego.action = stop")
@@ -149,7 +149,7 @@ The DSL composes over entities and their attributes. Full grammar in
 agent(type = ped, action.type = "oxd:Walk (jaywalk)") and ego.action in (stop, yield, decel)
 light.color = yellow then(3) ego.action = stop
 within light.color = red: not ego.action = stop
-ego.action = decel because_of agent.type = ped
+ego.action = stop because_of light.color = red
 ```
 
 ## Visualization
@@ -169,7 +169,7 @@ seq = ds.get_sequence(clip_id)
 
 seq.visualize()                                  # scrubbable widget over the whole clip
 seq.visualize(match=m, pad=1.0)                  # single match in context
-ds.find("ego.action = decel because_of agent.type = ped").visualize()  # MatchSet carousel
+ds.find("ego.action = stop because_of light.color = red").visualize()  # MatchSet carousel
 ```
 
 For reports, doc figures, or headless pipelines, `viz.render_frame()`

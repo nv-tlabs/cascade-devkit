@@ -81,8 +81,8 @@ def main() -> None:
         ("cyclist",             "agent.type = cyclist"),
         ("stop sign",           "obj.type = stop_sign"),
         ("yield sign",          "obj.type = yield_sign"),
-        ("crosswalk env",       "env.type = crosswalk"),
-        ("intersection env",    "env.type = intersection"),
+        ("road env",            "env.type = road"),
+        ("other env",           "env.type = other"),
     ]
     print(f"\n{'category':<22} {'clips':>7} {'entities':>10}")
     print("-" * 42)
