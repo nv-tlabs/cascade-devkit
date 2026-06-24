@@ -225,6 +225,16 @@ light.color = red             # every LightState with color = red
 - The implicit AND-and-existential-quantifier rule: a clip matches iff
   *at least one* entity satisfies the predicate.
 
+> **Coverage — environments and containment are optional.** Not every
+> clip carries environments, conditions, or containment; these layers
+> default to empty and their density depends on the annotation scope.
+> Ego-centric batches in particular may have few or no environments and
+> little or no containment (the ego frequently has none, and agent
+> containment may omit `env_id`). Predicates like `env.type = …`,
+> `cond.type = …`, `agent.contained_in …` / `ego.contained_in …`, or the
+> containment flags below simply won't match on clips where the layer is
+> absent — that's expected coverage, not a query error.
+
 > **Containment — `agent.contained_in` / `ego.contained_in`.** The
 > containment attribute is also exposed under the name `contained_in`
 > in addition to its canonical name `in` (`agent.in` / `ego.in`).

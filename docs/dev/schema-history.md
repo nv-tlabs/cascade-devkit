@@ -47,6 +47,20 @@ combined `(jaywalk[, erratic])` walk/run suffix forms (now standalone
 [`docs/user/query_language.md`](../user/query_language.md) for the
 query-side aliases.
 
+### Environments and containment are optional
+
+`SilAvAnnotation.environments` and `conditions`, and every `containment`
+list (on the ego, agents, traffic objects, and lights), default to empty
+and are **not guaranteed to be populated**. How densely they are
+annotated depends on the annotation's *scope*: batches annotated in an
+**ego-centric** mode focus on ego (and agent) behavior and may carry few
+or no environments and little containment. In the ego-centric sample
+audited, environments averaged ~0.4 per clip (almost all `oxd:Road`),
+the ego carried **no** containment at all, and agent containment — where
+present — did not reference an environment (`env_id` was blank).
+Consumers must treat the environment and containment layers as optional
+and must not assume per-clip spatial grounding.
+
 ## Reading the registry from code
 
 ```python
