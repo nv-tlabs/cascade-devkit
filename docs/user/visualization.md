@@ -4,7 +4,7 @@
 time range, or a `MatchSet` — as a decoded camera frame paired with
 the clip's annotation timeline. The timeline carries one bar per
 agent action, ego action, environment, condition, and traffic-light
-state, plus five families of causal arrow (`because_of`, `link_to`,
+state, plus four families of causal arrow (`because_of`,
 `containment`, `influence`, `action_target`). It also paints a yellow
 highlight band over any match interval.
 
@@ -84,17 +84,16 @@ want a single still without switching modules.
 
 Type: `dict[str, bool]` · Default: all-on
 
-Five recognized families. Pass `False` for any you want to hide;
+Four recognized families. Pass `False` for any you want to hide;
 unmentioned keys default to on.
 
 ```python
-seq.visualize(arrows={"link_to": False, "because_of": False})
+seq.visualize(arrows={"because_of": False, "containment": False})
 ```
 
 | Family | What it represents |
 |---|---|
 | `because_of` | causal cause arrows — `action.because_of` field on EgoAction / AgentAction |
-| `link_to` | side-effect / linked-entity arrows — `link_to` field |
 | `containment` | spatial-containment edges (agent ∈ environment, etc.) |
 | `influence` | influence edges (a light influences the ego, etc.) |
 | `action_target` | action → target edges |
@@ -190,12 +189,12 @@ Arrows paint only if BOTH endpoints survived the segment filter.
 
 ```python
 # Just agent actions for two specific agents, no Ego rows in the way,
-# and no `link_to` clutter from the arrow family.
+# and no `because_of` clutter from the arrow family.
 seq.visualize(
     track_groups=["Agents"],
     families=["action"],
     agent_ids=["agent_3", "agent_7"],
-    arrows={"link_to": False},
+    arrows={"because_of": False},
 )
 ```
 

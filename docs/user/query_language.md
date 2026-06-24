@@ -384,14 +384,13 @@ light.color = red             # every LightState with color = red
 > `Containment.illegal_flag` directly. Per §4.11, all three must
 > compare against an explicit boolean.
 
-> **Action ID-link lists — `action.link_to`, `action.action_target`.**
-> Two list-valued, ID-keyed attributes that complement the existing
+> **Action target list — `action.action_target`.**
+> A list-valued, ID-keyed attribute that complements the existing
 > `because_of` *operator*. `because_of` still walks
-> `Action.because_of`; these expose the sibling ID lists for
-> membership tests:
+> `Action.because_of`; `action_target` exposes the sibling ID list of
+> entities an action is directed at, for membership tests:
 >
 > ```
-> agent.action.link_to = signal-id            # Signal action targeting a specific signal-head
 > ego.action.action_target in (a, b)
 > ```
 >

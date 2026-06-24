@@ -604,19 +604,19 @@ def build_dsl_tour() -> None:
         ])
         """),
         md("""
-        ## Action ID-link lists — `action.link_to` / `action_target`
+        ## Action target list — `action.action_target`
 
-        Two list-valued, ID-keyed attributes that complement the
+        A list-valued, ID-keyed attribute that complements the
         `because_of` *operator*. `because_of` walks
-        `Action.because_of`; these expose the sibling ID lists for
-        explicit membership tests. UUIDs in the corpus carry hyphens
-        and must be quoted (the lexer treats bare `-` as an error).
+        `Action.because_of`; `action_target` exposes the sibling ID
+        list of entities an action is directed at, for explicit
+        membership tests. UUIDs in the corpus carry hyphens and must
+        be quoted (the lexer treats bare `-` as an error).
         """),
         code("""
         # IDs are UUIDs, so the membership form is the natural call
         # site.
         run([
-            'agent.action.link_to = "00000000-0000-0000-0000-000000000000"',
             'ego.action.action_target in ("00000000-0000-0000-0000-000000000000")',
         ])
         """),
