@@ -152,6 +152,17 @@ within light.color = red: not ego.action = stop
 ego.action = stop because_of light.color = red
 ```
 
+## Challenge Evaluation Kits
+
+The devkit also ships tools for the AV Causal Scenario Retrieval Challenge:
+
+- [`docker-prep-kit/`](docker-prep-kit/) helps participants prepare a Docker
+  image, publish it as a private Hugging Face Docker Space, and satisfy the
+  challenge frontend/backend runtime contract.
+- [`self-evaluation-kit/`](self-evaluation-kit/) runs that Docker image locally
+  against a named CASCADE retrieval split with real video files, then writes a
+  JSON score report using the public challenge metrics.
+
 ## Visualization
 
 `cascade_av.viz` renders any subset of a clip — a single instant, a
