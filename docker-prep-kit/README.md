@@ -1,59 +1,81 @@
 # Docker Preparation Kit
 
-Use this kit to prepare the Docker image that you submit to the AV Causal
-Scenario Retrieval Challenge.
+Prepare and publish your submission to the AV Causal Scenario Retrieval
+Challenge.
 
-The evaluator runs your image as a batch program. Your Space only needs to build
-successfully; it does not need to serve a web app.
+## How evaluation works (and why this kit exists)
 
-## Submission Flow
+The evaluator does **not** run your Docker image as a container. The evaluation
+sandbox cannot launch nested containers, and a `chroot` cannot be given GPU
+access. So instead:
 
-1. Copy `template/` into a new repository or Hugging Face Space.
-2. Replace the baseline prediction logic in `run.py` with your retrieval system.
-3. Bake model code, configuration, and weights into the image. Do not rely on
-   runtime downloads during evaluation.
-4. Build and test locally:
+1. You build your environment **`FROM` the CASCADE common base image**, installing
+   everything into the `/opt/submission` prefix.
+2. This kit **extracts that prefix** and publishes it as a portable artifact
+   (`submission.tar.gz` + `manifest.json`) to your private Hugging Face Space.
+3. The evaluator restores your prefix on the **identical** base image and runs it
+   **in place**, on GPU, in two phases:
+   - **fetch phase** — network on, no test data present;
+   - **inference phase** — network **disabled** (egress blocked), hidden test
+     inputs mounted, your entrypoint runs.
 
-   ```bash
-   docker build -t my-crc-submission ./template
-   docker run --rm \
-     -v /path/to/input:/input:ro \
-     -v /tmp/crc-output:/output \
-     my-crc-submission
-   python validate_submission.py \
-     --predictions /tmp/crc-output/predictions.jsonl \
-     --queries /path/to/input/queries.jsonl \
-     --videos /path/to/input/videos.jsonl
-   ```
+Because both sides share one base image, your environment is ABI-compatible at
+evaluation time — no relocation or CUDA/glibc surprises.
 
-5. Create a private Hugging Face Space with `sdk: docker`.
-6. Push your Docker Space repository.
-7. Add the challenge evaluation bot as a read collaborator when instructed.
-8. Submit the Space ref, for example `your-team/your-submission`, in the
-   challenge frontend.
+## Quick start
 
-## Runtime Contract
+```bash
+# 1. Copy the template and make it your own.
+cp -r template my-submission && cd my-submission
+# edit requirements.txt, run.py, submission.yaml; bake weights in the Dockerfile
 
-Your image entrypoint must:
+# 2. Build, extract, and publish to your private Space.
+python ../build_submission.py \
+  --context . \
+  --base-image <registry>/cascade-base:cuda13.0-py312 \
+  --repo-id your-team/your-submission \
+  --repo-type space
 
-- Read `/input/queries.jsonl`, one JSON object per line:
-  `{"query_id": "...", "text": "..."}`.
-- Read `/input/videos.jsonl`, one JSON object per line:
-  `{"video_id": "...", "path": "videos/<video_id>.mp4"}`.
-- Read video files from `/input/videos/<video_id>.mp4`.
-- Write `/output/predictions.jsonl`, one JSON object per query:
-  `{"query_id": "...", "video_ids": ["...predicted matching videos..."]}`.
-- Exit with status code `0` after writing predictions.
+# Preview everything without Docker or the Hub:
+python ../build_submission.py --context . --dry-run
 
-Every query should appear exactly once. Returned `video_ids` must be the videos
-your system predicts match the query, ordered from strongest to weakest match.
-`TOP_K` is a maximum list length, not a target to fill. Do not pad predictions
-with arbitrary non-matching videos. If your system finds no likely match for a
-query, return an empty list for that query. Duplicate IDs are counted once by
-the scorer, preserving the first occurrence.
+# Build and inspect the artifact locally without publishing:
+python ../build_submission.py --context . --no-push
+```
 
-## Evaluation Constraints
+The tool runs `docker build` locally, so run it on a machine with Docker. It
+needs an `HF_TOKEN` (or `--token`) with write access to push.
 
-The official evaluator runs participant inference separately from trusted
-scoring. Participant containers do not receive labels or service tokens. Treat
-`/input` as read-only and write only under `/output`.
+## What gets published
+
+- `submission.tar.gz` — the contents of `/opt/submission` from your built image.
+- `manifest.json` — base image, prefix, launch `entrypoint`, `env`, the
+  artifact's sha256, and CUDA target. The evaluator reads this to restore and run
+  your submission.
+
+## Rules
+
+- Install **everything under `/opt/submission`** (use the venv/conda env in the
+  prefix). Files outside the prefix are not shipped.
+- **Download weights at build time** — the inference phase has no network.
+- Keep the **CUDA toolkit compatible with the host driver**; target a single GPU.
+- The entrypoint must read `/input` and write `/output/predictions.jsonl` (see
+  `template/README.md`).
+
+## Local prediction check
+
+After a local run that produced `predictions.jsonl`, validate its shape:
+
+```bash
+python validate_submission.py \
+  --predictions /tmp/out/predictions.jsonl \
+  --queries /path/to/input/queries.jsonl \
+  --videos /path/to/input/videos.jsonl
+```
+
+## Layout
+
+- `base-image/` — the shared base image (the ABI contract). See its README.
+- `template/` — copy this to start your submission.
+- `build_submission.py` — build → extract prefix → manifest → push.
+- `validate_submission.py` — check `predictions.jsonl` shape locally.

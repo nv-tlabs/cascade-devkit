@@ -1,15 +1,26 @@
-# Minimal submission image for the AV Causal Scenario Retrieval Challenge.
+# Build your submission FROM the CASCADE common base image so your environment is
+# ABI-compatible with the evaluator.
 #
-# Bake all code, config, and weights into this image. The official evaluator
-# may run without internet access and will mount inputs at /input.
-FROM python:3.12-slim
+# CRITICAL: everything your system needs (Python env, dependencies, compiled
+# extensions, model weights, code) MUST be installed under /opt/submission.
+# Files outside that prefix are NOT shipped to the evaluator.
+#
+# The build tool passes the pinned base image via --build-arg BASE_IMAGE=...
+ARG BASE_IMAGE=ghcr.io/nv-tlabs/cascade-base:cuda13.0-py312
+FROM ${BASE_IMAGE}
 
-WORKDIR /app
+# Create an isolated environment inside the prefix.
+RUN python -m venv /opt/submission/env
+ENV PATH=/opt/submission/env/bin:$PATH
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install your dependencies INTO the prefix.
+COPY requirements.txt /opt/submission/requirements.txt
+RUN /opt/submission/env/bin/pip install --no-cache-dir -r /opt/submission/requirements.txt
 
-# COPY model/ ./model/
-COPY run.py .
+# Bake your code and weights into the prefix. Download weights HERE, at build
+# time — the evaluator runs your system with the network disabled.
+COPY run.py /opt/submission/run.py
+# COPY model/ /opt/submission/model/
 
-ENTRYPOINT ["python", "run.py"]
+# No ENTRYPOINT is needed: the evaluator never runs this image. It restores
+# /opt/submission on the base and launches the command from submission.yaml.
