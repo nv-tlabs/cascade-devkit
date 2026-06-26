@@ -1640,15 +1640,6 @@ export function addSegmentToAnnotation(ann: SilAvAnnotation, trackId: TrackId, l
       end_timestamp: fmt(t1),
       _track_index: trackIdx,
     })
-    // Auto-create a default condition spanning the full env
-    clone.conditions = clone.conditions || []
-    clone.conditions.push({
-      id: nextStringId('Condition', clone.conditions.map(c => c.id)),
-      env_id: newEnvId,
-      type: '',
-      start_timestamp: fmt(t0),
-      end_timestamp: fmt(t1),
-    })
     return clone
   }
 
@@ -1657,18 +1648,13 @@ export function addSegmentToAnnotation(ann: SilAvAnnotation, trackId: TrackId, l
     const trackIdx = parseInt(objMatch[1], 10)
     clone.traffic_objects = clone.traffic_objects || []
     const objId = nextStringId('Object', clone.traffic_objects.map(o => o.id))
-    const objContIds = [
-      ...(clone.ego_vehicle?.containment || []).map(c => c.id || ''),
-      ...(clone.agents || []).flatMap(a => (a.containment || []).map(c => c.id || '')),
-      ...(clone.traffic_objects || []).flatMap(o => (o.containment || []).map(c => c.id || '')),
-    ].filter(Boolean)
     clone.traffic_objects.push({
       id: objId,
       type: label,
       visibility_start_timestamp: fmt(t0),
       visibility_end_timestamp: fmt(t1),
       lane_number: 'none',
-      containment: [{ id: nextStringId('ObjectContainment', objContIds), env_id: '', lane_number: 'none', start_timestamp: fmt(t0), end_timestamp: fmt(t1) }],
+      containment: [],
       state_sequence: [{ start_timestamp: fmt(t0), end_timestamp: fmt(t1) }],
       keypoints: [],
       _track_index: trackIdx,
@@ -1684,40 +1670,17 @@ export function addSegmentToAnnotation(ann: SilAvAnnotation, trackId: TrackId, l
     const existingShIds = clone.traffic_lights.flatMap(l => (l.signal_heads || []).map(sh => sh.id)).filter(Boolean)
     const shId = nextStringId('SignalHead', existingShIds)
     const existingLsIds = clone.traffic_lights.flatMap(l => (l.signal_heads || []).flatMap(sh => (sh.state_sequence || []).map(s => (s as unknown as Record<string, unknown>).id as string).filter(Boolean)))
-    const allContIds = [
-      ...(clone.ego_vehicle?.containment || []).map(c => c.id || ''),
-      ...(clone.agents || []).flatMap(a => (a.containment || []).map(c => c.id || '')),
-      ...(clone.traffic_objects || []).flatMap(o => (o.containment || []).map(c => c.id || '')),
-      ...(clone.traffic_lights || []).flatMap(l => [
-        ...(l.containment || []).map(c => c.id || ''),
-        ...(l.signal_heads || []).flatMap(sh => (sh.env_controlled || []).map(c => c.id || '')),
-      ]),
-    ].filter(Boolean)
-    const physContId = nextStringId('LightContainment', allContIds)
-    const shContId = nextStringId('LightContainment', [...allContIds, physContId])
     clone.traffic_lights.push({
       id: lightId,
       visibility_start_timestamp: fmt(t0),
       visibility_end_timestamp: fmt(t1),
-      containment: [{
-        id: physContId,
-        env_id: '',
-        lane_number: '',
-        start_timestamp: fmt(t0),
-        end_timestamp: fmt(t1),
-      }],
+      containment: [],
       signal_heads: [{
         id: shId,
         start_timestamp: fmt(t0),
         end_timestamp: fmt(t1),
         state_sequence: [{ id: nextStringId('LightState', existingLsIds), start_timestamp: fmt(t0), end_timestamp: fmt(t1) }],
-        env_controlled: [{
-          id: shContId,
-          env_id: '',
-          lane_number: '',
-          start_timestamp: fmt(t0),
-          end_timestamp: fmt(t1),
-        }],
+        env_controlled: [],
         keypoints: [],
       }],
       _track_index: trackIdx,
@@ -1731,10 +1694,6 @@ export function addSegmentToAnnotation(ann: SilAvAnnotation, trackId: TrackId, l
     clone.agents = clone.agents || []
     const ts0 = fmt(t0), ts1 = fmt(t1)
     const agentId = nextStringId('Agent', clone.agents.map(a => a.id))
-    const contIds = [
-      ...(clone.ego_vehicle?.containment || []).map(c => c.id || ''),
-      ...(clone.agents || []).flatMap(a => (a.containment || []).map(c => c.id || '')),
-    ].filter(Boolean)
     clone.agents.push({
       id: agentId,
       amount: 'Single', type: '',
@@ -1742,7 +1701,7 @@ export function addSegmentToAnnotation(ann: SilAvAnnotation, trackId: TrackId, l
       visibility_end_timestamp: ts1,
       actions: [{ action_type: '', start_timestamp: ts0, end_timestamp: ts1 }],
       ego_relative_pose: [{  start_timestamp: ts0, end_timestamp: ts1 }],
-      containment: [{ id: nextStringId('AgentContainment', contIds), env_id: '', lane_number: 'none', start_timestamp: ts0, end_timestamp: ts1 }],
+      containment: [],
       keypoints: [],
       _track_index: trackIdx,
     })
@@ -1764,11 +1723,6 @@ export function addSegmentToAnnotation(ann: SilAvAnnotation, trackId: TrackId, l
     clone.agents = clone.agents || []
     const nextTrack = clone.agents.length > 0 ? Math.max(...clone.agents.map(a => (a._track_index ?? 0))) + 1 : 0
     const agentId = nextStringId('Agent', clone.agents.map(a => a.id))
-    const defaultEnvId2 = ''
-    const contIds2 = [
-      ...(clone.ego_vehicle?.containment || []).map(c => c.id || ''),
-      ...(clone.agents || []).flatMap(a => (a.containment || []).map(c => c.id || '')),
-    ].filter(Boolean)
     clone.agents.push({
       id: agentId,
       amount, type: agentType || '',
@@ -1776,7 +1730,7 @@ export function addSegmentToAnnotation(ann: SilAvAnnotation, trackId: TrackId, l
       visibility_end_timestamp: fmt(t1),
       actions: [{ action_type: '', start_timestamp: fmt(t0), end_timestamp: fmt(t1) }],
       ego_relative_pose: [{  start_timestamp: fmt(t0), end_timestamp: fmt(t1) }],
-      containment: [{ id: nextStringId('AgentContainment', contIds2), env_id: defaultEnvId2, lane_number: 'none', start_timestamp: fmt(t0), end_timestamp: fmt(t1) }],
+      containment: [],
       keypoints: [],
       _track_index: nextTrack,
     })
@@ -1802,7 +1756,7 @@ export function addSegmentToAnnotation(ann: SilAvAnnotation, trackId: TrackId, l
       ...(clone.ego_vehicle.containment || []).map(c => c.id || ''),
       ...(clone.agents || []).flatMap(a => (a.containment || []).map(c => c.id || '')),
     ].filter(Boolean)
-    clone.ego_vehicle.containment.push({ id: nextStringId('EgoContainment', egoContIds), env_id: clone.environments?.[0]?.id || 'Environment1', lane_number: laneMatch ? laneMatch[1] : 'none', start_timestamp: fmt(t0), end_timestamp: fmt(t1) })
+    clone.ego_vehicle.containment.push({ id: nextStringId('EgoContainment', egoContIds), env_id: '', lane_number: laneMatch ? laneMatch[1] : 'none', start_timestamp: fmt(t0), end_timestamp: fmt(t1) })
     return clone
   }
 
@@ -1843,27 +1797,12 @@ export function addSignalHeadToLight(ann: SilAvAnnotation, lightIndex: number, t
   light.signal_heads = light.signal_heads || []
   const existingShIds = clone.traffic_lights.flatMap(l => (l.signal_heads || []).map(sh => sh.id)).filter(Boolean)
   const existingLsIds = clone.traffic_lights.flatMap(l => (l.signal_heads || []).flatMap(sh => (sh.state_sequence || []).map(s => (s as unknown as Record<string, unknown>).id as string).filter(Boolean)))
-  const allContIds = [
-    ...(clone.ego_vehicle?.containment || []).map(c => c.id || ''),
-    ...(clone.agents || []).flatMap(a => (a.containment || []).map(c => c.id || '')),
-    ...(clone.traffic_objects || []).flatMap(o => (o.containment || []).map(c => c.id || '')),
-    ...(clone.traffic_lights || []).flatMap(l => [
-      ...(l.containment || []).map(c => c.id || ''),
-      ...(l.signal_heads || []).flatMap(sh => (sh.env_controlled || []).map(c => c.id || '')),
-    ]),
-  ].filter(Boolean)
   light.signal_heads.push({
     id: nextStringId('SignalHead', existingShIds),
     start_timestamp: formatTs(t0),
     end_timestamp: formatTs(t1),
     state_sequence: [{ id: nextStringId('LightState', existingLsIds), start_timestamp: formatTs(t0), end_timestamp: formatTs(t1) }],
-    env_controlled: [{
-      id: nextStringId('LightContainment', allContIds),
-      env_id: '',
-      lane_number: '',
-      start_timestamp: formatTs(t0),
-      end_timestamp: formatTs(t1),
-    }],
+    env_controlled: [],
     keypoints: [],
   })
   return clone
