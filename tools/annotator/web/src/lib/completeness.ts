@@ -55,12 +55,12 @@ export function checkSegmentCompleteness(seg: TimelineSegment, ann: SilAvAnnotat
     if (typeof m.type === 'string' && QUANTITY_ELIGIBLE_OBJECT_TYPES.has(m.type) && !m.quantity) {
       issues.push('Missing: quantity')
     }
-    // Check for at least 1 state
+    // Check for at least 1 state. Containment is optional because recent
+    // batches may annotate objects without environments.
     const oi = m._objIndex as number
     if (oi != null) {
       const obj = ann.traffic_objects?.[oi]
       if (!obj?.state_sequence?.length) issues.push('Missing: state_sequence (need >= 1)')
-      if (!obj?.containment?.length) issues.push('Missing: containment (need >= 1)')
       if (!obj?.keypoints?.length) issues.push('Missing: keypoints (need >= 1)')
     }
   }
@@ -83,7 +83,6 @@ export function checkSegmentCompleteness(seg: TimelineSegment, ann: SilAvAnnotat
     if (li != null && hi != null) {
       const sh = ann.traffic_lights?.[li]?.signal_heads?.[hi]
       if (!sh?.state_sequence?.length) issues.push('Missing: state_sequence (need >= 1)')
-      if (!sh?.env_controlled?.length) issues.push('Missing: env_controlled (need >= 1)')
       if (!sh?.keypoints?.length) issues.push('Missing: keypoints (need >= 1)')
     }
   }
@@ -174,11 +173,10 @@ export function checkSegmentCompleteness(seg: TimelineSegment, ann: SilAvAnnotat
     if (!influencers?.length) issues.push('Missing: influencers')
   }
 
-  // Containment (all types)
+  // Containment is optional, and when present may be left unassigned to an
+  // environment. Only require the free-text detail when "Other" is selected.
   if (m._isEgoContSubtrack || m._isAgentContSubtrack || m._isObjContSubtrack || m._isLightContSubtrack || m._isLightPhysContSubtrack) {
-    if (!m.env_id) issues.push('Missing: env_id')
     if (m.env_id === 'Other' && (m.other == null || m.other === '')) issues.push('Missing: other environment description')
-    if (!m._isLightPhysContSubtrack && (!m.lane_number || m.lane_number === 'none')) issues.push('Missing: lane_number')
   }
 
   return { missingCount: issues.length, issues }
