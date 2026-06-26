@@ -145,7 +145,12 @@ def main() -> None:
         help="Split key within the named split.",
     )
     parser.add_argument("--out", type=Path, required=True, help="Path to write evaluation JSON.")
-    parser.add_argument("--top-k", type=int, default=100)
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=100,
+        help="Maximum predictions per query; do not pad outputs to this length.",
+    )
     parser.add_argument("--video-extension", default=".mp4")
     parser.add_argument("--video-manifest", type=Path)
     parser.add_argument("--workdir", type=Path, help="Optional work directory to keep files.")

@@ -18,11 +18,18 @@ def read_jsonl(path: Path) -> Iterable[dict]:
                 raise ValueError(f"{path}:{line_number} is not valid JSON: {exc}") from exc
 
 
-def validate_predictions(predictions: Path, queries: Path, videos: Path, top_k: int) -> list[str]:
+def validate_predictions(
+    predictions: Path,
+    queries: Path,
+    videos: Path,
+    top_k: int,
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
+    warnings: list[str] = []
     query_ids = [str(row.get("query_id", "")) for row in read_jsonl(queries)]
     query_id_set = set(query_ids)
     video_ids = {str(row.get("video_id", "")) for row in read_jsonl(videos)}
+    prediction_lengths: list[int] = []
 
     seen_queries: set[str] = set()
     for index, row in enumerate(read_jsonl(predictions), start=1):
@@ -36,6 +43,7 @@ def validate_predictions(predictions: Path, queries: Path, videos: Path, top_k: 
         if not isinstance(ranked, list):
             errors.append(f"row {index}: video_ids must be a list")
             continue
+        prediction_lengths.append(len(ranked))
         if len(ranked) > top_k:
             errors.append(f"row {index}: video_ids has {len(ranked)} entries, max is {top_k}")
         for video_id in ranked:
@@ -48,7 +56,14 @@ def validate_predictions(predictions: Path, queries: Path, videos: Path, top_k: 
         suffix = "" if len(missing) <= 10 else f", and {len(missing) - 10} more"
         errors.append(f"missing predictions for query_id values: {preview}{suffix}")
 
-    return errors
+    if query_ids and top_k > 0 and len(prediction_lengths) == len(query_ids):
+        if all(length == top_k for length in prediction_lengths):
+            warnings.append(
+                "every query returns exactly TOP_K videos; TOP_K is a cap, not a target. "
+                "Do not pad with non-matching videos."
+            )
+
+    return errors, warnings
 
 
 def main() -> None:
@@ -59,7 +74,9 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=100)
     args = parser.parse_args()
 
-    errors = validate_predictions(args.predictions, args.queries, args.videos, args.top_k)
+    errors, warnings = validate_predictions(args.predictions, args.queries, args.videos, args.top_k)
+    for warning in warnings:
+        print(f"WARNING: {warning}")
     if errors:
         for error in errors:
             print(f"ERROR: {error}")

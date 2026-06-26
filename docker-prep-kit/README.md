@@ -9,7 +9,7 @@ successfully; it does not need to serve a web app.
 ## Submission Flow
 
 1. Copy `template/` into a new repository or Hugging Face Space.
-2. Replace the baseline ranking logic in `run.py` with your retrieval system.
+2. Replace the baseline prediction logic in `run.py` with your retrieval system.
 3. Bake model code, configuration, and weights into the image. Do not rely on
    runtime downloads during evaluation.
 4. Build and test locally:
@@ -42,12 +42,15 @@ Your image entrypoint must:
   `{"video_id": "...", "path": "videos/<video_id>.mp4"}`.
 - Read video files from `/input/videos/<video_id>.mp4`.
 - Write `/output/predictions.jsonl`, one JSON object per query:
-  `{"query_id": "...", "video_ids": ["...ranked best-first..."]}`.
+  `{"query_id": "...", "video_ids": ["...predicted matching videos..."]}`.
 - Exit with status code `0` after writing predictions.
 
-Every query should appear exactly once. Returned `video_ids` must come from the
-provided corpus and should be ordered from best match to worst match. Duplicate
-IDs are counted once by the scorer, preserving the first occurrence.
+Every query should appear exactly once. Returned `video_ids` must be the videos
+your system predicts match the query, ordered from strongest to weakest match.
+`TOP_K` is a maximum list length, not a target to fill. Do not pad predictions
+with arbitrary non-matching videos. If your system finds no likely match for a
+query, return an empty list for that query. Duplicate IDs are counted once by
+the scorer, preserving the first occurrence.
 
 ## Evaluation Constraints
 

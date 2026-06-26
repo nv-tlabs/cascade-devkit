@@ -101,3 +101,7 @@ Predictions must contain one JSON object per query:
 ```json
 {"query_id": "cascade-v0.1_val_batch_00001_00001", "video_ids": ["clip-id"]}
 ```
+
+`video_ids` should contain only videos your system predicts match the query,
+ranked strongest match first. The list may be shorter than `TOP_K`; if no video
+is likely to match, use an empty list. Do not pad with arbitrary corpus videos.

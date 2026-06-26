@@ -1,7 +1,7 @@
 """Minimal submission entrypoint for the AV Causal Scenario Retrieval Challenge.
 
-Replace ``rank_videos`` with your text-to-video retrieval model. The baseline
-returns the corpus order for every query.
+Replace ``predict_matching_videos`` with your text-to-video retrieval model. The
+baseline returns no matches, rather than padding with arbitrary corpus videos.
 """
 from __future__ import annotations
 
@@ -28,10 +28,11 @@ def load_video_ids(input_dir: Path) -> list[str]:
     return [str(row["video_id"]) for row in read_jsonl(input_dir / "videos.jsonl")]
 
 
-def rank_videos(query_text: str, video_ids: list[str]) -> list[str]:
-    """Return video IDs ranked best-first for one query."""
+def predict_matching_videos(query_text: str, video_ids: list[str]) -> list[str]:
+    """Return predicted matching video IDs, strongest match first."""
     del query_text
-    return video_ids[:TOP_K]
+    del video_ids
+    return []
 
 
 def main() -> None:
@@ -41,8 +42,8 @@ def main() -> None:
     count = 0
     with (OUTPUT / "predictions.jsonl").open("w", encoding="utf-8") as handle:
         for query in read_jsonl(INPUT / "queries.jsonl"):
-            ranked = rank_videos(str(query["text"]), video_ids)
-            row = {"query_id": str(query["query_id"]), "video_ids": ranked[:TOP_K]}
+            predicted_matches = predict_matching_videos(str(query["text"]), video_ids)
+            row = {"query_id": str(query["query_id"]), "video_ids": predicted_matches[:TOP_K]}
             handle.write(json.dumps(row) + "\n")
             count += 1
 
