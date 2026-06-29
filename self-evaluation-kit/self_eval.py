@@ -3,12 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
 import cascade_task
 import metrics
+
+# Reuse the reconstruction runner from the docker-prep-kit (same devkit repo).
+KIT_ROOT = Path(__file__).resolve().parents[1]
+RECONSTRUCT = KIT_ROOT / "docker-prep-kit" / "reconstruct_submission.py"
 
 
 K_VALUES = (1, 3, 5, 10)
@@ -37,28 +42,34 @@ def load_qrels(path: Path) -> dict[str, set[str]]:
     }
 
 
-def run_submission_image(
-    image: str,
+def run_submission(
+    artifact: Path,
+    base_image: str,
     input_dir: Path,
     video_root: Path,
     output_dir: Path,
     top_k: int,
+    gpus: str | None,
 ) -> None:
+    """Reconstruct the submission artifact on the base and run it with NO network.
+
+    This mirrors the official evaluator: the delta layers are reapplied on the
+    identical base and run in place. ``--network none`` enforces no egress so you
+    catch any inference-time downloads locally.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     command = [
-        "docker",
-        "run",
-        "--rm",
-        "-e",
-        f"TOP_K={top_k}",
-        "-v",
-        f"{input_dir.resolve()}:/input:ro",
-        "-v",
-        f"{video_root.resolve()}:/input/videos:ro",
-        "-v",
-        f"{output_dir.resolve()}:/output",
-        image,
+        sys.executable,
+        str(RECONSTRUCT),
+        "--artifact", str(artifact.resolve()),
+        "--base-image", base_image,
+        "--input", str(input_dir.resolve()),
+        "--output", str(output_dir.resolve()),
+        "--network", "none",
+        "--mount", f"{video_root.resolve()}:/input/videos:ro",
     ]
+    if gpus:
+        command += ["--gpus", gpus]
     subprocess.run(command, check=True)
 
 
@@ -97,7 +108,15 @@ def evaluate(args: argparse.Namespace) -> dict:
         if args.predictions:
             predictions_path = args.predictions
         else:
-            run_submission_image(args.image, input_dir, args.video_root, output_dir, args.top_k)
+            run_submission(
+                args.artifact,
+                args.base_image,
+                input_dir,
+                args.video_root,
+                output_dir,
+                args.top_k,
+                args.gpus,
+            )
             predictions_path = output_dir / "predictions.jsonl"
 
         if not predictions_path.is_file():
@@ -107,7 +126,8 @@ def evaluate(args: argparse.Namespace) -> dict:
         evaluation = {
             "split_name": data.split_name,
             "split": data.split,
-            "image": args.image,
+            "artifact": str(args.artifact) if args.artifact else None,
+            "base_image": args.base_image,
             "dataset_root": str(args.dataset_root),
             "video_root": str(args.video_root),
             "num_queries": len(data.queries),
@@ -127,9 +147,18 @@ def evaluate(args: argparse.Namespace) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run local self-evaluation for a challenge Docker image."
+        description="Run local self-evaluation for a CASCADE submission artifact (no network)."
     )
-    parser.add_argument("--image", required=True, help="Docker image tag to run.")
+    parser.add_argument(
+        "--artifact",
+        type=Path,
+        help="Submission artifact dir (manifest.json + layers/) from build_submission.py.",
+    )
+    parser.add_argument(
+        "--base-image",
+        default="cascade-base:cuda13.0-py312",
+        help="Base image to reconstruct on (must match the artifact's base).",
+    )
     parser.add_argument(
         "--dataset-root",
         type=Path,
@@ -149,17 +178,21 @@ def main() -> None:
         "--top-k",
         type=int,
         default=100,
-        help="Maximum predictions per query; do not pad outputs to this length.",
+        help="Informational maximum predictions per query (the submission's own TOP_K applies).",
     )
+    parser.add_argument("--gpus", default=None, help="Pass through to docker --gpus, e.g. 'all'.")
     parser.add_argument("--video-extension", default=".mp4")
     parser.add_argument("--video-manifest", type=Path)
     parser.add_argument("--workdir", type=Path, help="Optional work directory to keep files.")
     parser.add_argument(
         "--predictions",
         type=Path,
-        help="Score an existing predictions.jsonl instead of running Docker.",
+        help="Score an existing predictions.jsonl instead of running the submission.",
     )
     args = parser.parse_args()
+
+    if not args.predictions and not args.artifact:
+        parser.error("provide --artifact (to run the submission) or --predictions (to score existing).")
 
     evaluation = evaluate(args)
     print(json.dumps(evaluation, indent=2))

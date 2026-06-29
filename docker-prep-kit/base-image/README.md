@@ -8,10 +8,16 @@ environment built on top of it is ABI-compatible at evaluation time.
 
 Submissions are not run as containers by the evaluator (the evaluation sandbox
 cannot launch nested containers and cannot give a `chroot` GPU access). Instead,
-the participant's `/opt/submission` prefix is restored on top of this base and
-run **in place**. For that to work reliably, the environment must be built
-against the exact OS / libc / CUDA-toolkit / driver ABI it will run on — hence a
-single published base for both sides.
+the participant ships only the image **layers they added on top of this base**,
+and the evaluator reapplies those layers on this exact base and runs them **in
+place**. For that to work, the delta must be built against the exact
+OS / libc / CUDA-toolkit / driver ABI it will run on — hence a single published
+base for both sides.
+
+**Pin by digest.** A submission's delta layers are only valid on the precise base
+they were built on (the manifest records the base's layer diff-ids and the
+evaluator verifies them). Publish this image and pin it by digest for the
+challenge run.
 
 ## Building and publishing (maintainers)
 

@@ -1,18 +1,18 @@
 # Declares how the evaluator launches your system.
 #
-# At evaluation time your /opt/submission prefix is restored on the common base
-# image and this command is run IN PLACE, on GPU, with the network DISABLED.
-# It must read /input and write /output/predictions.jsonl.
+# At evaluation time your image's added layers are reapplied on the identical
+# base and this command runs IN PLACE, on GPU, with the network DISABLED. It must
+# read /input and write /output/predictions.jsonl.
 
-# Command to run (absolute paths inside the prefix are recommended).
-entrypoint: ["/opt/submission/env/bin/python", "/opt/submission/run.py"]
+# Command to run. Use absolute paths to whatever interpreter/script you baked in.
+entrypoint: ["/opt/app/.venv/bin/python", "/opt/app/run.py"]
 
 # Environment variables passed to your entrypoint.
 env:
   TOP_K: "100"
 
-# CUDA toolkit version your environment targets (must be <= the evaluation host
-# driver's supported version). Informational; helps diagnose driver mismatches.
+# CUDA toolkit line your environment targets (must be compatible with the base's
+# CUDA and the evaluation host driver). Informational.
 cuda: "13.0"
 
 # Optional free-form note shown to organizers.

@@ -5,77 +5,79 @@ Challenge.
 
 ## How evaluation works (and why this kit exists)
 
-The evaluator does **not** run your Docker image as a container. The evaluation
-sandbox cannot launch nested containers, and a `chroot` cannot be given GPU
-access. So instead:
+The evaluator does **not** run your Docker image as a container (the sandbox has
+no nested containers, and a `chroot` cannot be given GPU access). Instead:
 
-1. You build your environment **`FROM` the CASCADE common base image**, installing
-   everything into the `/opt/submission` prefix.
-2. This kit **extracts that prefix** and publishes it as a portable artifact
-   (`submission.tar.gz` + `manifest.json`) to your private Hugging Face Space.
-3. The evaluator restores your prefix on the **identical** base image and runs it
-   **in place**, on GPU, in two phases:
-   - **fetch phase** — network on, no test data present;
-   - **inference phase** — network **disabled** (egress blocked), hidden test
-     inputs mounted, your entrypoint runs.
+1. You build your image **`FROM` the CASCADE base image**, installing whatever you
+   need **wherever is natural** (a venv, conda, system packages, weights in
+   `~/.cache/huggingface`, ...). There is **no required prefix**.
+2. This kit ships only the **layers your build added on top of the base** (the
+   delta), plus a `manifest.json`, to your private Hugging Face Space.
+3. The evaluator reapplies your delta layers on the **identical** base and runs
+   your declared entrypoint **in place**, on GPU, in two phases:
+   - **fetch** — network on, no test data present;
+   - **inference** — network **disabled**, hidden test inputs mounted.
 
-Because both sides share one base image, your environment is ABI-compatible at
-evaluation time — no relocation or CUDA/glibc surprises.
+Because both sides share one base image, your environment is reproduced exactly.
+
+## Two rules that make or break a submission
+
+1. **Download everything at build time** (dependencies *and* model weights). The
+   inference phase has **no network**.
+2. Keep the **CUDA toolkit compatible** with the base's CUDA line and a **single
+   GPU** (multi-GPU/NCCL may be blocked by the no-network sandbox).
 
 ## Quick start
 
 ```bash
-# 1. Copy the template and make it your own.
 cp -r template my-submission && cd my-submission
 # edit requirements.txt, run.py, submission.yaml; bake weights in the Dockerfile
 
-# 2. Build, extract, and publish to your private Space.
+# Build FROM the base and extract the delta layers (no upload yet):
 python ../build_submission.py \
   --context . \
   --base-image <registry>/cascade-base:cuda13.0-py312 \
-  --repo-id your-team/your-submission \
-  --repo-type space
+  --no-push
+# -> .cascade-build/manifest.json + .cascade-build/layers/layer-*.tar
 
-# Preview everything without Docker or the Hub:
-python ../build_submission.py --context . --dry-run
-
-# Build and inspect the artifact locally without publishing:
-python ../build_submission.py --context . --no-push
+# Publish to your private Space:
+HF_TOKEN=*** python ../build_submission.py \
+  --context . \
+  --base-image <registry>/cascade-base:cuda13.0-py312 \
+  --repo-id your-team/your-submission --repo-type space
 ```
 
-The tool runs `docker build` locally, so run it on a machine with Docker. It
-needs an `HF_TOKEN` (or `--token`) with write access to push.
+The tool runs `docker build` locally, so use a machine with Docker.
+
+## Test it locally with no network (recommended)
+
+Reconstruct the exact artifact on the base and run it with the network disabled —
+this is what the evaluator does, so it catches accidental inference-time
+downloads before you submit:
+
+```bash
+python reconstruct_submission.py \
+  --artifact my-submission/.cascade-build \
+  --base-image <registry>/cascade-base:cuda13.0-py312 \
+  --input /path/to/sample-input --output /tmp/out --network none
+```
+
+For a scored local run against a CASCADE split, use the `self-evaluation-kit`.
 
 ## What gets published
 
-- `submission.tar.gz` — the contents of `/opt/submission` from your built image.
-- `manifest.json` — base image, prefix, launch `entrypoint`, `env`, the
-  artifact's sha256, and CUDA target. The evaluator reads this to restore and run
-  your submission.
+- `manifest.json` — pins the base image identity (layer diff-ids), lists the
+  ordered delta layers + sha256s, and declares the launch `entrypoint`/`env`.
+- `layers/layer-*.tar` — only the layers your build added on top of the base.
 
-## Rules
-
-- Install **everything under `/opt/submission`** (use the venv/conda env in the
-  prefix). Files outside the prefix are not shipped.
-- **Download weights at build time** — the inference phase has no network.
-- Keep the **CUDA toolkit compatible with the host driver**; target a single GPU.
-- The entrypoint must read `/input` and write `/output/predictions.jsonl` (see
-  `template/README.md`).
-
-## Local prediction check
-
-After a local run that produced `predictions.jsonl`, validate its shape:
-
-```bash
-python validate_submission.py \
-  --predictions /tmp/out/predictions.jsonl \
-  --queries /path/to/input/queries.jsonl \
-  --videos /path/to/input/videos.jsonl
-```
+The delta is valid **only** on the exact base it was built on, so the base image
+must be **pinned by digest** (see `base-image/`).
 
 ## Layout
 
 - `base-image/` — the shared base image (the ABI contract). See its README.
 - `template/` — copy this to start your submission.
-- `build_submission.py` — build → extract prefix → manifest → push.
+- `build_submission.py` — build → extract delta layers → manifest → push.
+- `reconstruct_submission.py` + `_apply_layers.py` — reapply the delta on the
+  base and run it (used for local no-network checks and by the evaluator).
 - `validate_submission.py` — check `predictions.jsonl` shape locally.
