@@ -449,21 +449,18 @@ def push_to_hub(
         private=True,
         token=token,
     )
-    api.upload_file(
-        path_or_fileobj=str(plan.manifest_path),
-        path_in_repo=MANIFEST_NAME,
-        repo_id=repo_id,
-        repo_type=repo_type,
-        token=token,
-        commit_message="Add submission manifest",
-    )
+    # Publish one self-consistent revision. Reusing a repository is supported:
+    # old manifest/layer files are removed in the same commit, so a build with
+    # fewer layers cannot leave stale participant-controlled blobs behind.
     api.upload_folder(
-        folder_path=str(plan.layers_dir),
-        path_in_repo=LAYERS_DIRNAME,
+        folder_path=str(plan.staging_dir),
+        path_in_repo="",
         repo_id=repo_id,
         repo_type=repo_type,
         token=token,
-        commit_message="Add submission layers",
+        allow_patterns=[MANIFEST_NAME, f"{LAYERS_DIRNAME}/*"],
+        delete_patterns=[MANIFEST_NAME, f"{LAYERS_DIRNAME}/*"],
+        commit_message="Publish submission artifact",
     )
 
 

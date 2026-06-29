@@ -211,8 +211,16 @@ class HubPushTest(unittest.TestCase):
             private=True,
             token="hf_test",
         )
-        self.assertEqual(api.upload_file.call_args.kwargs["repo_type"], "model")
-        self.assertEqual(api.upload_folder.call_args.kwargs["repo_type"], "model")
+        api.upload_file.assert_not_called()
+        upload = api.upload_folder.call_args.kwargs
+        self.assertEqual(upload["repo_type"], "model")
+        self.assertEqual(upload["path_in_repo"], "")
+        self.assertEqual(
+            upload["allow_patterns"], ["manifest.json", "layers/*"]
+        )
+        self.assertEqual(
+            upload["delete_patterns"], ["manifest.json", "layers/*"]
+        )
 
     @patch("huggingface_hub.HfApi")
     def test_push_rejects_repository_outside_authenticated_namespace(self, api_type) -> None:
