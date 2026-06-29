@@ -13,11 +13,12 @@ no nested containers, and a `chroot` cannot be given GPU access). Instead:
    **wherever is natural** (a venv, conda, system packages, weights in
    `~/.cache/huggingface`, ...). There is **no required prefix**.
 2. This kit ships only the **layers your build added on top of the base** (the
-   delta), plus a `manifest.json`, to your private Hugging Face Space.
-3. The evaluator reapplies your delta layers on the **identical** base and runs
-   your declared entrypoint **in place**, on GPU, in two phases:
-   - **fetch** — network on, no test data present;
-   - **inference** — network **disabled**, hidden test inputs mounted.
+   delta), plus a `manifest.json`, to a private Hugging Face **model repo** in
+   your personal namespace. It does not publish or run your Docker image.
+3. Hugging Face mounts the pinned artifact read-only into the evaluation Job.
+   Trusted launcher code validates it, disables network egress, reapplies your
+   delta layers on the **identical** base, and only then starts your declared
+   entrypoint **in place** on GPU with the hidden inputs available.
 
 Because both sides share one pinned base, your environment is reproduced exactly.
 
@@ -47,19 +48,25 @@ cp -r template my-submission && cd my-submission
 # explicitly to be safe:
 python ../build_submission.py \
   --context . \
-  --base-image python:3.12@sha256:<pinned-digest> \
+  --base-image python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146 \
   --no-push
 # -> .cascade-build/manifest.json + .cascade-build/layers/layer-*.tar
 
-# Publish to your private Space:
+# Publish the artifact to a private model repo in your personal HF namespace.
+# The tool creates the repo if it does not exist; "model" and private are the
+# defaults. The token must belong to the namespace named by --repo-id.
 HF_TOKEN=*** python ../build_submission.py \
   --context . \
-  --base-image python:3.12@sha256:<pinned-digest> \
-  --repo-id your-team/your-submission --repo-type space
+  --base-image python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146 \
+  --repo-id your-hf-username/your-submission
 ```
 
 The tool runs `docker build` locally, so use a machine with Docker. Use the exact
-pinned base digest from the challenge instructions.
+pinned base digest from the challenge instructions. Keep the model repo
+**private**. In its Hugging Face access settings, grant the user `grossanchez`
+read access so the private evaluator can pin and fetch your artifact. Register
+that model repo ID in the challenge frontend using the same HF account that owns
+the namespace. Do not submit a Space, a dataset repo, or a container image.
 
 ## Test it locally with no network (recommended)
 
@@ -70,17 +77,20 @@ downloads before you submit:
 ```bash
 python reconstruct_submission.py \
   --artifact my-submission/.cascade-build \
-  --base-image python:3.12@sha256:<pinned-digest> \
+  --base-image python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146 \
   --input /path/to/sample-input --output /tmp/out --network none
 ```
 
 For a scored local run against a CASCADE split, use the `self-evaluation-kit`.
 
-## What gets published
+## What gets published to the model repo
 
 - `manifest.json` — pins the base image identity (layer diff-ids), lists the
   ordered delta layers + sha256s, and declares the launch `entrypoint`/`env`.
 - `layers/layer-*.tar` — only the layers your build added on top of the base.
+
+The model repo is an artifact store for these files; it is not a model that the
+Hub serves and it is not a runnable Docker Space.
 
 The delta is valid **only** on the exact base it was built on, so always use the
 base **pinned by digest** from the challenge instructions.

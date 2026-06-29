@@ -17,7 +17,7 @@ Pipeline:
     2. Verify the base's layers are a prefix of the submission's layers.
     3. ``docker save`` and copy out only the added (delta) layers.
     4. Write ``manifest.json`` (base identity, ordered layers, entrypoint/env).
-    5. Push the manifest + layers to a private Hugging Face repo (Space).
+    5. Push the manifest + layers to a private Hugging Face model repo.
 
 The delta is only valid on the exact base it was built on, so the manifest pins
 the base image identity (its layer diff-ids). Use ``--dry-run`` to preview.
@@ -55,6 +55,19 @@ DEFAULT_BASE_IMAGE = (
 DEFAULT_CONFIG_NAME = "submission.yaml"
 MANIFEST_NAME = "manifest.json"
 LAYERS_DIRNAME = "layers"
+DEFAULT_REPO_TYPE = "model"
+EVALUATOR_USERNAME = "grossanchez"
+_SHA256_HEX_LENGTH = 64
+_CONFIG_KEYS = frozenset({"entrypoint", "env", "cuda", "notes"})
+_RUNTIME_ENV_KEYS = frozenset({
+    "HF_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
+    "INPUT_DIR",
+    "OUTPUT_DIR",
+    "TOP_K",
+    "CRC_SUBMISSION_ID",
+    "CRC_RUN_TOKEN",
+})
 
 
 class SubmissionError(Exception):
@@ -81,19 +94,47 @@ def parse_submission_config(text: str) -> SubmissionConfig:
     if not isinstance(data, dict):
         raise SubmissionError("submission.yaml must be a mapping")
 
+    unknown_keys = sorted(set(data) - _CONFIG_KEYS, key=str)
+    if unknown_keys:
+        raise SubmissionError(
+            "submission.yaml contains unsupported field(s): "
+            + ", ".join(str(key) for key in unknown_keys)
+        )
+
     entrypoint = data.get("entrypoint")
     if not isinstance(entrypoint, list) or not entrypoint:
         raise SubmissionError(
             "submission.yaml must set 'entrypoint' to a non-empty list, e.g.\n"
             '  entrypoint: ["/opt/app/.venv/bin/python", "/opt/app/run.py"]'
         )
-    if not all(isinstance(part, str) for part in entrypoint):
-        raise SubmissionError("submission.yaml 'entrypoint' entries must all be strings")
+    if not all(isinstance(part, str) and part.strip() and "\0" not in part for part in entrypoint):
+        raise SubmissionError(
+            "submission.yaml 'entrypoint' entries must be non-empty strings without NUL bytes"
+        )
 
     env_raw = data.get("env", {}) or {}
     if not isinstance(env_raw, dict):
         raise SubmissionError("submission.yaml 'env' must be a mapping of string to string")
-    env = {str(key): str(value) for key, value in env_raw.items()}
+    env: dict[str, str] = {}
+    for key, value in env_raw.items():
+        if not isinstance(key, str) or not key or "=" in key or "\0" in key:
+            raise SubmissionError(
+                "submission.yaml 'env' keys must be non-empty strings without '=' or NUL bytes"
+            )
+        if key in _RUNTIME_ENV_KEYS:
+            raise SubmissionError(
+                f"submission.yaml 'env' may not override evaluator-owned variable {key!r}"
+            )
+        if value is None or isinstance(value, (dict, list)):
+            raise SubmissionError(
+                f"submission.yaml 'env' value for {key!r} must be a scalar"
+            )
+        rendered = str(value)
+        if "\0" in rendered:
+            raise SubmissionError(
+                f"submission.yaml 'env' value for {key!r} must not contain a NUL byte"
+            )
+        env[key] = rendered
 
     return SubmissionConfig(
         entrypoint=[str(part) for part in entrypoint],
@@ -170,7 +211,7 @@ def build_manifest(
     config: SubmissionConfig,
     created_at: float | None = None,
 ) -> dict[str, Any]:
-    return {
+    manifest = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
         "tool_version": TOOL_VERSION,
         "base_image": {
@@ -185,6 +226,81 @@ def build_manifest(
         "notes": config.notes,
         "created_at": _iso(created_at if created_at is not None else time.time()),
     }
+    validate_manifest(manifest)
+    return manifest
+
+
+def _is_sha256(value: object, *, prefix: bool) -> bool:
+    if not isinstance(value, str):
+        return False
+    expected_prefix = "sha256:" if prefix else ""
+    if not value.startswith(expected_prefix):
+        return False
+    digest = value[len(expected_prefix):]
+    return len(digest) == _SHA256_HEX_LENGTH and all(char in "0123456789abcdef" for char in digest)
+
+
+def validate_manifest(manifest: object) -> None:
+    """Validate the schema-2 artifact manifest produced by this tool."""
+    if not isinstance(manifest, dict):
+        raise SubmissionError("manifest must be a mapping")
+    if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+        raise SubmissionError(
+            f"manifest schema_version must be {MANIFEST_SCHEMA_VERSION}"
+        )
+
+    base = manifest.get("base_image")
+    if not isinstance(base, dict):
+        raise SubmissionError("manifest base_image must be a mapping")
+    base_ref = base.get("ref")
+    if not isinstance(base_ref, str) or "@sha256:" not in base_ref:
+        raise SubmissionError("manifest base_image.ref must be pinned by sha256 digest")
+    ref_digest = base_ref.rsplit("@sha256:", 1)[-1]
+    if not _is_sha256(ref_digest, prefix=False):
+        raise SubmissionError("manifest base_image.ref has an invalid sha256 digest")
+    if not _is_sha256(base.get("id"), prefix=True):
+        raise SubmissionError("manifest base_image.id must be a sha256 digest")
+    diff_ids = base.get("diff_ids")
+    if (
+        not isinstance(diff_ids, list)
+        or not diff_ids
+        or not all(_is_sha256(item, prefix=True) for item in diff_ids)
+    ):
+        raise SubmissionError(
+            "manifest base_image.diff_ids must be a non-empty list of sha256 digests"
+        )
+
+    layers = manifest.get("layers")
+    if not isinstance(layers, list) or not layers:
+        raise SubmissionError("manifest layers must be a non-empty list")
+    for index, layer in enumerate(layers):
+        expected_name = f"layer-{index:02d}.tar"
+        if not isinstance(layer, dict) or layer.get("name") != expected_name:
+            raise SubmissionError(
+                f"manifest layer {index} must be named {expected_name!r}"
+            )
+        if not _is_sha256(layer.get("sha256"), prefix=False):
+            raise SubmissionError(
+                f"manifest layer {expected_name!r} has an invalid sha256"
+            )
+        size = layer.get("bytes")
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise SubmissionError(
+                f"manifest layer {expected_name!r} must have a positive byte size"
+            )
+
+    entrypoint = manifest.get("entrypoint")
+    if (
+        not isinstance(entrypoint, list)
+        or not entrypoint
+        or not all(isinstance(part, str) and part.strip() and "\0" not in part for part in entrypoint)
+    ):
+        raise SubmissionError("manifest entrypoint must be a non-empty list of strings")
+    env = manifest.get("env")
+    if not isinstance(env, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in env.items()
+    ):
+        raise SubmissionError("manifest env must be a mapping of strings to strings")
 
 
 def _iso(epoch: float) -> str:
@@ -288,11 +404,51 @@ def build_and_extract_delta(plan: BuildPlan, *, skip_build: bool = False) -> dic
     return manifest
 
 
-def push_to_hub(plan: BuildPlan, *, repo_id: str, repo_type: str, private: bool, token: str | None) -> None:
+def push_to_hub(
+    plan: BuildPlan,
+    *,
+    repo_id: str,
+    repo_type: str = DEFAULT_REPO_TYPE,
+    private: bool = True,
+    token: str | None = None,
+) -> None:
+    if repo_type != DEFAULT_REPO_TYPE or not private:
+        raise SubmissionError(
+            "Challenge submissions must use a private Hugging Face model repo"
+        )
+
     from huggingface_hub import HfApi
 
     api = HfApi(token=token)
-    api.create_repo(repo_id=repo_id, repo_type=repo_type, private=private, exist_ok=True)
+    identity = api.whoami(token=token)
+    username = identity.get("name") if isinstance(identity, dict) else None
+    owner, separator, name = repo_id.partition("/")
+    if not separator or not owner or not name or "/" in name:
+        raise SubmissionError(
+            "--repo-id must be <your-hf-username>/<submission-name>"
+        )
+    if not isinstance(username, str) or owner.casefold() != username.casefold():
+        raise SubmissionError(
+            "Submission repositories must be in the namespace of the authenticated "
+            f"Hugging Face user ({username or 'unknown'}), not {owner!r}."
+        )
+
+    validate_manifest(json.loads(plan.manifest_path.read_text(encoding="utf-8")))
+    api.create_repo(
+        repo_id=repo_id,
+        repo_type=repo_type,
+        private=private,
+        exist_ok=True,
+        token=token,
+    )
+    # ``create_repo(private=True, exist_ok=True)`` does not change an existing
+    # public repo, so enforce the challenge's privacy invariant explicitly.
+    api.update_repo_settings(
+        repo_id=repo_id,
+        repo_type=repo_type,
+        private=True,
+        token=token,
+    )
     api.upload_file(
         path_or_fileobj=str(plan.manifest_path),
         path_in_repo=MANIFEST_NAME,
@@ -322,9 +478,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--image-tag", default="cascade-submission:local", help="Local tag for the built image.")
     parser.add_argument("--output-dir", type=Path, default=Path(".cascade-build"), help="Staging directory.")
     parser.add_argument("--config-name", default=DEFAULT_CONFIG_NAME, help="Submission config file name in context.")
-    parser.add_argument("--repo-id", default=None, help="Target HF repo id, e.g. your-team/your-submission.")
-    parser.add_argument("--repo-type", default="space", choices=["space", "dataset", "model"], help="HF repo type.")
-    parser.add_argument("--public", action="store_true", help="Create the repo public (default: private).")
+    parser.add_argument(
+        "--repo-id",
+        default=None,
+        help="Target HF repo id, e.g. your-hf-username/your-submission.",
+    )
+    parser.add_argument(
+        "--repo-type",
+        default=DEFAULT_REPO_TYPE,
+        choices=[DEFAULT_REPO_TYPE],
+        help="HF repo type (default and required for challenge uploads: model).",
+    )
+    parser.add_argument("--public", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--token", default=None, help="HF token (default: HF_TOKEN env).")
     parser.add_argument("--skip-build", action="store_true", help="Reuse an existing local image tag.")
     parser.add_argument("--no-push", action="store_true", help="Build and extract only; do not push.")
@@ -334,6 +499,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+
+    if not args.no_push and (args.repo_type != DEFAULT_REPO_TYPE or args.public):
+        print(
+            "ERROR: challenge submissions must use a private Hugging Face model repo.",
+            file=sys.stderr,
+        )
+        return 2
 
     context = args.context.resolve()
     dockerfile = (args.dockerfile or (context / "Dockerfile")).resolve()
@@ -405,6 +577,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"Pushed submission to {args.repo_type}: {args.repo_id}")
+    print(
+        f"Next: keep the repo private and grant {EVALUATOR_USERNAME} read access "
+        "before registering it."
+    )
     return 0
 
 

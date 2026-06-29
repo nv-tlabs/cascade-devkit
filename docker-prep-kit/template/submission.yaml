@@ -7,9 +7,10 @@
 # Command to run. Use absolute paths to whatever interpreter/script you baked in.
 entrypoint: ["/opt/app/.venv/bin/python", "/opt/app/run.py"]
 
-# Environment variables passed to your entrypoint.
-env:
-  TOP_K: "100"
+# Optional environment variables passed to your entrypoint. Runtime-owned names
+# such as TOP_K, INPUT_DIR, and OUTPUT_DIR are supplied by the evaluator and
+# must not be overridden here.
+env: {}
 
 # CUDA line your framework's wheels target (e.g. torch +cu130). Must be
 # compatible with the evaluation host driver (recent; supports CUDA 13.0).
