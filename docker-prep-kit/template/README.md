@@ -1,13 +1,16 @@
 # Submission template
 
 Copy this directory and turn it into your submission. The build tool
-(`build_submission.py`) builds this `FROM` the CASCADE common base, ships the
-layers your build adds on top of the base, and publishes them as a portable
-artifact.
+(`build_submission.py`) builds this `FROM` the pinned CASCADE base (a stock
+`python:3.12` image), ships the layers your build adds on top of it, and
+publishes them as a portable artifact.
+
+GPU/CUDA comes from your framework's pip wheels (e.g. `pip install torch` pulls
+CUDA + cuDNN) plus the host driver — there is no CUDA base image.
 
 ## Files
 
-- `Dockerfile` — builds `FROM` the common base and installs your stack. Install
+- `Dockerfile` — builds `FROM` the pinned base and installs your stack. Install
   wherever is natural (the example uses a venv, but system/conda also work).
 - `requirements.txt` — your Python dependencies.
 - `run.py` — baseline entrypoint. Replace `predict_matching_videos` with your

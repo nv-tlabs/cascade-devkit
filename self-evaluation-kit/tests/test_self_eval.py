@@ -64,7 +64,7 @@ class SelfEvaluationKitTest(unittest.TestCase):
             result = self_eval.evaluate(
                 argparse.Namespace(
                     artifact=None,
-                    base_image="cascade-base:cuda13.0-py312",
+                    base_image="python:3.12",
                     dataset_root=dataset_root,
                     video_root=video_root,
                     split_name="cascade-v0.1",

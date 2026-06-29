@@ -11,8 +11,9 @@ entrypoint: ["/opt/app/.venv/bin/python", "/opt/app/run.py"]
 env:
   TOP_K: "100"
 
-# CUDA toolkit line your environment targets (must be compatible with the base's
-# CUDA and the evaluation host driver). Informational.
+# CUDA line your framework's wheels target (e.g. torch +cu130). Must be
+# compatible with the evaluation host driver (recent; supports CUDA 13.0).
+# Informational.
 cuda: "13.0"
 
 # Optional free-form note shown to organizers.

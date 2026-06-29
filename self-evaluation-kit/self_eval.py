@@ -156,7 +156,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--base-image",
-        default="cascade-base:cuda13.0-py312",
+        default="python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146",
         help="Base image to reconstruct on (must match the artifact's base).",
     )
     parser.add_argument(

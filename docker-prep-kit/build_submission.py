@@ -45,7 +45,13 @@ except ImportError:  # pragma: no cover - yaml is a declared dependency
 
 TOOL_VERSION = "2.0.0"
 MANIFEST_SCHEMA_VERSION = 2
-DEFAULT_BASE_IMAGE = "ghcr.io/nv-tlabs/cascade-base:cuda13.0-py312"
+# The shared base is a pinned stock Python image. GPU/CUDA comes from the
+# participant's framework pip wheels (e.g. torch bundles CUDA + cuDNN) plus the
+# evaluation host driver — no CUDA base image is required. Pin by digest so the
+# participant build and the evaluator use the byte-identical base.
+DEFAULT_BASE_IMAGE = (
+    "python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146"
+)
 DEFAULT_CONFIG_NAME = "submission.yaml"
 MANIFEST_NAME = "manifest.json"
 LAYERS_DIRNAME = "layers"

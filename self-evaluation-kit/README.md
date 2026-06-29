@@ -74,13 +74,13 @@ First build your submission artifact with the docker-prep-kit, then evaluate it:
 # Produce the artifact (manifest.json + layers/) without uploading:
 python docker-prep-kit/build_submission.py \
   --context my-submission \
-  --base-image <registry>/cascade-base:cuda13.0-py312 \
+  --base-image python:3.12@sha256:<pinned-digest> \
   --no-push
 
 # Score it on a CASCADE split, reconstructed on the base with NO network:
 python self-evaluation-kit/self_eval.py \
   --artifact my-submission/.cascade-build \
-  --base-image <registry>/cascade-base:cuda13.0-py312 \
+  --base-image python:3.12@sha256:<pinned-digest> \
   --dataset-root /path/to/cascade \
   --video-root /path/to/videos \
   --split-name cascade-v0.1 \

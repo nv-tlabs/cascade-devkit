@@ -1,22 +1,28 @@
-# Build your submission FROM the CASCADE base image. The build tool ships every
-# layer you add on top of this base, so install things wherever is natural — a
-# venv, conda, system packages via apt, model weights in ~/.cache, etc. There is
-# NO required prefix; whatever your build adds is captured.
+# Build your submission FROM the pinned CASCADE base (a stock Python image). The
+# build tool ships every layer you add on top of it, so install things wherever
+# is natural — a venv, conda, system packages (apt), weights in ~/.cache, etc.
+# There is NO required prefix; whatever your build adds is captured.
+#
+# GPU/CUDA comes from your framework's pip wheels (e.g. `pip install torch` pulls
+# CUDA + cuDNN) plus the GPU driver provided by the evaluation host. You do NOT
+# need a CUDA base image. The base already includes git/gcc/make/curl.
 #
 # Two rules still matter:
 #   1. Download EVERYTHING at build time (deps + weights). The evaluator runs your
 #      system with the network DISABLED.
-#   2. Keep the CUDA toolkit you install compatible with the base's CUDA line.
+#   2. Target a single GPU and keep your framework's CUDA build compatible with
+#      the evaluation host driver (recent; supports CUDA 13.0).
 #
 # The build tool passes the pinned base via --build-arg BASE_IMAGE=...
-ARG BASE_IMAGE=ghcr.io/nv-tlabs/cascade-base:cuda13.0-py312
+ARG BASE_IMAGE=python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146
 FROM ${BASE_IMAGE}
 
 # Example: an isolated environment (location is up to you).
 RUN python -m venv /opt/app/.venv
 ENV PATH=/opt/app/.venv/bin:$PATH
 
-# Install your dependencies (into the venv here, but system/conda also work).
+# Install your dependencies. Your GPU framework brings its own CUDA, e.g. add
+# `torch` to requirements.txt (it pulls the matching CUDA + cuDNN wheels).
 COPY requirements.txt /opt/app/requirements.txt
 RUN /opt/app/.venv/bin/pip install --no-cache-dir -r /opt/app/requirements.txt
 
