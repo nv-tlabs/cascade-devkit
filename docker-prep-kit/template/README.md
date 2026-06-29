@@ -1,14 +1,15 @@
 # Submission template
 
 Copy this directory and turn it into your submission. The build tool
-(`build_submission.py`) builds this `FROM` the CASCADE common base, extracts the
-`/opt/submission` prefix, and publishes it as a portable artifact.
+(`build_submission.py`) builds this `FROM` the CASCADE common base, ships the
+layers your build adds on top of the base, and publishes them as a portable
+artifact.
 
 ## Files
 
-- `Dockerfile` — builds `FROM` the common base and installs everything under
-  `/opt/submission`. Replace the dependency and weight steps with your own.
-- `requirements.txt` — your Python dependencies (installed into the prefix env).
+- `Dockerfile` — builds `FROM` the common base and installs your stack. Install
+  wherever is natural (the example uses a venv, but system/conda also work).
+- `requirements.txt` — your Python dependencies.
 - `run.py` — baseline entrypoint. Replace `predict_matching_videos` with your
   retrieval system.
 - `submission.yaml` — declares how the evaluator launches your system.
@@ -16,10 +17,11 @@ Copy this directory and turn it into your submission. The build tool
 
 ## Rules that make or break a submission
 
-1. **Everything under `/opt/submission`.** Anything installed elsewhere is not
-   shipped. Use the venv (or a conda env) inside the prefix.
+1. **Install at build time, anywhere.** Whatever your build adds on top of the
+   base (any location — venv, conda, system, `~/.cache`) is captured. There is no
+   required prefix.
 2. **Download weights at build time.** The evaluator runs your system with the
-   network **disabled**. Bake weights into the prefix; do not fetch at run time.
+   network **disabled**; do not fetch anything at run time.
 3. **CUDA toolkit ≤ host driver.** Match the base image's CUDA line.
 4. **Single GPU.** Multi-GPU/NCCL may be blocked by the no-network sandbox.
 

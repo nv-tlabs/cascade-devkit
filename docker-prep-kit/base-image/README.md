@@ -34,8 +34,9 @@ build tool with `--base-image`.
 
 ## Contract guarantees
 
-- Provides a fixed prefix at `/opt/submission` (also exported as
-  `$SUBMISSION_PREFIX`). Everything a submission needs must live there.
+- Imposes no install prefix — submissions install wherever is natural (venv,
+  conda, system packages, `~/.cache`, ...); every layer added on top of this base
+  is captured and reapplied at evaluation time.
 - Provides `python3`, `pip`, `venv`, `build-essential`, and `git` so submissions
   can create an isolated environment and compile native/CUDA extensions during
   their own build.
