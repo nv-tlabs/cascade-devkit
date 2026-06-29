@@ -37,7 +37,17 @@ compile custom CUDA, install the toolkit yourself in your Dockerfile (`apt` or t
 2. Target a **single GPU** (multi-GPU/NCCL may be blocked by the no-network
    sandbox) and keep your framework's CUDA build compatible with the host driver.
 
+For private or gated weights, use the cached `hf auth login` on the host to
+download them into the submission build context, then `COPY` those weight files
+in the Dockerfile. Never put an HF credential in `ARG`, `ENV`, a Dockerfile
+command, or the build context: every resulting delta layer is published.
+
 ## Quick start
+
+Install [uv](https://docs.astral.sh/uv/), then run these commands from the
+`docker-prep-kit` directory. `uv run --project ../.. --extra hf` creates/uses the
+project environment with PyYAML and the Hugging Face CLI; no activated virtual
+environment or system packages are assumed.
 
 ```bash
 cp -r template my-submission && cd my-submission
@@ -46,27 +56,47 @@ cp -r template my-submission && cd my-submission
 # Build FROM the pinned base and extract the delta layers (no upload yet).
 # The tool defaults --base-image to the pinned challenge base; pass it
 # explicitly to be safe:
-python ../build_submission.py \
+uv run --project ../.. --extra hf python ../build_submission.py \
   --context . \
   --base-image python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146 \
   --no-push
 # -> .cascade-build/manifest.json + .cascade-build/layers/layer-*.tar
 
-# Publish the artifact to a private model repo in your personal HF namespace.
-# The tool creates the repo if it does not exist; "model" and private are the
-# defaults. The token must belong to the namespace named by --repo-id.
-HF_TOKEN=*** python ../build_submission.py \
+# In the challenge frontend, create a submission repository and copy its repo ID.
+# It will be a private model repo in your personal HF namespace.
+
+# Authenticate this machine once. The uploader uses the cached login; do not
+# paste a token into the command or export one into your shell.
+uv run --project ../.. --extra hf hf auth login
+uv run --project ../.. --extra hf hf auth whoami
+
+# Publish to the repository created by the challenge frontend.
+uv run --project ../.. --extra hf python ../build_submission.py \
   --context . \
   --base-image python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146 \
-  --repo-id your-hf-username/your-submission
+  --repo-id your-hf-username/frontend-generated-submission
 ```
 
 The tool runs `docker build` locally, so use a machine with Docker. Use the exact
-pinned base digest from the challenge instructions. Keep the model repo
-**private**. In its Hugging Face access settings, grant the user `grossanchez`
-read access so the private evaluator can pin and fetch your artifact. Register
-that model repo ID in the challenge frontend using the same HF account that owns
-the namespace. Do not submit a Space, a dataset repo, or a container image.
+pinned base digest from the challenge instructions. The uploader deliberately
+does **not** create repositories or change their visibility: it requires the
+challenge frontend to have already created a **private model repo in the signed-in
+user's personal namespace**. It refuses missing, public, organization-owned, and
+non-model targets. No participant token is sent to the challenge and no access
+grant to an organizer's personal account is required. Return to the challenge
+frontend after the upload and submit the uploaded revision. Do not submit a Space, a
+dataset repo, a public repo, or a container image.
+
+The manifest and all replacement layers are uploaded in one Hub commit. On a
+current `huggingface_hub` client, the final line reports the exact immutable
+revision in copyable form:
+
+```text
+Artifact revision: your-hf-username/frontend-generated-submission@<commit-sha>
+```
+
+Keep that line with your submission record. If another process updates the repo
+between validation and upload, the command fails instead of silently racing it.
 
 ## Test it locally with no network (recommended)
 
@@ -75,7 +105,7 @@ this is what the evaluator does, so it catches accidental inference-time
 downloads before you submit:
 
 ```bash
-python reconstruct_submission.py \
+uv run --project ../.. --extra hf python ../reconstruct_submission.py \
   --artifact my-submission/.cascade-build \
   --base-image python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146 \
   --input /path/to/sample-input --output /tmp/out --network none
@@ -94,6 +124,20 @@ Hub serves and it is not a runnable Docker Space.
 
 The delta is valid **only** on the exact base it was built on, so always use the
 base **pinned by digest** from the challenge instructions.
+
+## Operator upload smoke check
+
+Before opening submissions, validate the production flow with a non-admin HF test
+account:
+
+1. Have the challenge frontend create the account's private personal model repo.
+2. Run `hf auth login`, then publish this template without `--token` or
+   `HF_TOKEN`; confirm the uploader reports an exact commit SHA.
+3. Confirm that revision's artifact paths contain one `manifest.json` and only
+   its current `layers/layer-*.tar` files (no stale layers), then complete an
+   evaluation through the frontend.
+4. Confirm missing, public, and organization-owned repo IDs are rejected and that
+   the participant is never asked to share a token or grant a person access.
 
 ## Layout
 

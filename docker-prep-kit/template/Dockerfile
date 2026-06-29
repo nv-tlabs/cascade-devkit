@@ -33,5 +33,8 @@ COPY run.py /opt/app/run.py
 # ~/.cache/huggingface) — it will be captured. Example:
 #   RUN /opt/app/.venv/bin/python -c "from huggingface_hub import snapshot_download; \
 #       snapshot_download('your/model')"
+# For gated/private weights, download them on the host with the cached `hf auth
+# login`, place only the weights in this build context, and COPY them. Never use
+# ARG/ENV for a token or COPY a token file: every resulting layer is published.
 
 # No ENTRYPOINT needed: the evaluator declares how to launch you in submission.yaml.

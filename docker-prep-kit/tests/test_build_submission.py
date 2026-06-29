@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -184,43 +185,78 @@ class HubPushTest(unittest.TestCase):
         args = bs.build_arg_parser().parse_args([])
         self.assertEqual(args.repo_type, "model")
         self.assertFalse(args.public)
+        self.assertFalse(hasattr(args, "token"))
 
     @patch("huggingface_hub.HfApi")
-    def test_push_creates_private_model_repo_and_uploads_artifact(self, api_type) -> None:
+    def test_push_requires_precreated_private_repo_and_uses_cached_login(self, api_type) -> None:
         api = api_type.return_value
         api.whoami.return_value = {"name": "alice"}
+        api.repo_info.return_value = SimpleNamespace(private=True, sha="c" * 40)
+        api.upload_folder.return_value = SimpleNamespace(oid="d" * 40)
         with tempfile.TemporaryDirectory() as tmp:
             plan = self._plan(Path(tmp))
-            bs.push_to_hub(
+            commit_sha = bs.push_to_hub(
                 plan,
                 repo_id="alice/cascade-submission",
-                token="hf_test",
             )
 
-        api_type.assert_called_once_with(token="hf_test")
-        api.create_repo.assert_called_once_with(
+        self.assertEqual(commit_sha, "d" * 40)
+        api_type.assert_called_once_with()
+        api.whoami.assert_called_once_with()
+        api.repo_info.assert_called_once_with(
             repo_id="alice/cascade-submission",
             repo_type="model",
-            private=True,
-            exist_ok=True,
-            token="hf_test",
         )
-        api.update_repo_settings.assert_called_once_with(
-            repo_id="alice/cascade-submission",
-            repo_type="model",
-            private=True,
-            token="hf_test",
-        )
+        api.create_repo.assert_not_called()
+        api.update_repo_settings.assert_not_called()
         api.upload_file.assert_not_called()
         upload = api.upload_folder.call_args.kwargs
         self.assertEqual(upload["repo_type"], "model")
         self.assertEqual(upload["path_in_repo"], "")
+        self.assertNotIn("token", upload)
+        self.assertEqual(upload["parent_commit"], "c" * 40)
         self.assertEqual(
             upload["allow_patterns"], ["manifest.json", "layers/*"]
         )
         self.assertEqual(
             upload["delete_patterns"], ["manifest.json", "layers/*"]
         )
+
+    @patch("huggingface_hub.HfApi")
+    def test_push_rejects_missing_precreated_repository(self, api_type) -> None:
+        import httpx
+
+        from huggingface_hub.errors import RepositoryNotFoundError
+
+        api = api_type.return_value
+        api.whoami.return_value = {"name": "alice"}
+        api.repo_info.side_effect = RepositoryNotFoundError(
+            "not found",
+            response=httpx.Response(
+                404,
+                request=httpx.Request("GET", "https://huggingface.co/api/models/alice/missing"),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp))
+            with self.assertRaisesRegex(bs.SubmissionError, "challenge frontend"):
+                bs.push_to_hub(plan, repo_id="alice/cascade-submission")
+
+        api.create_repo.assert_not_called()
+        api.upload_folder.assert_not_called()
+
+    @patch("huggingface_hub.HfApi")
+    def test_push_rejects_precreated_public_repository(self, api_type) -> None:
+        api = api_type.return_value
+        api.whoami.return_value = {"name": "alice"}
+        api.repo_info.return_value = SimpleNamespace(private=False, sha="c" * 40)
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = self._plan(Path(tmp))
+            with self.assertRaisesRegex(bs.SubmissionError, "must already be private"):
+                bs.push_to_hub(plan, repo_id="alice/cascade-submission")
+
+        api.update_repo_settings.assert_not_called()
+        api.upload_folder.assert_not_called()
 
     @patch("huggingface_hub.HfApi")
     def test_push_rejects_repository_outside_authenticated_namespace(self, api_type) -> None:
@@ -234,7 +270,6 @@ class HubPushTest(unittest.TestCase):
                     repo_id="some-org/cascade-submission",
                     repo_type=bs.DEFAULT_REPO_TYPE,
                     private=True,
-                    token="hf_test",
                 )
         api.create_repo.assert_not_called()
 
@@ -250,7 +285,6 @@ class HubPushTest(unittest.TestCase):
                             repo_id="alice/cascade-submission",
                             repo_type=repo_type,
                             private=private,
-                            token="hf_test",
                         )
         api_type.assert_not_called()
 

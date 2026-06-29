@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -56,7 +55,6 @@ DEFAULT_CONFIG_NAME = "submission.yaml"
 MANIFEST_NAME = "manifest.json"
 LAYERS_DIRNAME = "layers"
 DEFAULT_REPO_TYPE = "model"
-EVALUATOR_USERNAME = "grossanchez"
 _SHA256_HEX_LENGTH = 64
 _CONFIG_KEYS = frozenset({"entrypoint", "env", "cuda", "notes"})
 _RUNTIME_ENV_KEYS = frozenset({
@@ -410,17 +408,24 @@ def push_to_hub(
     repo_id: str,
     repo_type: str = DEFAULT_REPO_TYPE,
     private: bool = True,
-    token: str | None = None,
-) -> None:
+) -> str | None:
     if repo_type != DEFAULT_REPO_TYPE or not private:
         raise SubmissionError(
             "Challenge submissions must use a private Hugging Face model repo"
         )
 
     from huggingface_hub import HfApi
+    from huggingface_hub.errors import LocalTokenNotFoundError, RepositoryNotFoundError
 
-    api = HfApi(token=token)
-    identity = api.whoami(token=token)
+    # Use only credentials cached by `hf auth login`. There is deliberately no
+    # CLI token argument that could leak through shell history or process lists.
+    api = HfApi()
+    try:
+        identity = api.whoami()
+    except LocalTokenNotFoundError as exc:
+        raise SubmissionError(
+            "No cached Hugging Face login found. Run `hf auth login`, then retry."
+        ) from exc
     username = identity.get("name") if isinstance(identity, dict) else None
     owner, separator, name = repo_id.partition("/")
     if not separator or not owner or not name or "/" in name:
@@ -434,34 +439,54 @@ def push_to_hub(
         )
 
     validate_manifest(json.loads(plan.manifest_path.read_text(encoding="utf-8")))
-    api.create_repo(
-        repo_id=repo_id,
-        repo_type=repo_type,
-        private=private,
-        exist_ok=True,
-        token=token,
+    try:
+        repo_info = api.repo_info(
+            repo_id=repo_id,
+            repo_type=repo_type,
+        )
+    except RepositoryNotFoundError as exc:
+        raise SubmissionError(
+            f"Submission repository {repo_id!r} does not exist or is not accessible. "
+            "Create it from the challenge frontend before uploading."
+        ) from exc
+
+    repo_is_private = (
+        repo_info.get("private")
+        if isinstance(repo_info, dict)
+        else getattr(repo_info, "private", None)
     )
-    # ``create_repo(private=True, exist_ok=True)`` does not change an existing
-    # public repo, so enforce the challenge's privacy invariant explicitly.
-    api.update_repo_settings(
-        repo_id=repo_id,
-        repo_type=repo_type,
-        private=True,
-        token=token,
-    )
+    if repo_is_private is not True:
+        raise SubmissionError(
+            f"Submission repository {repo_id!r} must already be private. "
+            "Create a new submission repository from the challenge frontend."
+        )
+
     # Publish one self-consistent revision. Reusing a repository is supported:
     # old manifest/layer files are removed in the same commit, so a build with
     # fewer layers cannot leave stale participant-controlled blobs behind.
-    api.upload_folder(
-        folder_path=str(plan.staging_dir),
-        path_in_repo="",
-        repo_id=repo_id,
-        repo_type=repo_type,
-        token=token,
-        allow_patterns=[MANIFEST_NAME, f"{LAYERS_DIRNAME}/*"],
-        delete_patterns=[MANIFEST_NAME, f"{LAYERS_DIRNAME}/*"],
-        commit_message="Publish submission artifact",
+    upload_kwargs: dict[str, Any] = {
+        "folder_path": str(plan.staging_dir),
+        "path_in_repo": "",
+        "repo_id": repo_id,
+        "repo_type": repo_type,
+        "allow_patterns": [MANIFEST_NAME, f"{LAYERS_DIRNAME}/*"],
+        "delete_patterns": [MANIFEST_NAME, f"{LAYERS_DIRNAME}/*"],
+        "commit_message": "Publish submission artifact",
+    }
+    repo_head = (
+        repo_info.get("sha")
+        if isinstance(repo_info, dict)
+        else getattr(repo_info, "sha", None)
     )
+    if isinstance(repo_head, str) and repo_head:
+        # Fail instead of silently racing another upload to the same repository.
+        upload_kwargs["parent_commit"] = repo_head
+
+    commit_info = api.upload_folder(
+        **upload_kwargs,
+    )
+    commit_sha = getattr(commit_info, "oid", None)
+    return commit_sha if isinstance(commit_sha, str) and commit_sha else None
 
 
 # --------------------------------------------------------------------------- #
@@ -487,7 +512,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="HF repo type (default and required for challenge uploads: model).",
     )
     parser.add_argument("--public", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--token", default=None, help="HF token (default: HF_TOKEN env).")
     parser.add_argument("--skip-build", action="store_true", help="Reuse an existing local image tag.")
     parser.add_argument("--no-push", action="store_true", help="Build and extract only; do not push.")
     parser.add_argument("--dry-run", action="store_true", help="Print the plan without running Docker or pushing.")
@@ -562,22 +586,23 @@ def main(argv: list[str] | None = None) -> int:
         print("ERROR: --repo-id is required to push (or pass --no-push).", file=sys.stderr)
         return 2
 
-    token = args.token or os.getenv("HF_TOKEN")
-    if not token:
-        print("ERROR: no HF token (pass --token or set HF_TOKEN).", file=sys.stderr)
-        return 2
-
     try:
-        push_to_hub(plan, repo_id=args.repo_id, repo_type=args.repo_type, private=not args.public, token=token)
+        commit_sha = push_to_hub(
+            plan,
+            repo_id=args.repo_id,
+            repo_type=args.repo_type,
+            private=not args.public,
+        )
     except Exception as exc:  # noqa: BLE001 - surface hub errors to the user
         print(f"ERROR: push failed: {exc}", file=sys.stderr)
         return 1
 
     print(f"Pushed submission to {args.repo_type}: {args.repo_id}")
-    print(
-        f"Next: keep the repo private and grant {EVALUATOR_USERNAME} read access "
-        "before registering it."
-    )
+    if commit_sha:
+        print(f"Artifact revision: {args.repo_id}@{commit_sha}")
+    else:
+        print("Upload completed; this Hub client did not report the commit SHA.")
+    print("Next: return to the challenge frontend and submit this uploaded revision.")
     return 0
 
 

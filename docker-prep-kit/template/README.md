@@ -47,10 +47,26 @@ is no likely match; do not pad with non-matching videos.
 
 ## Publishing
 
-Publish with `build_submission.py --repo-id
-your-hf-username/your-submission`. The default target is a private Hugging Face
-**model repo**, created in the authenticated token owner's personal namespace.
-Keep it private, then grant `grossanchez` read access in the repo's Hugging Face
-access settings so the evaluator can fetch the manifest and layers. Submit the
-repo ID through the challenge frontend while signed in as that same owner. A
-Space, dataset repo, public repo, or Docker image is not a valid submission.
+First use the challenge frontend to create your submission repository. It must be
+a private Hugging Face **model repo** in your personal namespace. Authenticate
+your development machine once with the project-managed CLI, then publish with:
+
+```bash
+uv run --project ../.. --extra hf hf auth login
+uv run --project ../.. --extra hf python ../build_submission.py \
+  --context . \
+  --repo-id your-hf-username/frontend-generated-submission
+```
+
+The uploader uses the normal cached HF login, so you do not pass or export a
+token. It does not create a repo or change visibility, and it rejects missing,
+public, organization-owned, or non-model targets. The artifact is replaced in
+one commit and the command reports its exact commit SHA. Return to the challenge
+frontend to submit the uploaded revision; no access grant to an organizer's personal
+account is required. A Space, dataset repo, public repo, or Docker image is not a
+valid submission.
+
+If model weights are private or gated, download them on the host with that
+cached login and copy only the weight files into the Docker build. Never use a
+token in Docker `ARG`/`ENV` or copy a token into the context; delta layers are
+published verbatim.
