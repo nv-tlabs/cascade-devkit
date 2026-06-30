@@ -93,6 +93,41 @@ The output JSON includes the split, image, corpus size, query count, primary
 score, and detailed retrieval metrics: Average R-Precision, MAP, Precision@k,
 Recall@k, and Hit@k.
 
+## Metrics
+
+The local kit uses the same retrieval-metric formulas as the official scorer.
+For each query, let `GT` be its set of relevant videos, let `R = |GT|`, and let
+the submitted video IDs be ranked from strongest to weakest. Repeated video IDs
+are removed while preserving their first position.
+
+- **Average R-Precision (primary metric):** for each query, count the relevant
+  videos among the first `R` ranked results and divide by `R`. The official
+  `score` is the mean R-Precision across scored queries.
+- **Mean Average Precision (MAP):** Average Precision for one query is
+  `(1 / R) * sum(P@i)` over ranks `i` containing a relevant video. MAP is the
+  mean AP across scored queries.
+- **Precision@k:** relevant videos among the first `k` results, divided by
+  exactly `k`, even when fewer than `k` results were returned.
+- **Recall@k:** relevant videos among the first `k` results, divided by `R`.
+- **Hit@k:** `1` when at least one relevant video appears among the first `k`
+  results, otherwise `0`. Its aggregate is the fraction of scored queries with
+  a hit.
+
+Precision, Recall, and Hit are reported at `k = 1, 3, 5, 10`. Every aggregate
+is an unweighted macro-average, so each scored query contributes equally even
+when queries have different numbers of relevant videos. Queries with no
+ground-truth relevant videos are excluded from metric averages and reported in
+`num_queries_without_relevance`.
+
+Missing prediction rows and empty rankings score zero for that query. Ranking
+order alone determines the metrics; confidence values are neither required nor
+used. The evaluation JSON also reports `num_queries`, `num_scored_queries`, and
+`num_predicted` (the number of query IDs with submitted predictions).
+
+The public leaderboard keeps the best successful submission for each stable
+Hugging Face account. Results are ordered by Average R-Precision, then MAP,
+Recall@10, Precision@10, and finally earliest completion time.
+
 ## Score Existing Predictions
 
 To debug scoring without running the submission, pass an existing predictions
