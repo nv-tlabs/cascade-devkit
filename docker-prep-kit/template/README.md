@@ -66,6 +66,10 @@ frontend to submit the uploaded revision; no access grant to an organizer's pers
 account is required. A Space, dataset repo, public repo, or Docker image is not a
 valid submission.
 
+The build is fixed to the challenge's `linux/amd64` evaluation platform. On
+Docker 23+, the tool also pulls the pinned base into Docker's image store when
+BuildKit has cached it only internally; participants do not need a manual pull.
+
 If model weights are private or gated, download them on the host with that
 cached login and copy only the weight files into the Docker build. Never use a
 token in Docker `ARG`/`ENV` or copy a token into the context; delta layers are

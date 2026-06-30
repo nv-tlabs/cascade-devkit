@@ -13,11 +13,12 @@ place, on GPU, with the network disabled. Dependencies can live anywhere
 added is captured.
 
 Pipeline:
-    1. ``docker build`` the image FROM the base.
-    2. Verify the base's layers are a prefix of the submission's layers.
-    3. ``docker save`` and copy out only the added (delta) layers.
-    4. Write ``manifest.json`` (base identity, ordered layers, entrypoint/env).
-    5. Push the manifest + layers to a private Hugging Face model repo.
+    1. Ensure the pinned base is present in Docker's image store.
+    2. ``docker build`` the image FROM the base for the evaluation platform.
+    3. Verify the base's layers are a prefix of the submission's layers.
+    4. ``docker save`` and copy out only the added (delta) layers.
+    5. Write ``manifest.json`` (base identity, ordered layers, entrypoint/env).
+    6. Push the manifest + layers to a private Hugging Face model repo.
 
 The delta is only valid on the exact base it was built on, so the manifest pins
 the base image identity (its layer diff-ids). Use ``--dry-run`` to preview.
@@ -33,7 +34,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 try:
@@ -42,7 +43,7 @@ except ImportError:  # pragma: no cover - yaml is a declared dependency
     yaml = None
 
 
-TOOL_VERSION = "2.0.0"
+TOOL_VERSION = "2.0.1"
 MANIFEST_SCHEMA_VERSION = 2
 # The shared base is a pinned stock Python image. GPU/CUDA comes from the
 # participant's framework pip wheels (e.g. torch bundles CUDA + cuDNN) plus the
@@ -51,6 +52,7 @@ MANIFEST_SCHEMA_VERSION = 2
 DEFAULT_BASE_IMAGE = (
     "python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146"
 )
+DEFAULT_PLATFORM = "linux/amd64"
 DEFAULT_CONFIG_NAME = "submission.yaml"
 MANIFEST_NAME = "manifest.json"
 LAYERS_DIRNAME = "layers"
@@ -173,18 +175,155 @@ def compute_delta_layers(base_layers: list[str], submission_layers: list[str]) -
     return delta
 
 
-def read_save_layer_paths(save_dir: Path) -> list[str]:
-    """Return the ordered layer blob paths from a `docker save` archive."""
+def _saved_archive_file(save_dir: Path, relative_path: object, *, label: str) -> Path:
+    """Resolve a file named by docker-save metadata without escaping the archive."""
+    if not isinstance(relative_path, str) or not relative_path or "\\" in relative_path:
+        raise SubmissionError(f"Unexpected `docker save` archive: invalid {label} path")
+    relative = PurePosixPath(relative_path)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise SubmissionError(f"Unexpected `docker save` archive: unsafe {label} path")
+
+    root = save_dir.resolve()
+    candidate = root.joinpath(*relative.parts)
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise SubmissionError(
+            f"Unexpected `docker save` archive: missing or unsafe {label} path"
+        ) from exc
+    if not resolved.is_file():
+        raise SubmissionError(f"Unexpected `docker save` archive: {label} is not a file")
+    return resolved
+
+
+def _saved_config_digest(relative_path: object) -> str:
+    """Read the config digest encoded by classic or OCI-style save paths."""
+    if not isinstance(relative_path, str):
+        raise SubmissionError("Unexpected `docker save` archive: invalid image config path")
+    name = PurePosixPath(relative_path).name
+    digest = name[:-5] if name.endswith(".json") else name
+    if not _is_sha256(digest, prefix=False):
+        raise SubmissionError(
+            "Unexpected `docker save` archive: image config path is not content-addressed"
+        )
+    return digest
+
+
+def read_save_layer_paths(
+    save_dir: Path,
+    *,
+    image_tag: str,
+    expected_repo_tags: list[str],
+    expected_diff_ids: list[str],
+) -> list[str]:
+    """Return validated, ordered layer blob paths from a `docker save` archive.
+
+    Modern Docker image stores may add OCI-layout files to the archive. The
+    compatibility manifest remains authoritative, but its first entry is not
+    assumed to be the requested image. Instead, select the entry for the saved
+    tag and confirm that its config describes the exact inspected RootFS layer
+    sequence before using its layer paths. Selection cannot rely on image ID:
+    containerd-backed Docker can report an OCI index ID while the archive names
+    the underlying image-config digest.
+    """
     manifest_path = save_dir / "manifest.json"
-    data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not data or "Layers" not in data[0]:
-        raise SubmissionError("Unexpected `docker save` archive: no Layers in manifest.json")
-    return list(data[0]["Layers"])
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SubmissionError(
+            "Unexpected `docker save` archive: unreadable manifest.json"
+        ) from exc
+    if not isinstance(data, list) or not data:
+        raise SubmissionError(
+            "Unexpected `docker save` archive: manifest.json must be a non-empty list"
+        )
+
+    requested_tags = {image_tag, *expected_repo_tags}
+    matching_entries: list[dict[str, Any]] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            raise SubmissionError(
+                "Unexpected `docker save` archive: invalid manifest entry"
+            )
+        repo_tags = entry.get("RepoTags") or []
+        if not isinstance(repo_tags, list) or not all(
+            isinstance(tag, str) for tag in repo_tags
+        ):
+            raise SubmissionError(
+                "Unexpected `docker save` archive: invalid RepoTags"
+            )
+        if requested_tags.intersection(repo_tags):
+            matching_entries.append(entry)
+
+    if len(matching_entries) > 1:
+        exact_entries = [
+            entry for entry in matching_entries if image_tag in entry.get("RepoTags", [])
+        ]
+        if len(exact_entries) == 1:
+            matching_entries = exact_entries
+    if not matching_entries:
+        raise SubmissionError(
+            "Unexpected `docker save` archive: the requested submission tag is missing"
+        )
+    if len(matching_entries) != 1:
+        raise SubmissionError(
+            "Unexpected `docker save` archive: multiple entries match the "
+            "submission image"
+        )
+
+    entry = matching_entries[0]
+    config_relative_path = entry.get("Config")
+    config_path = _saved_archive_file(
+        save_dir, config_relative_path, label="image config"
+    )
+    if sha256_file(config_path) != _saved_config_digest(config_relative_path):
+        raise SubmissionError(
+            "Unexpected `docker save` archive: image config digest does not match"
+        )
+    try:
+        image_config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SubmissionError(
+            "Unexpected `docker save` archive: unreadable image config"
+        ) from exc
+    rootfs = image_config.get("rootfs") if isinstance(image_config, dict) else None
+    saved_diff_ids = rootfs.get("diff_ids") if isinstance(rootfs, dict) else None
+    if saved_diff_ids != expected_diff_ids:
+        raise SubmissionError(
+            "Mismatch between the inspected submission layers and the saved "
+            "image config; rebuild and retry."
+        )
+
+    layer_paths = entry.get("Layers")
+    if (
+        not isinstance(layer_paths, list)
+        or len(layer_paths) != len(expected_diff_ids)
+        or not all(isinstance(path, str) for path in layer_paths)
+    ):
+        raise SubmissionError(
+            "Mismatch between the saved image config and layer blobs; rebuild and retry."
+        )
+    for relative_path in layer_paths:
+        _saved_archive_file(save_dir, relative_path, label="layer")
+    return list(layer_paths)
 
 
-def docker_build_command(*, context: Path, dockerfile: Path, base_image: str, image_tag: str) -> list[str]:
+def docker_pull_command(*, image: str, platform: str = DEFAULT_PLATFORM) -> list[str]:
+    return ["docker", "image", "pull", "--platform", platform, image]
+
+
+def docker_build_command(
+    *,
+    context: Path,
+    dockerfile: Path,
+    base_image: str,
+    image_tag: str,
+    platform: str = DEFAULT_PLATFORM,
+) -> list[str]:
     return [
         "docker", "build",
+        "--platform", platform,
         "--build-arg", f"BASE_IMAGE={base_image}",
         "--tag", image_tag,
         "--file", str(dockerfile),
@@ -316,13 +455,111 @@ def _capture(command: list[str]) -> str:
     return subprocess.run(command, check=True, capture_output=True, text=True).stdout
 
 
-def inspect_layers(image: str) -> list[str]:
-    out = _capture(["docker", "image", "inspect", "--format", "{{json .RootFS.Layers}}", image])
-    return list(json.loads(out))
+@dataclass(frozen=True)
+class DockerImageMetadata:
+    image_id: str
+    layers: list[str]
+    os: str
+    architecture: str
+    repo_tags: tuple[str, ...] = ()
+
+    @property
+    def platform(self) -> str:
+        return f"{self.os}/{self.architecture}"
 
 
-def inspect_id(image: str) -> str:
-    return _capture(["docker", "image", "inspect", "--format", "{{.Id}}", image]).strip()
+def inspect_image(image: str) -> DockerImageMetadata:
+    out = _capture(["docker", "image", "inspect", image])
+    try:
+        result = json.loads(out)
+    except json.JSONDecodeError as exc:
+        raise SubmissionError(
+            f"Docker returned invalid inspection data for image {image!r}"
+        ) from exc
+    if not isinstance(result, list) or len(result) != 1 or not isinstance(result[0], dict):
+        raise SubmissionError(
+            f"Docker returned unexpected inspection data for image {image!r}"
+        )
+
+    details = result[0]
+    rootfs = details.get("RootFS")
+    layers = rootfs.get("Layers") if isinstance(rootfs, dict) else None
+    image_id = details.get("Id")
+    os_name = details.get("Os")
+    architecture = details.get("Architecture")
+    repo_tags = details.get("RepoTags") or []
+    if (
+        not _is_sha256(image_id, prefix=True)
+        or not isinstance(layers, list)
+        or not layers
+        or not all(_is_sha256(layer, prefix=True) for layer in layers)
+        or not isinstance(os_name, str)
+        or not os_name
+        or not isinstance(architecture, str)
+        or not architecture
+        or not isinstance(repo_tags, list)
+        or not all(isinstance(tag, str) for tag in repo_tags)
+    ):
+        raise SubmissionError(
+            f"Docker returned incomplete inspection data for image {image!r}"
+        )
+    return DockerImageMetadata(
+        image_id=image_id,
+        layers=list(layers),
+        os=os_name,
+        architecture=architecture,
+        repo_tags=tuple(repo_tags),
+    )
+
+
+def _require_platform(
+    metadata: DockerImageMetadata,
+    *,
+    image: str,
+    expected_platform: str,
+) -> None:
+    if metadata.platform != expected_platform:
+        raise SubmissionError(
+            f"Image {image!r} is for {metadata.platform}, but challenge evaluation "
+            f"requires {expected_platform}."
+        )
+
+
+def ensure_base_image(
+    image: str,
+    *,
+    platform: str = DEFAULT_PLATFORM,
+) -> DockerImageMetadata:
+    """Ensure BuildKit's base is also addressable in Docker's image store.
+
+    Docker 23 made BuildKit the default. On a clean daemon, a base fetched by
+    BuildKit can remain only in its private cache, so a successful build does
+    not guarantee that ``docker image inspect <base>`` works. Pull the pinned
+    base explicitly when it is missing (or cached for another platform).
+    """
+    try:
+        metadata = inspect_image(image)
+    except subprocess.CalledProcessError:
+        metadata = None
+
+    if metadata is not None and metadata.platform == platform:
+        return metadata
+
+    if metadata is None:
+        reason = "is not registered in Docker's image store"
+    else:
+        reason = f"is cached for {metadata.platform}, not {platform}"
+    print(f"Base image {image!r} {reason}; pulling it for {platform}.", file=sys.stderr)
+    try:
+        _run(docker_pull_command(image=image, platform=platform))
+        metadata = inspect_image(image)
+    except subprocess.CalledProcessError as exc:
+        raise SubmissionError(
+            f"Could not materialize pinned base image {image!r} for {platform}. "
+            "Check Docker access and retry."
+        ) from exc
+    _require_platform(metadata, image=image, expected_platform=platform)
+    return metadata
 
 
 # --------------------------------------------------------------------------- #
@@ -336,6 +573,7 @@ class BuildPlan:
     image_tag: str
     staging_dir: Path
     config: SubmissionConfig
+    platform: str = DEFAULT_PLATFORM
 
     @property
     def layers_dir(self) -> Path:
@@ -348,16 +586,24 @@ class BuildPlan:
 
 def build_and_extract_delta(plan: BuildPlan, *, skip_build: bool = False) -> dict[str, Any]:
     """Build the image, extract the delta layers, and write the manifest."""
+    base_metadata = ensure_base_image(plan.base_image, platform=plan.platform)
     if not skip_build:
         _run(docker_build_command(
             context=plan.context,
             dockerfile=plan.dockerfile,
             base_image=plan.base_image,
             image_tag=plan.image_tag,
+            platform=plan.platform,
         ))
 
-    base_layers = inspect_layers(plan.base_image)
-    submission_layers = inspect_layers(plan.image_tag)
+    submission_metadata = inspect_image(plan.image_tag)
+    _require_platform(
+        submission_metadata,
+        image=plan.image_tag,
+        expected_platform=plan.platform,
+    )
+    base_layers = base_metadata.layers
+    submission_layers = submission_metadata.layers
     delta = compute_delta_layers(base_layers, submission_layers)
     base_count = len(base_layers)
 
@@ -373,7 +619,12 @@ def build_and_extract_delta(plan: BuildPlan, *, skip_build: bool = False) -> dic
         _run(["docker", "save", plan.image_tag, "-o", str(save_tar)])
         _run(["tar", "xf", str(save_tar), "-C", str(save_dir)])
 
-        all_layer_paths = read_save_layer_paths(save_dir)
+        all_layer_paths = read_save_layer_paths(
+            save_dir,
+            image_tag=plan.image_tag,
+            expected_repo_tags=list(submission_metadata.repo_tags),
+            expected_diff_ids=submission_layers,
+        )
         delta_layer_paths = all_layer_paths[base_count:]
         if len(delta_layer_paths) != len(delta):
             raise SubmissionError(
@@ -393,7 +644,7 @@ def build_and_extract_delta(plan: BuildPlan, *, skip_build: bool = False) -> dic
 
     manifest = build_manifest(
         base_image=plan.base_image,
-        base_image_id=inspect_id(plan.base_image),
+        base_image_id=base_metadata.image_id,
         base_layers=base_layers,
         layer_files=layer_files,
         config=plan.config,
@@ -555,6 +806,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.dry_run:
+        print(
+            "[dry-run] would ensure the base is locally available:",
+            " ".join(docker_pull_command(image=args.base_image)),
+            "(only if missing or for another platform)",
+        )
         print("[dry-run] would build:", " ".join(docker_build_command(
             context=context, dockerfile=dockerfile, base_image=args.base_image, image_tag=args.image_tag,
         )))

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -16,6 +18,43 @@ import build_submission as bs  # noqa: E402
 
 SHA256_A = "sha256:" + "a" * 64
 SHA256_B = "sha256:" + "b" * 64
+SHA256_C = "sha256:" + "c" * 64
+
+
+def write_saved_image(
+    save_dir: Path,
+    *,
+    diff_ids: list[str],
+    tag: str = "submission:test",
+    suffix: str = "target",
+    legacy_config_path: bool = False,
+) -> tuple[str, dict[str, object]]:
+    config_content = json.dumps(
+        {"rootfs": {"type": "layers", "diff_ids": diff_ids}},
+        separators=(",", ":"),
+    ).encode()
+    config_digest = hashlib.sha256(config_content).hexdigest()
+    config_rel = (
+        f"{config_digest}.json"
+        if legacy_config_path
+        else f"blobs/sha256/{config_digest}"
+    )
+    config_path = save_dir / config_rel
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_bytes(config_content)
+
+    layer_paths = [f"layers/{suffix}-{index}.tar" for index in range(len(diff_ids))]
+    for index, relative_path in enumerate(layer_paths):
+        path = save_dir / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(f"layer-{suffix}-{index}".encode())
+
+    entry: dict[str, object] = {
+        "Config": config_rel,
+        "RepoTags": [tag],
+        "Layers": layer_paths,
+    }
+    return f"sha256:{config_digest}", entry
 
 
 class ParseConfigTest(unittest.TestCase):
@@ -82,14 +121,167 @@ class ReadSaveLayerPathsTest(unittest.TestCase):
     def test_reads_layers_in_order(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             save = Path(tmp)
+            _, entry = write_saved_image(
+                save,
+                diff_ids=[SHA256_A, SHA256_B],
+            )
             (save / "manifest.json").write_text(
-                json.dumps([{"Layers": ["blobs/sha256/aa", "blobs/sha256/bb"]}]),
+                json.dumps([entry]),
                 encoding="utf-8",
             )
             self.assertEqual(
-                bs.read_save_layer_paths(save),
-                ["blobs/sha256/aa", "blobs/sha256/bb"],
+                bs.read_save_layer_paths(
+                    save,
+                    image_tag="submission:test",
+                    expected_repo_tags=["submission:test"],
+                    expected_diff_ids=[SHA256_A, SHA256_B],
+                ),
+                ["layers/target-0.tar", "layers/target-1.tar"],
             )
+
+    def test_selects_entry_by_inspected_repo_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save = Path(tmp)
+            _, other_entry = write_saved_image(
+                save,
+                diff_ids=[SHA256_C],
+                tag="other:test",
+                suffix="other",
+            )
+            _, target_entry = write_saved_image(
+                save,
+                diff_ids=[SHA256_A, SHA256_B],
+            )
+            (save / "manifest.json").write_text(
+                json.dumps([other_entry, target_entry]),
+                encoding="utf-8",
+            )
+
+            paths = bs.read_save_layer_paths(
+                save,
+                image_tag="submission:test",
+                expected_repo_tags=["submission:test"],
+                expected_diff_ids=[SHA256_A, SHA256_B],
+            )
+
+            self.assertEqual(paths, ["layers/target-0.tar", "layers/target-1.tar"])
+
+    def test_accepts_classic_docker_config_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save = Path(tmp)
+            _, entry = write_saved_image(
+                save,
+                diff_ids=[SHA256_A],
+                legacy_config_path=True,
+            )
+            (save / "manifest.json").write_text(json.dumps([entry]), encoding="utf-8")
+
+            paths = bs.read_save_layer_paths(
+                save,
+                image_tag="submission:test",
+                expected_repo_tags=["submission:test"],
+                expected_diff_ids=[SHA256_A],
+            )
+
+            self.assertEqual(paths, ["layers/target-0.tar"])
+
+    def test_uses_normalized_inspected_repo_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save = Path(tmp)
+            _, entry = write_saved_image(
+                save,
+                diff_ids=[SHA256_A],
+                tag="submission:latest",
+            )
+            (save / "manifest.json").write_text(json.dumps([entry]), encoding="utf-8")
+
+            paths = bs.read_save_layer_paths(
+                save,
+                image_tag="submission",
+                expected_repo_tags=["submission:latest"],
+                expected_diff_ids=[SHA256_A],
+            )
+
+            self.assertEqual(paths, ["layers/target-0.tar"])
+
+    def test_rejects_config_content_that_does_not_match_path_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save = Path(tmp)
+            _, entry = write_saved_image(save, diff_ids=[SHA256_A])
+            (save / str(entry["Config"])).write_text(
+                json.dumps({"rootfs": {"diff_ids": [SHA256_A]}}),
+                encoding="utf-8",
+            )
+            (save / "manifest.json").write_text(json.dumps([entry]), encoding="utf-8")
+
+            with self.assertRaisesRegex(bs.SubmissionError, "config digest"):
+                bs.read_save_layer_paths(
+                    save,
+                    image_tag="submission:test",
+                    expected_repo_tags=["submission:test"],
+                    expected_diff_ids=[SHA256_A],
+                )
+
+    def test_rejects_saved_config_with_different_diff_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save = Path(tmp)
+            _, entry = write_saved_image(save, diff_ids=[SHA256_A])
+            (save / "manifest.json").write_text(json.dumps([entry]), encoding="utf-8")
+
+            with self.assertRaisesRegex(bs.SubmissionError, "saved image config"):
+                bs.read_save_layer_paths(
+                    save,
+                    image_tag="submission:test",
+                    expected_repo_tags=["submission:test"],
+                    expected_diff_ids=[SHA256_B],
+                )
+
+    def test_rejects_layer_count_that_differs_from_saved_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save = Path(tmp)
+            _, entry = write_saved_image(save, diff_ids=[SHA256_A])
+            entry["Layers"] = []
+            (save / "manifest.json").write_text(json.dumps([entry]), encoding="utf-8")
+
+            with self.assertRaisesRegex(bs.SubmissionError, "config and layer blobs"):
+                bs.read_save_layer_paths(
+                    save,
+                    image_tag="submission:test",
+                    expected_repo_tags=["submission:test"],
+                    expected_diff_ids=[SHA256_A],
+                )
+
+    def test_rejects_duplicate_entries_for_submission_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save = Path(tmp)
+            _, entry = write_saved_image(save, diff_ids=[SHA256_A])
+            (save / "manifest.json").write_text(
+                json.dumps([entry, dict(entry)]),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(bs.SubmissionError, "multiple entries"):
+                bs.read_save_layer_paths(
+                    save,
+                    image_tag="submission:test",
+                    expected_repo_tags=["submission:test"],
+                    expected_diff_ids=[SHA256_A],
+                )
+
+    def test_rejects_unsafe_layer_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            save = Path(tmp)
+            _, entry = write_saved_image(save, diff_ids=[SHA256_A])
+            entry["Layers"] = ["../outside.tar"]
+            (save / "manifest.json").write_text(json.dumps([entry]), encoding="utf-8")
+
+            with self.assertRaisesRegex(bs.SubmissionError, "unsafe layer path"):
+                bs.read_save_layer_paths(
+                    save,
+                    image_tag="submission:test",
+                    expected_repo_tags=["submission:test"],
+                    expected_diff_ids=[SHA256_A],
+                )
 
 
 class ManifestTest(unittest.TestCase):
@@ -145,13 +337,160 @@ class DockerBuildCommandTest(unittest.TestCase):
         self.assertIn("--build-arg", cmd)
         self.assertIn("BASE_IMAGE=reg/base:tag", cmd)
         self.assertIn("sub:local", cmd)
+        self.assertEqual(cmd[2:4], ["--platform", "linux/amd64"])
         self.assertEqual(cmd[-1], "/ctx")
+
+    def test_pull_materializes_base_for_evaluation_platform(self) -> None:
+        self.assertEqual(
+            bs.docker_pull_command(image="reg/base@sha256:digest"),
+            [
+                "docker",
+                "image",
+                "pull",
+                "--platform",
+                "linux/amd64",
+                "reg/base@sha256:digest",
+            ],
+        )
+
+
+class EnsureBaseImageTest(unittest.TestCase):
+    def _metadata(self, *, architecture: str = "amd64") -> bs.DockerImageMetadata:
+        return bs.DockerImageMetadata(
+            image_id=SHA256_A,
+            layers=[SHA256_B],
+            os="linux",
+            architecture=architecture,
+        )
+
+    @patch.object(bs, "_run")
+    @patch.object(bs, "inspect_image")
+    def test_uses_already_materialized_base(self, inspect_image, run) -> None:
+        metadata = self._metadata()
+        inspect_image.return_value = metadata
+
+        self.assertIs(bs.ensure_base_image("base:tag"), metadata)
+
+        inspect_image.assert_called_once_with("base:tag")
+        run.assert_not_called()
+
+    @patch.object(bs, "_run")
+    @patch.object(bs, "inspect_image")
+    def test_pulls_base_missing_from_docker_image_store(self, inspect_image, run) -> None:
+        metadata = self._metadata()
+        inspect_image.side_effect = [
+            subprocess.CalledProcessError(1, ["docker", "image", "inspect"]),
+            metadata,
+        ]
+
+        self.assertIs(bs.ensure_base_image("base@sha256:digest"), metadata)
+
+        run.assert_called_once_with(
+            [
+                "docker",
+                "image",
+                "pull",
+                "--platform",
+                "linux/amd64",
+                "base@sha256:digest",
+            ]
+        )
+        self.assertEqual(inspect_image.call_count, 2)
+
+    @patch.object(bs, "_run")
+    @patch.object(bs, "inspect_image")
+    def test_repulls_base_cached_for_wrong_platform(self, inspect_image, run) -> None:
+        arm = self._metadata(architecture="arm64")
+        amd = self._metadata()
+        inspect_image.side_effect = [arm, amd]
+
+        self.assertIs(bs.ensure_base_image("base@sha256:digest"), amd)
+
+        run.assert_called_once_with(bs.docker_pull_command(image="base@sha256:digest"))
+
+    @patch.object(bs, "_run")
+    @patch.object(bs, "inspect_image")
+    def test_rejects_wrong_platform_after_pull(self, inspect_image, run) -> None:
+        arm = self._metadata(architecture="arm64")
+        inspect_image.side_effect = [arm, arm]
+
+        with self.assertRaisesRegex(bs.SubmissionError, "requires linux/amd64"):
+            bs.ensure_base_image("base@sha256:digest")
+
+        run.assert_called_once()
+
+
+class BuildAndExtractDeltaTest(unittest.TestCase):
+    def _plan(self, root: Path) -> bs.BuildPlan:
+        return bs.BuildPlan(
+            context=root,
+            dockerfile=root / "Dockerfile",
+            base_image=bs.DEFAULT_BASE_IMAGE,
+            image_tag="submission:test",
+            staging_dir=root / "artifact",
+            config=bs.SubmissionConfig(entrypoint=["python", "/opt/app/run.py"]),
+        )
+
+    def _build(self, *, skip_build: bool) -> list[object]:
+        events: list[object] = []
+        base = bs.DockerImageMetadata(
+            image_id=SHA256_A,
+            layers=[SHA256_A],
+            os="linux",
+            architecture="amd64",
+        )
+        submission = bs.DockerImageMetadata(
+            image_id=SHA256_B,
+            layers=[SHA256_A, SHA256_B],
+            os="linux",
+            architecture="amd64",
+        )
+
+        def ensure(*_args, **_kwargs):
+            events.append("ensure-base")
+            return base
+
+        def inspect(*_args, **_kwargs):
+            events.append("inspect-submission")
+            return submission
+
+        def run(command):
+            events.append(command)
+            if command[0] == "tar":
+                save_dir = Path(command[-1])
+                (save_dir / "base.tar").write_bytes(b"base")
+                (save_dir / "delta.tar").write_bytes(b"delta")
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            bs, "ensure_base_image", side_effect=ensure
+        ), patch.object(bs, "inspect_image", side_effect=inspect), patch.object(
+            bs, "_run", side_effect=run
+        ), patch.object(
+            bs,
+            "read_save_layer_paths",
+            return_value=["base.tar", "delta.tar"],
+        ):
+            bs.build_and_extract_delta(self._plan(Path(tmp)), skip_build=skip_build)
+        return events
+
+    def test_materializes_base_before_build(self) -> None:
+        events = self._build(skip_build=False)
+
+        self.assertEqual(events[0], "ensure-base")
+        self.assertEqual(events[1][0:2], ["docker", "build"])
+        self.assertEqual(events[2], "inspect-submission")
+
+    def test_materializes_base_when_reusing_existing_build(self) -> None:
+        events = self._build(skip_build=True)
+
+        self.assertEqual(events[0:2], ["ensure-base", "inspect-submission"])
+        self.assertFalse(
+            any(isinstance(event, list) and event[0:2] == ["docker", "build"] for event in events)
+        )
 
 
 class Sha256Test(unittest.TestCase):
     def test_sha256_file(self) -> None:
-        import hashlib
-
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "blob"
             path.write_bytes(b"cascade")

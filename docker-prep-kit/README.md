@@ -77,15 +77,21 @@ uv run --project ../.. --extra hf python ../build_submission.py \
   --repo-id your-hf-username/frontend-generated-submission
 ```
 
-The tool runs `docker build` locally, so use a machine with Docker. Use the exact
-pinned base digest from the challenge instructions. The uploader deliberately
-does **not** create repositories or change their visibility: it requires the
-challenge frontend to have already created a **private model repo in the signed-in
-user's personal namespace**. It refuses missing, public, organization-owned, and
-non-model targets. No participant token is sent to the challenge and no access
-grant to an organizer's personal account is required. Return to the challenge
-frontend after the upload and submit the uploaded revision. Do not submit a Space, a
-dataset repo, a public repo, or a container image.
+The tool runs `docker build` locally, so use a machine with Docker. It targets
+`linux/amd64` and automatically pulls the digest-pinned base when Docker does not
+have that reference in its image store. This explicit materialization is needed
+on clean Docker 23+ installations, where BuildKit may otherwise keep the `FROM`
+image only in its private build cache. Use the exact pinned base digest from the
+challenge instructions.
+
+The uploader deliberately does **not** create repositories or change their
+visibility: it requires the challenge frontend to have already created a
+**private model repo in the signed-in user's personal namespace**. It refuses
+missing, public, organization-owned, and non-model targets. No participant token
+is sent to the challenge and no access grant to an organizer's personal account
+is required. Return to the challenge frontend after the upload and submit the
+uploaded revision. Do not submit a Space, a dataset repo, a public repo, or a
+container image.
 
 The manifest and all replacement layers are uploaded in one Hub commit. On a
 current `huggingface_hub` client, the final line reports the exact immutable
