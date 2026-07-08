@@ -34,6 +34,7 @@ import numpy as np
 from PIL import Image
 
 from cascade_av.viz.timeline import (
+    TrackVisibility,
     _PX_PER_LANE,
     _paint_timeline_onto,
     _timeline_px_for,
@@ -181,6 +182,9 @@ class ClipPlayer:
             names. Parent entity headers auto-render for entities
             whose sub-rows survive — orphan headers are dropped.
             `None` = all families.
+        track_visibility: forwarded to ``_paint_timeline_onto``; grouped
+            whole-kind or stable per-entity visibility switches. Omitted
+            entries remain visible.
         height: optional explicit pixel height for the whole player.
             `None` (default) means adaptive — the timeline subplot
             scales to the deepest sub-lane stack on the bottom row
@@ -237,6 +241,7 @@ class ClipPlayer:
         agent_ids: list[str] | None = None,
         track_groups: list[str] | None = None,
         families: list[str] | None = None,
+        track_visibility: TrackVisibility | None = None,
         height: int | None = None,
         width: int | None = None,
         frame_quality: int = _DEFAULT_FRAME_QUALITY,
@@ -353,6 +358,7 @@ class ClipPlayer:
             agent_ids=agent_ids,
             track_groups=track_groups,
             families=families,
+            track_visibility=track_visibility,
             show_inline_labels=show_inline_labels,
         )
 

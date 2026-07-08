@@ -22,6 +22,7 @@ from __future__ import annotations
 import sys
 
 import numpy as np
+import plotly.graph_objects as go
 import pytest
 from PIL import Image
 
@@ -247,7 +248,54 @@ def test_context_with_mismatched_clip_id_raises_value_error() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 8. Video timestamp clamping — Bug A. Real clips' video manifests rarely
+# 8. Publication-figure mode.
+# ---------------------------------------------------------------------------
+
+
+def test_paper_figure_mode_returns_plain_figure_and_batches_timestamps() -> None:
+    seq = _seq_with_fake_video(duration=10.0)
+    reader = seq.video
+
+    fig = seq.visualize(
+        mode="paper_figure",
+        timestamps=[2.0, 1.0, 3.0],
+    )
+
+    assert type(fig) is go.Figure
+    assert len(reader.calls) == 1
+    np.testing.assert_array_equal(
+        reader.calls[0], np.array([2_000_000, 1_000_000, 3_000_000])
+    )
+    assert len(fig.layout.images) == 3
+
+
+def test_paper_figure_mode_rejects_incompatible_arguments_before_decode() -> None:
+    seq = _seq_with_fake_video(duration=10.0)
+    reader = seq.video
+    match = Match(
+        clip_id=seq.clip_id,
+        entity=object(),
+        interval=Interval(2.0, 4.0),
+    )
+    context = context_at(seq.annotation, Interval(2.0, 4.0))
+
+    incompatible = [
+        {"mode": "paper_figure", "timestamps": [2.0], "t": 2.0},
+        {"mode": "paper_figure", "timestamps": [2.0], "match": match},
+        {"mode": "paper_figure", "timestamps": [2.0], "context": context},
+        {"mode": "paper_figure", "timestamps": [2.0], "static": True},
+        {"timestamps": [2.0]},
+        {"mode": "not-a-mode"},
+    ]
+    for kwargs in incompatible:
+        with pytest.raises(ValueError):
+            seq.visualize(**kwargs)  # type: ignore[arg-type]
+
+    assert reader.calls == []
+
+
+# ---------------------------------------------------------------------------
+# 9. Video timestamp clamping — Bug A. Real clips' video manifests rarely
 # start at t=0us; `seq.visualize()` must clamp `[t_start, t_end]` to
 # `seq.video.timestamps.min()/max()` so the eager first-frame decode in
 # `ClipPlayer.__init__` doesn't trip `decode_images_from_timestamps([0])`.
@@ -297,7 +345,7 @@ def test_visualize_raises_when_window_outside_video_coverage() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 9. Import hygiene — `from cascade_av.dataset import Sequence` must NOT
+# 10. Import hygiene — `from cascade_av.dataset import Sequence` must NOT
 # pull in Pillow / Plotly / ipywidgets. The viz extras are optional and the
 # dispatcher lazy-imports them inside `.visualize()`.
 # ---------------------------------------------------------------------------

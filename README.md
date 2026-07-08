@@ -170,26 +170,40 @@ The devkit also ships tools for the AV Causal Scenario Retrieval Challenge:
 time range, or a `MatchSet` — as a decoded camera frame paired with
 the clip's annotation timeline (one bar per agent action, ego action,
 environment, condition, traffic-light state, plus five families of
-causal arrow). Requires the optional `[viz]` extra:
+causal arrow). Tracks always read top-to-bottom as Ego, Agents, Traffic
+Lights, Objects, then Environments. Requires the optional `[viz]` extra:
 
 ```bash
 uv sync --extra viz
 ```
 
 ```python
+from cascade_av import viz
+
 seq = ds.get_sequence(clip_id)
 
 seq.visualize()                                  # scrubbable widget over the whole clip
 seq.visualize(match=m, pad=1.0)                  # single match in context
 ds.find("ego.action = stop because_of light.color = red").visualize()  # MatchSet carousel
+
+# Publication figure: up to three selected frames above selected tracks.
+paper = viz.render_paper_figure(
+    seq,
+    timestamps=[1.0, 2.5, 4.0],
+    track_visibility={"agent": {"agent_4": False}},
+)
+# Equivalent high-level dispatch:
+paper = seq.visualize(mode="paper_figure", timestamps=[1.0, 2.5, 4.0])
 ```
 
 For reports, doc figures, or headless pipelines, `viz.render_frame()`
-and `viz.render_timeline()` return plain `PIL.Image` and
-`plotly.graph_objects.Figure` values you can save or post-process.
+returns a plain `PIL.Image`; `viz.render_timeline()` and
+`viz.render_paper_figure()` return `plotly.graph_objects.Figure` values
+you can save or post-process. Entity IDs in `track_visibility` must exist
+and be unique in the selected clip; omitted kinds and IDs remain visible.
 
-Full reference — every entry point, filter kwarg, headless variant,
-the `static=True` shorthand, and the carousel's `unique_clips` knob —
+Full reference — paper-figure timestamp rules, per-entry-point filter
+support, headless variants, and the carousel's `unique_clips` knob — is
 in [`docs/user/visualization.md`](docs/user/visualization.md).
 
 ## Examples and notebooks
@@ -204,7 +218,7 @@ Runnable Python scripts under `examples/`:
 | `04_scenarios.py` | 20 driving scenarios encoded as DSL queries |
 | `05_context.py` | inspect what else was happening during each match |
 | `06_sensor_data.py` | catalog of available sensors + recipes for fetching extras |
-| `07_visualize.py` | headless render — single frame and timeline figure |
+| `07_visualize.py` | headless render — single frame, timeline, and paper figure |
 
 Run any of them with:
 
@@ -218,7 +232,8 @@ richer narrative and charts, plus `05_video_inspection.ipynb` which
 pulls the original camera video from HuggingFace and renders frames
 across a match's interval, and `06_visualize.ipynb` which walks
 through the interactive viz API (clip player + timeline + match
-carousel). Launch JupyterLab with:
+carousel) and the static three-frame paper-figure mode. Launch
+JupyterLab with:
 
 ```bash
 make notebooks

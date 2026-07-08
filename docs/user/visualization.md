@@ -4,9 +4,11 @@
 time range, or a `MatchSet` — as a decoded camera frame paired with
 the clip's annotation timeline. The timeline carries one bar per
 agent action, ego action, environment, condition, and traffic-light
-state, plus four families of causal arrow (`because_of`,
+state, plus four documented families of causal arrow (`because_of`,
 `containment`, `influence`, `action_target`). It also paints a yellow
-highlight band over any match interval.
+highlight band over any match interval. Every timeline-backed view uses
+the same top-to-bottom group order: **Ego, Agents, Traffic Lights,
+Objects, Environments**.
 
 This doc is the authoritative reference; the
 [README's Visualization section](../../README.md#visualization) is a
@@ -25,7 +27,7 @@ Jupyter-protocol environments. Colab support is best-effort.
 
 ## Entry points
 
-The three common workflows hang off objects you already use.
+The common workflows hang off objects you already use.
 `ds.get_sequence(clip_id)` returns a `Sequence` — the per-clip handle
 that bundles the parsed annotation with camera / sensor accessors and
 the `.visualize()` method:
@@ -45,24 +47,31 @@ seq.visualize(match=m, pad=1.0)
 # Fan out a whole MatchSet into a carousel of mini-players (one per
 # match, capped at `limit`).
 ds.find("ego.action = decel because_of agent.type = ped").visualize()
+
+# Static publication figure with selected video frames above the tracks.
+seq.visualize(mode="paper_figure", timestamps=[1.0, 2.5, 4.0])
 ```
 
-Every filter listed below works on all four call sites:
+Filter support differs slightly by entry point. "All" below means
+`arrows`, `entity_kinds`, `agent_ids`, `track_groups`, `families`, and
+`track_visibility`:
 
-```python
-seq.visualize(...)                  # interactive ClipPlayer widget
-viz.render_timeline(seq, ...)       # headless Plotly figure
-ClipPlayer(seq, ...)                # the widget class directly
-matches.visualize(...)              # carousel of mini-players, one per match
-```
+| Entry point | Timeline filters |
+|---|---|
+| `seq.visualize(...)` | All, whenever the result includes a timeline; the `static=True` single-frame path has no tracks to filter |
+| `viz.render_timeline(seq, ...)` | All |
+| `viz.render_paper_figure(seq, ...)` | All |
+| `ClipPlayer(seq, ...)` | All |
+| `matches.visualize(...)` | `arrows`, `families` |
 
-The four whitelist filters AND together; the `arrows` toggle is
-independent (it gates arrow *families*, not the segment filter).
+The segment filters AND together; the `arrows` toggle is independent
+(it gates arrow *families*, not the segment filter).
 
 ## Headless rendering
 
-For reports, doc figures, or pipelines without a Jupyter kernel, two
-functions return plain values you can pickle, save, or post-process:
+For reports, doc figures, or pipelines without a Jupyter kernel, the
+headless functions return plain values you can pickle, save, or
+post-process:
 
 ```python
 from cascade_av import viz
@@ -70,21 +79,108 @@ from cascade_av import viz
 frame = viz.render_frame(seq, t=3.0)          # -> PIL.Image (RGB)
 fig   = viz.render_timeline(seq,              # -> plotly.graph_objects.Figure
                             highlight=(2, 5))
+paper = viz.render_paper_figure(              # -> plotly.graph_objects.Figure
+    seq,
+    timestamps=[1.0, 3.0, 5.0],
+    track_visibility={"agent": {"agent_4": False}},
+)
 frame.save("/tmp/clip_t3.png")
 fig.write_image("/tmp/timeline.png")          # needs the `kaleido` extra
+paper.write_image("/tmp/paper.png")           # needs the `kaleido` extra
 ```
 
 `seq.visualize(t=2.5, static=True)` is the shorthand for
 `viz.render_frame(seq, 2.5)` — handy when you start interactive and
 want a single still without switching modules.
 
+## Paper figures
+
+`viz.render_paper_figure()` composes zero to three explicitly selected
+video frames side-by-side above the annotation tracks. The high-level
+equivalent is `seq.visualize(mode="paper_figure", timestamps=[...])`.
+Both return a plain Plotly figure rather than an interactive widget.
+
+```python
+paper = viz.render_paper_figure(
+    seq,
+    timestamps=[4.8, 1.2, 3.0],
+    track_visibility={
+        "agent": {"agent_4": False, "agent_5": False},
+        "env": False,
+    },
+)
+```
+
+Timestamp rules are deliberately strict for reproducible figures:
+
+- Pass zero to three finite numeric timestamps in seconds. An empty list
+  creates a timeline-only figure and does not access the video.
+- Input order is preserved left-to-right, so the example above displays
+  4.8 s, then 1.2 s, then 3.0 s. Duplicate timestamps are allowed.
+- Every value must lie within the video's actual timestamp coverage.
+  Out-of-coverage values raise `ValueError`; they are never clamped.
+- `mode="paper_figure"` uses `timestamps`, so it cannot be combined with
+  `t`, `match`, `context`, or `static=True`.
+
+When frames are requested, the sequence must have an accessible video.
+They are embedded as quality-90 JPEGs capped at 1920 pixels on the longer
+edge, keeping saved HTML and executed notebooks compact without changing
+the source video. The timeline filters described below, plus `highlight`,
+`height`, `width`, and `show_inline_labels`, are available in paper mode.
+
+## Track order
+
+All timeline-backed entry points use this canonical top-to-bottom order:
+
+1. Ego
+2. Agents
+3. Traffic Lights
+4. Objects
+5. Environments
+
+Filtering a group out collapses the y-axis while preserving the relative
+order of the groups that remain.
+
 ## Filters
+
+### `track_visibility` — switch whole kinds or individual entities
+
+Type: `dict[str, bool | dict[str, bool]]` · Default: all-on
+
+Use a boolean to switch a whole kind, or a nested mapping to switch
+individual tracks by their stable, non-empty annotation IDs. Omitted kinds
+and IDs default to on.
+
+```python
+# Hide all Environment tracks and two specific Agent tracks.
+seq.visualize(
+    track_visibility={
+        "env": False,
+        "agent": {"agent_4": False, "agent_5": False},
+    }
+)
+```
+
+| Kind | Nested selector |
+|---|---|
+| `"ego"` | Synthetic singleton ID `"ego"` |
+| `"agent"` | `Agent.id` |
+| `"light"` | `TrafficLight.id` |
+| `"object"` | `TrafficObject.id` |
+| `"env"` | `Environment.id` |
+
+Hiding a top-level entity removes its parent track and every descendant
+row. Causal arrows with either endpoint hidden are removed too. Unknown
+kinds and IDs raise `ValueError`, which prevents a misspelled selector
+from silently leaving the wrong track in a publication figure. Selecting
+an ID that occurs more than once also raises: duplicate IDs are ambiguous,
+so use a whole-kind switch or fix the annotation IDs first.
 
 ### `arrows` — toggle causal-arrow families
 
 Type: `dict[str, bool]` · Default: all-on
 
-Four recognized families. Pass `False` for any you want to hide;
+Four documented families. Pass `False` for any you want to hide;
 unmentioned keys default to on.
 
 ```python
@@ -108,11 +204,11 @@ viz.render_timeline(seq, entity_kinds=["agent", "ego"])
 
 | Value | Selects |
 |---|---|
-| `"env"` | Environment segments |
+| `"ego"` | Ego vehicle segments |
+| `"agent"` | Agent segments + their sub-rows |
 | `"light"` | Traffic Light segments (parent + per-signal-head) |
 | `"object"` | Object segments |
-| `"agent"` | Agent segments + their sub-rows |
-| `"ego"` | Ego vehicle segments |
+| `"env"` | Environment segments |
 
 ### `agent_ids` — whitelist specific agents
 
@@ -136,11 +232,11 @@ viz.render_timeline(seq, track_groups=["Agents", "Ego"])
 
 | Value | Aliases |
 |---|---|
-| `"Environments"` | `"Env"` (legacy) |
+| `"Ego"` | — |
+| `"Agents"` | — |
 | `"Traffic Lights"` | `"Lights"` (legacy) |
 | `"Objects"` | — |
-| `"Agents"` | — |
-| `"Ego"` | — |
+| `"Environments"` | `"Env"` (legacy) |
 
 Rows not in the whitelist drop their tick labels too — the y-axis
 collapses to the visible categories.
@@ -179,10 +275,10 @@ because each has an `action` sub-row.
 
 ## Composition
 
-A segment paints only if it survives all four whitelists:
+A segment paints only if it survives every supplied selector:
 
 ```
-track_groups  ∧  entity_kinds  ∧  agent_ids  ∧  families
+track_groups  ∧  entity_kinds  ∧  agent_ids  ∧  families  ∧  track_visibility
 ```
 
 Arrows paint only if BOTH endpoints survived the segment filter.
@@ -239,11 +335,14 @@ when you're surveying which clips show the behaviour.
 
 | File | Surface |
 |---|---|
-| `src/cascade_av/viz/timeline.py` | `render_timeline`, `_paint_timeline_onto` (the load-bearing painter; all four filters resolve here) |
-| `src/cascade_av/viz/widget.py` | `ClipPlayer` — forwards every filter to `_paint_timeline_onto` |
-| `src/cascade_av/viz/carousel.py` | `build_matchset_carousel` — forwards `families` + `arrows` to each per-match `ClipPlayer` |
-| `src/cascade_av/dataset.py` | `Sequence.visualize` — high-level dispatcher; forwards `families` + `arrows` |
+| `src/cascade_av/viz/timeline.py` | `render_timeline`, `_paint_timeline_onto` (the load-bearing painter; all segment and arrow filters resolve here) |
+| `src/cascade_av/viz/paper.py` | `render_paper_figure` — validates and decodes selected frames, then composes them above the shared timeline painter |
+| `src/cascade_av/viz/widget.py` | `ClipPlayer` — forwards every timeline filter to `_paint_timeline_onto` |
+| `src/cascade_av/viz/carousel.py` | `build_matchset_carousel` — forwards `arrows` and `families` to each per-match `ClipPlayer` |
+| `src/cascade_av/dataset.py` | `Sequence.visualize` — high-level dispatcher for frame, player, and paper-figure modes; forwards every timeline filter |
 
 The walkthrough notebook at [`notebooks/06_visualize.ipynb`](../../notebooks/06_visualize.ipynb)
-demos each entry point against a real clip, with section 6 dedicated
-to the `families` whitelist.
+demos the interactive entry points and a three-frame, per-entity-filtered
+paper figure against a real clip. The runnable
+[`examples/07_visualize.py`](../../examples/07_visualize.py) also writes a
+paper figure.
