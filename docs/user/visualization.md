@@ -4,8 +4,8 @@
 time range, or a `MatchSet` — as a decoded camera frame paired with
 the clip's annotation timeline. The timeline carries one bar per
 agent action, ego action, environment, condition, and traffic-light
-state, plus four documented families of causal arrow (`because_of`,
-`containment`, `influence`, `action_target`). It also paints a yellow
+state, plus three documented families of causal arrow (`because_of`,
+`containment`, `action_target`). It also paints a yellow
 highlight band over any match interval. Every timeline-backed view uses
 the same top-to-bottom group order: **Ego, Agents, Traffic Lights,
 Objects, Environments**.
@@ -181,7 +181,7 @@ so use a whole-kind switch or fix the annotation IDs first.
 
 Type: `dict[str, bool]` · Default: all-on
 
-Four documented families. Pass `False` for any you want to hide;
+Three documented families. Pass `False` for any you want to hide;
 unmentioned keys default to on.
 
 ```python
@@ -192,8 +192,16 @@ seq.visualize(arrows={"because_of": False, "containment": False})
 |---|---|
 | `because_of` | causal cause arrows — `action.because_of` field on EgoAction / AgentAction |
 | `containment` | spatial-containment edges (agent ∈ environment, etc.) |
-| `influence` | influence edges (a light influences the ego, etc.) |
 | `action_target` | action → target edges |
+
+`because_of` targets resolve to any visible segment-backed stable ID,
+including nested actions, light/object states, properties, conditions, and
+containment records. Dangling IDs remain non-fatal and do not paint an arrow.
+
+`Influence` annotations remain available through the schema, query DSL, and
+`viz.annotation_to_segments()`, but timeline-backed DevKit views intentionally
+do not render influence rows or influence arrows. For compatibility,
+`families=["influence"]` is still accepted and renders no rows.
 
 ### `entity_kinds` — whitelist segment kinds
 
@@ -259,7 +267,6 @@ matches.visualize(families=["action", "condition"])
 | `"state"` | Traffic Lights (per signal head), Objects |
 | `"containment"` | Objects, Agents, Ego |
 | `"pose"` | Agents |
-| `"influence"` | Agents, Ego |
 | `"action"` | Agents, Ego |
 | `"property"` | Agents, Ego |
 

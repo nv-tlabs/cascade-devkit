@@ -169,9 +169,10 @@ The devkit also ships tools for the AV Causal Scenario Retrieval Challenge:
 `cascade_av.viz` renders any subset of a clip — a single instant, a
 time range, or a `MatchSet` — as a decoded camera frame paired with
 the clip's annotation timeline (one bar per agent action, ego action,
-environment, condition, traffic-light state, plus five families of
-causal arrow). Tracks always read top-to-bottom as Ego, Agents, Traffic
-Lights, Objects, then Environments. Requires the optional `[viz]` extra:
+environment, condition, and traffic-light state, plus causal relationship
+arrows such as `because_of`). Tracks always read top-to-bottom as Ego,
+Agents, Traffic Lights, Objects, then Environments. Requires the optional
+`[viz]` extra:
 
 ```bash
 uv sync --extra viz

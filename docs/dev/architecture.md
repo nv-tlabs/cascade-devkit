@@ -194,6 +194,37 @@ Record significant choices here as short ADR-style entries. Newest first.
 When adding a new entry, copy the [ADR template](#adr-template) at the
 bottom of this file.
 
+### 2026-07-08 — DevKit timelines omit Influence rows and draw action causes
+
+- **Context:** `Influence` records were rendered as both dedicated family rows
+  and purple arrows, which consumed vertical space without expressing the
+  action-rooted causal relation needed in publication figures. Meanwhile,
+  `because_of` arrows resolved only top-level parent IDs even though valid
+  references can target nested actions, light/object states, properties,
+  conditions, and other segment-backed records.
+- **Decision:** Keep `Influence` intact in the schema, query DSL, and public
+  `annotation_to_segments()` output, but filter its rows and arrows at the
+  shared DevKit timeline painter. Represent action causality with `because_of`
+  arrows and resolve every visible segment-backed stable annotation ID,
+  including nested records and the synthetic Ego anchor. Dangling references
+  remain non-fatal and are omitted.
+- **Alternatives considered:** Removing `Influence` from the schema or segment
+  adapter was rejected because it would discard semantic data and break
+  non-rendering consumers. Mapping every causal target to its top-level parent
+  was rejected because it loses the annotated action/state/property endpoint.
+  Rejecting the former `families=["influence"]` selector was avoided as an
+  unnecessary hard break; it remains a documented compatibility no-op while
+  the row itself is absent.
+- **Consequences:** Static timelines, `ClipPlayer`, carousels, and paper figures
+  share a more compact layout with no influence family. The `influence` family
+  selector remains accepted as a compatibility no-op, and the arrow toggle has
+  no rendered effect; `influenced_by` queries remain supported. All ID-backed
+  arrow families share the expanded resolver: it follows `IdIndex` collision
+  semantics and supplements visible Traffic-Light containments without
+  overriding canonical indexed IDs (#10). `because_of` arrows now cover every
+  non-dangling visible target and still disappear when either endpoint is
+  filtered out.
+
 ### 2026-07-08 — Paper figures render frames chronologically
 
 - **Context:** The initial paper-figure contract preserved caller order, which

@@ -1283,10 +1283,10 @@ def build_visualize() -> None:
 
         `viz.render_timeline(seq, highlight=...)` returns a static
         `plotly.graph_objects.Figure` with one row per track group
-        (Ego / Agents / Traffic Lights / Objects / Environments) and the
-        five causal-arrow families overlaid. The `highlight` band
-        marks a window — pass `m.interval` to focus attention on
-        the match.
+        (Ego / Agents / Traffic Lights / Objects / Environments) and
+        causal relationship arrows such as `because_of` overlaid. The
+        `highlight` band marks a window — pass `m.interval` to focus
+        attention on the match.
         """),
         code("""
         fig = viz.render_timeline(seq, highlight=(m.interval.start, m.interval.end))
@@ -1384,9 +1384,15 @@ def build_visualize() -> None:
         Every visualize entry point (`seq.visualize`, `render_timeline`,
         `matches.visualize`) accepts a `families` whitelist. Pass a list
         of family leaves — `"action"`, `"condition"`, `"containment"`,
-        `"influence"`, `"property"`, `"pose"`, `"state"`,
+        `"property"`, `"pose"`, `"state"`,
         `"signal_head"`, `"env_control"`, `"physical_containment"` —
         and the timeline collapses to just those rows.
+
+        `Influence` records remain queryable but are intentionally omitted
+        from DevKit timeline rows; action-rooted `because_of` relationships
+        are represented as arrows instead. The former
+        `families=["influence"]` selector remains accepted as a compatibility
+        no-op.
 
         Parent entity headers ("Env Track 1", "Agent Track 2", ...) are
         NOT named in the whitelist. They auto-render for any entity

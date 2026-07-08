@@ -14,9 +14,13 @@ from PIL import Image
 
 from cascade_av.dataset import Sequence
 from cascade_av.spec import (
+    Agent,
+    AgentAction,
     AnnotationBundle,
     EgoAction,
     EgoVehicle,
+    Environment,
+    Influence,
     SilAvAnnotation,
     VideoMeta,
 )
@@ -94,6 +98,67 @@ def test_zero_timestamps_returns_timeline_without_touching_video() -> None:
     assert type(fig) is go.Figure
     assert tuple(fig.layout.images) == ()
     assert any((shape.name or "").startswith("segment:") for shape in fig.layout.shapes)
+
+
+def test_paper_timeline_omits_influence_and_keeps_because_of_arrows() -> None:
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="paper-causal", duration_s=3.0),
+        annotation=SilAvAnnotation(
+            environments=[
+                Environment(
+                    id="env_0",
+                    type="fst:Road",
+                    start_timestamp="0:0.0",
+                    end_timestamp="0:3.0",
+                )
+            ],
+            ego_vehicle=EgoVehicle(
+                actions=[
+                    EgoAction(
+                        id="ego_action",
+                        type="oxd:Decelerate",
+                        because_of=["agent_action"],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ],
+                influenced_by=[
+                    Influence(
+                        id="ego_influence",
+                        influencers=["env_0"],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ],
+            ),
+            agents=[
+                Agent(
+                    id="agent_0",
+                    type="oxd:Car",
+                    visibility_start_timestamp="0:0.0",
+                    visibility_end_timestamp="0:3.0",
+                    actions=[
+                        AgentAction(
+                            id="agent_action",
+                            action_type="Yield",
+                            start_timestamp="0:1.0",
+                            end_timestamp="0:2.0",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+
+    fig = render_paper_figure(Sequence.from_annotation(bundle), timestamps=())
+    shape_names = {str(shape.name or "") for shape in fig.layout.shapes}
+
+    assert not any(
+        name.startswith("segment:ego_infl_")
+        or name.startswith("arrow:influence:")
+        for name in shape_names
+    )
+    assert any(name.startswith("arrow:because_of:") for name in shape_names)
 
 
 @pytest.mark.parametrize(

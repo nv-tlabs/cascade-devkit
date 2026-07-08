@@ -340,6 +340,22 @@ def test_arrows_toggle_propagates_into_widget_subplot() -> None:
     assert len(link_to) > 0
 
 
+def test_widget_omits_influence_rows_and_keeps_because_of_arrows() -> None:
+    player = ClipPlayer(_seq_with_fake_video())
+    names = {
+        shape.get("name", "")
+        for shape in _bottom_subplot_shapes(player._fig)
+    }
+
+    assert not any(
+        name.startswith("segment:ego_infl_")
+        or name.startswith("segment:agent_infl_")
+        or name.startswith("arrow:influence:")
+        for name in names
+    )
+    assert any(name.startswith("arrow:because_of:") for name in names)
+
+
 # ---------------------------------------------------------------------------
 # 8. Timeline-painter parity
 # ---------------------------------------------------------------------------
