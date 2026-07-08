@@ -232,7 +232,8 @@ richer narrative and charts, plus `05_video_inspection.ipynb` which
 pulls the original camera video from HuggingFace and renders frames
 across a match's interval, and `06_visualize.ipynb` which walks
 through the interactive viz API (clip player + timeline + match
-carousel). Launch JupyterLab with:
+carousel) and the static three-frame paper-figure mode. Launch
+JupyterLab with:
 
 ```bash
 make notebooks

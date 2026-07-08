@@ -24,6 +24,21 @@ from cascade_av.viz import render_paper_figure
 from tests.conftest import FakeVideoReader
 
 
+class _SolidFrameVideoReader(FakeVideoReader):
+    """Fake whose full-frame color survives lossy JPEG transport."""
+
+    def decode_images_from_timestamps(
+        self, t_us: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        self.calls.append(np.asarray(t_us).copy())
+        frames = np.zeros(
+            (len(t_us), self.height, self.width, 3), dtype=np.uint8
+        )
+        for index, timestamp in enumerate(t_us):
+            frames[index, :, :, 0] = (int(timestamp) // 1_000_000) * 60
+        return frames, np.asarray(t_us, dtype=np.int64)
+
+
 def _sequence_with_video() -> tuple[Sequence, FakeVideoReader]:
     bundle = AnnotationBundle(
         video=VideoMeta(clip_id="paper", duration_s=3.0),
@@ -50,12 +65,10 @@ def _sequence_with_video() -> tuple[Sequence, FakeVideoReader]:
     return seq, reader
 
 
-def _first_red_channel(image_source: str) -> int:
-    """Recover the timestamp byte encoded by ``FakeVideoReader``."""
-    _header, payload = image_source.split(",", 1)
+def _decode_image_source(source: str) -> Image.Image:
+    _header, payload = source.split(",", 1)
     with Image.open(BytesIO(base64.b64decode(payload))) as image:
-        pixel = image.convert("RGB").getpixel((0, 0))
-    return int(pixel[0])
+        return image.convert("RGB").copy()
 
 
 def test_zero_timestamps_returns_timeline_without_touching_video() -> None:
@@ -108,7 +121,13 @@ def test_one_to_three_timestamps_are_decoded_in_one_batch(
 
 
 def test_timestamp_order_is_preserved_left_to_right() -> None:
-    seq, reader = _sequence_with_video()
+    seq, _reader = _sequence_with_video()
+    reader = _SolidFrameVideoReader(
+        height=8,
+        width=12,
+        timestamps=np.array([0, 1_000_000, 2_000_000, 3_000_000]),
+    )
+    seq._cameras = {seq.annotation_camera: reader}  # type: ignore[assignment]
     requested = (2.0, 1.0, 3.0)
 
     fig = render_paper_figure(seq, timestamps=requested)
@@ -118,17 +137,36 @@ def test_timestamp_order_is_preserved_left_to_right() -> None:
     images = list(fig.layout.images)
     assert [image.name for image in images] == ["frame-0", "frame-1", "frame-2"]
     assert [float(image.x) for image in images] == sorted(float(image.x) for image in images)
-    assert [_first_red_channel(str(image.source)) for image in images] == [
-        2_000_000 & 0xFF,
-        1_000_000 & 0xFF,
-        3_000_000 & 0xFF,
+    assert all(
+        str(image.source).startswith("data:image/jpeg;base64,")
+        for image in images
+    )
+    transported_red = [
+        _decode_image_source(str(image.source)).getpixel((0, 0))[0]
+        for image in images
     ]
+    assert transported_red == pytest.approx([120, 60, 180], abs=3)
     captions = [
         annotation.text
         for annotation in fig.layout.annotations
         if annotation.xref == "paper" and annotation.yref == "paper"
     ]
     assert captions == ["t = 2 s", "t = 1 s", "t = 3 s"]
+
+
+def test_embedded_frame_long_edge_is_capped_at_1920_pixels() -> None:
+    seq, _reader = _sequence_with_video()
+    reader = _SolidFrameVideoReader(
+        height=2000,
+        width=3000,
+        timestamps=np.array([0, 1_000_000, 2_000_000, 3_000_000]),
+    )
+    seq._cameras = {seq.annotation_camera: reader}  # type: ignore[assignment]
+
+    fig = render_paper_figure(seq, timestamps=(1.0,))
+
+    transported = _decode_image_source(str(fig.layout.images[0].source))
+    assert transported.size == (1920, 1280)
 
 
 def test_frames_are_positioned_above_the_timeline() -> None:

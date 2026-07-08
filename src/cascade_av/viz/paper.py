@@ -17,6 +17,7 @@ from cascade_av.viz.timeline import (
     _paint_timeline_onto,
     _timeline_px_for,
 )
+from cascade_av.viz.widget import _encode_frame_jpeg
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import plotly.graph_objects as go
@@ -27,6 +28,8 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 _MAX_FRAMES = 3
 _DEFAULT_WIDTH = 1400
 _MAX_FRAME_ROW_PX = 480
+_PAPER_FRAME_QUALITY = 90
+_PAPER_FRAME_MAX_DIM = 1920
 _FRAME_GAP_FRACTION = 0.015
 _CAPTION_GAP_PX = 32
 _MIN_PLOTLY_DIMENSION = 10
@@ -154,7 +157,9 @@ def render_paper_figure(
     ``timestamps`` are seconds in the source video. Their input order is
     preserved left-to-right, duplicates are allowed, and explicit values are
     never silently clamped. An empty sequence is valid and produces a
-    timeline-only paper figure without accessing ``seq.video``.
+    timeline-only paper figure without accessing ``seq.video``. Requested
+    frames are embedded as quality-90 JPEGs, capped at 1920 pixels on the
+    longer edge, so notebook and HTML artifacts stay portable.
 
     ``track_visibility`` switches whole kinds or individual top-level entity
     IDs. For example, ``{"agent": {"agent_4": False}}`` hides that Agent's
@@ -249,7 +254,11 @@ def render_paper_figure(
         x0 = index * (slot_width + gap)
         images.append(
             {
-                "source": frame,
+                "source": _encode_frame_jpeg(
+                    np.asarray(frame),
+                    quality=_PAPER_FRAME_QUALITY,
+                    max_dim=_PAPER_FRAME_MAX_DIM,
+                ),
                 "xref": "paper",
                 "yref": "paper",
                 "x": x0,
