@@ -5,12 +5,13 @@
 This is the v0 of the timeline view from `meta/10_visualization_api_plan.md`.
 It consumes a `Sequence`'s `AnnotationBundle`, flattens it through PR-1's
 `annotation_to_segments`, and emits a `plotly.graph_objects.Figure` showing
-each segment as a colored rectangle on one of five track-group rows:
-**Env**, **Lights**, **Objects**, **Agents**, **Ego** — matching the
-annotator's `Timeline.tsx` grouping (just collapsed to one row per group;
-the per-lane lattice is intentionally squashed here, since the headless
-view doesn't have to be pixel-perfect with the annotator and the same
-shape works inside the PR-4 widget).
+each segment as a colored rectangle in one of five track groups, ordered
+top-to-bottom as **Ego**, **Agents**, **Traffic Lights**, **Objects**,
+**Environments**. The group contents mirror the annotator's `Timeline.tsx`
+model, while the DevKit owns this ego-first publication reading order. The
+per-lane lattice is intentionally squashed here, since the headless view
+doesn't have to be pixel-perfect with the annotator and the same shape works
+inside the interactive widget.
 
 Segment colors follow PR-1's `entity_color()` palette so the headless view
 and the annotator share one set of hex strings. Causal relationships
@@ -45,6 +46,8 @@ variant lands in PR-4.
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -58,18 +61,31 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
     from cascade_av.spec import AnnotationBundle
 
 
-# Five categories, top → bottom. Order is the annotator's reading order
-# (environments at the top, ego at the bottom). The y-axis is built
+# Five categories, top → bottom. This is the DevKit visualization's
+# canonical reading order: the controlled actor first, then other dynamic
+# actors, infrastructure, objects, and finally scene context. The annotator
+# UI owns its layout independently and may use a different order. The y-axis
+# is built
 # band-by-band; one band per populated
 # `(category, entity_idx, family, sub_row_idx, sh_idx)` tuple. See
 # `_BAND_ORDER_BY_CATEGORY` for the family ordering inside each
 # category. Category labels match the annotator's display strings.
 _CATEGORIES: tuple[str, ...] = (
-    "Environments",
+    "Ego",
+    "Agents",
     "Traffic Lights",
     "Objects",
-    "Agents",
-    "Ego",
+    "Environments",
+)
+
+# Per-entity switches accepted by every timeline-backed renderer. Top-level
+# keys use the same kind vocabulary as ``entity_kinds``. A bool toggles the
+# whole kind; a nested mapping toggles individual top-level annotation
+# entities by their stable ``id``. Omitted kinds and IDs remain visible.
+# Ego is a singleton addressed by the synthetic ID ``"ego"``.
+TrackVisibility = Mapping[str, bool | Mapping[str, bool]]
+_TRACK_KINDS: frozenset[str] = frozenset(
+    {"ego", "agent", "light", "object", "env"}
 )
 
 # Per-category family ordering. Mirrors the annotator's row layout in
@@ -254,6 +270,151 @@ def _segment_kind(track_id: str) -> str | None:
         "Agents": "agent",
         "Ego": "ego",
     }[category]
+
+
+def _track_entity_ids(bundle: "AnnotationBundle") -> dict[str, tuple[str, ...]]:
+    """Return selectable top-level entity IDs grouped by timeline kind."""
+    ann = bundle.annotation
+    return {
+        "ego": ("ego",),
+        "agent": tuple(entity.id for entity in ann.agents if entity.id),
+        "light": tuple(entity.id for entity in ann.traffic_lights if entity.id),
+        "object": tuple(entity.id for entity in ann.traffic_objects if entity.id),
+        "env": tuple(entity.id for entity in ann.environments if entity.id),
+    }
+
+
+def _resolve_track_visibility(
+    bundle: "AnnotationBundle",
+    track_visibility: TrackVisibility | None,
+) -> tuple[dict[str, bool], dict[str, dict[str, bool]]]:
+    """Validate and normalize grouped kind/entity visibility switches.
+
+    ``None`` and omitted entries mean visible. A top-level bool switches an
+    entire kind, while a nested mapping switches individual stable entity IDs.
+    Validation is deliberately strict: silently accepting a misspelled ID in a
+    publication figure would leave the wrong track visible.
+    """
+    if track_visibility is None:
+        return {}, {}
+    if not isinstance(track_visibility, Mapping):
+        raise TypeError(
+            "track_visibility must be a mapping from entity kind to a bool "
+            "or an ID-to-bool mapping"
+        )
+
+    non_string_kinds = [
+        kind for kind in track_visibility if not isinstance(kind, str)
+    ]
+    if non_string_kinds:
+        raise TypeError(
+            "track_visibility keys must be entity-kind strings; got "
+            f"{non_string_kinds!r}"
+        )
+    unknown_kinds = set(track_visibility) - _TRACK_KINDS
+    if unknown_kinds:
+        raise ValueError(
+            f"unknown track_visibility kinds: {sorted(unknown_kinds)!r}. "
+            f"Recognized: {sorted(_TRACK_KINDS)!r}"
+        )
+
+    entity_ids = _track_entity_ids(bundle)
+    known_ids = {kind: set(ids) for kind, ids in entity_ids.items()}
+    ambiguous_ids = {
+        kind: {
+            entity_id
+            for entity_id, count in Counter(ids).items()
+            if count > 1
+        }
+        for kind, ids in entity_ids.items()
+    }
+    kind_switches: dict[str, bool] = {}
+    entity_switches: dict[str, dict[str, bool]] = {}
+    for kind, setting in track_visibility.items():
+        if isinstance(setting, bool):
+            kind_switches[kind] = setting
+            continue
+        if not isinstance(setting, Mapping):
+            raise TypeError(
+                f"track_visibility[{kind!r}] must be a bool or an "
+                "entity-ID-to-bool mapping"
+            )
+
+        non_string_ids = [
+            entity_id for entity_id in setting if not isinstance(entity_id, str)
+        ]
+        if non_string_ids:
+            raise TypeError(
+                f"track_visibility[{kind!r}] keys must be entity-ID strings; "
+                f"got {non_string_ids!r}"
+            )
+        unknown_ids = set(setting) - known_ids[kind]
+        if unknown_ids:
+            raise ValueError(
+                f"unknown {kind!r} entity IDs in track_visibility: "
+                f"{sorted(unknown_ids)!r}. Known: {sorted(known_ids[kind])!r}"
+            )
+        ambiguous = set(setting) & ambiguous_ids[kind]
+        if ambiguous:
+            raise ValueError(
+                f"ambiguous {kind!r} entity IDs in track_visibility: "
+                f"{sorted(ambiguous)!r}; each ID occurs more than once"
+            )
+        resolved: dict[str, bool] = {}
+        for entity_id, visible in setting.items():
+            if not isinstance(visible, bool):
+                raise TypeError(
+                    f"track_visibility[{kind!r}][{entity_id!r}] must be bool"
+                )
+            resolved[entity_id] = visible
+        entity_switches[kind] = resolved
+
+    return kind_switches, entity_switches
+
+
+def _segment_track_entity_id(
+    seg: Segment,
+    bundle: "AnnotationBundle",
+    kind: str,
+) -> str | None:
+    """Resolve a segment to the stable ID of its top-level track owner.
+
+    Sub-rows inherit their owner: conditions resolve through ``env_id``;
+    signal-head/state rows resolve to their TrafficLight; every Agent/Object
+    child carries its parent's model index in ``Segment.meta``. Ego uses the
+    synthetic singleton ID ``"ego"``.
+    """
+    if kind == "ego":
+        return "ego"
+
+    meta = seg.meta or {}
+    ann = bundle.annotation
+    if kind == "agent":
+        entities = ann.agents
+        index = meta.get("_agentIndex")
+    elif kind == "light":
+        entities = ann.traffic_lights
+        index = meta.get("_lightIndex")
+    elif kind == "object":
+        entities = ann.traffic_objects
+        index = meta.get("_objIndex")
+    elif kind == "env":
+        env_index = meta.get("_envIndex")
+        if isinstance(env_index, int) and 0 <= env_index < len(ann.environments):
+            return ann.environments[env_index].id or None
+        condition_index = meta.get("_condIndex")
+        if (
+            isinstance(condition_index, int)
+            and 0 <= condition_index < len(ann.conditions)
+        ):
+            return ann.conditions[condition_index].env_id or None
+        return None
+    else:
+        return None
+
+    if not isinstance(index, int) or not 0 <= index < len(entities):
+        return None
+    return entities[index].id or None
 
 
 def _segment_center_x(seg: Segment) -> float:
@@ -478,8 +639,8 @@ def _populated_bands(segments: list[Segment]) -> list[BandKey]:
     key always collapse to a single sub-row.
 
     Reading order:
-      - Categories in `_CATEGORIES` order (Environments → Traffic
-        Lights → Objects → Agents → Ego).
+      - Categories in `_CATEGORIES` order (Ego → Agents → Traffic
+        Lights → Objects → Environments).
       - Inside each category, entity ordinals ascending — each ordinal
         is a separate per-entity block.
       - Inside each entity block, families in `_BAND_ORDER_BY_
@@ -834,6 +995,7 @@ def _paint_timeline_onto(
     agent_ids: list[str] | None = None,
     track_groups: list[str] | None = None,
     families: list[str] | None = None,
+    track_visibility: TrackVisibility | None = None,
     show_inline_labels: bool = True,
 ) -> PaintResult:
     """Append timeline shapes for `seq` onto `fig`, on the given axes.
@@ -891,6 +1053,12 @@ def _paint_timeline_onto(
             empty-timeline output on a typo (e.g. plural
             `"actions"` instead of `"action"`) is worse than a
             clear error.
+        track_visibility: optional grouped visibility switches. Keys are
+            ``"ego"``, ``"agent"``, ``"light"``, ``"object"``, and
+            ``"env"``. A bool toggles the whole kind; a nested mapping
+            toggles stable top-level entity IDs. For example,
+            ``{"agent": {"agent_4": False}}`` hides that Agent and all
+            of its sub-rows. Omitted switches default to visible.
         show_inline_labels: when False, suppress every inline label
             annotation; hover tooltips still fire. Defaults to True
             (the historical behaviour). Callers wanting a maximally
@@ -906,8 +1074,9 @@ def _paint_timeline_onto(
         path). The figure itself is also mutated in place.
 
     Filter semantics:
-        - The four whitelists AND together: a segment is drawn only
-          if its group is in `track_groups`, its kind is in
+        - The four whitelists and visibility switches AND together: a
+          segment is drawn only if its group is in `track_groups`, its
+          kind is in
           `entity_kinds`, (for agent kinds) its agent id is in
           `agent_ids`, and its family is in `families` (or it is a
           `"parent"` segment for an entity whose sub-rows survived).
@@ -945,6 +1114,9 @@ def _paint_timeline_onto(
     )
     allowed_agent_ids: set[str] | None = (
         None if agent_ids is None else set(agent_ids)
+    )
+    kind_visibility, entity_visibility = _resolve_track_visibility(
+        bundle, track_visibility
     )
     # `families` is a flat whitelist of family-leaf names (sub-rows).
     # Parents are never named here — they survive automatically for
@@ -1000,6 +1172,13 @@ def _paint_timeline_onto(
             return False
         kind = _segment_kind(seg.track_id)
         if kind is None or kind not in allowed_kinds:
+            return False
+        if not kind_visibility.get(kind, True):
+            return False
+        owner_id = _segment_track_entity_id(seg, bundle, kind)
+        if owner_id is not None and not entity_visibility.get(kind, {}).get(
+            owner_id, True
+        ):
             return False
         if kind == "agent" and allowed_agent_ids is not None:
             ai = (seg.meta or {}).get("_agentIndex")
@@ -1650,12 +1829,13 @@ def render_timeline(
     agent_ids: list[str] | None = None,
     track_groups: list[str] | None = None,
     families: list[str] | None = None,
+    track_visibility: TrackVisibility | None = None,
     height: int | None = None,
     show_inline_labels: bool = True,
 ) -> "go.Figure":
     """Return a Plotly Figure showing the clip's annotation timeline.
 
-    Rows = track groups (Environments, Lights, Objects, Agents, Ego);
+    Rows = track groups (Ego, Agents, Traffic Lights, Objects, Environments);
     each segment is a colored rectangle via `go.layout.Shape`.
     Causal arrows are drawn as bezier `path` shapes between segment
     centers. `highlight=(t0, t1)` paints a translucent vertical band.
@@ -1693,6 +1873,12 @@ def render_timeline(
             `None` = all families. Unrecognized leaves (e.g. the
             plural form `"actions"` accidentally copied from a tick
             label) raise `ValueError`.
+        track_visibility: optional grouped switches for whole kinds or
+            individual stable entity IDs. For example,
+            ``{"agent": {"agent_4": False, "agent_5": False}}`` hides
+            those two Agent tracks while leaving unspecified entities on.
+            Child rows inherit their top-level entity's switch, and arrows
+            with a hidden endpoint are omitted.
         height: optional explicit pixel height. `None` (default) means
             adaptive — the height tracks the deepest sub-lane stack so
             a busy clip gets a taller timeline while a sparse one
@@ -1728,6 +1914,7 @@ def render_timeline(
         agent_ids=agent_ids,
         track_groups=track_groups,
         families=families,
+        track_visibility=track_visibility,
         show_inline_labels=show_inline_labels,
     )
     resolved_height = (
@@ -1764,4 +1951,4 @@ def _find_seg(
     return None
 
 
-__all__ = ["render_timeline"]
+__all__ = ["TrackVisibility", "render_timeline"]

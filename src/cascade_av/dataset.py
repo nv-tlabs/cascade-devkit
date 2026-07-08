@@ -10,7 +10,8 @@ It extends the parent with:
 - point-in-time and windowed state queries (`Sequence.state_at`),
 - `Sequence.visualize` — a polymorphic dispatcher into the
   `cascade_av.viz` package; returns a ``ClipPlayer`` widget for
-  scrub-and-play, or a ``PIL.Image`` for headless single-frame use.
+  scrub-and-play, a ``PIL.Image`` for headless single-frame use, or a
+  static multi-frame Plotly figure in ``paper_figure`` mode.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import os
 import warnings
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from physical_ai_av import PhysicalAIAVDatasetInterface
 
@@ -576,10 +577,21 @@ class Sequence:
         context: ContextWindow | None = None,
         pad: float = 1.0,
         static: bool = False,
+        mode: Literal["auto", "paper_figure"] = "auto",
+        timestamps: list[float] | tuple[float, ...] | None = None,
         fps: float = 8.0,
         highlight: tuple[float, float] | None = None,
         arrows: dict[str, bool] | None = None,
+        entity_kinds: list[str] | None = None,
+        agent_ids: list[str] | None = None,
+        track_groups: list[str] | None = None,
         families: list[str] | None = None,
+        track_visibility: Mapping[
+            str, bool | Mapping[str, bool]
+        ] | None = None,
+        height: int | None = None,
+        width: int | None = None,
+        show_inline_labels: bool = True,
     ) -> Any:
         """Visualize this clip's video + timeline.
 
@@ -599,6 +611,8 @@ class Sequence:
         - ``seq.visualize(context=cw)`` → ``ClipPlayer`` over
           ``cw.interval``; the context window's interval is also
           painted as the highlight when no explicit highlight is passed.
+        - ``seq.visualize(mode="paper_figure", timestamps=[1, 3, 5])``
+          → a static Plotly figure with those frames above the timeline.
 
         Exactly one of ``t`` / ``match`` / ``context`` may be set
         (passing more than one raises ``ValueError``).
@@ -617,6 +631,14 @@ class Sequence:
                 ``PIL.Image`` instead of building a ``ClipPlayer``.
                 Combining ``static=True`` with a tuple or with ``t=None``
                 raises ``ValueError``.
+            mode: ``"auto"`` preserves the existing frame/player dispatch.
+                ``"paper_figure"`` returns a static multi-frame Plotly
+                figure and cannot be combined with ``t``, ``match``,
+                ``context``, or ``static=True``.
+            timestamps: zero to three explicit video timestamps for
+                ``mode="paper_figure"``. Input order is preserved
+                left-to-right. Values outside the video's actual timestamp
+                coverage raise instead of being silently clamped.
             fps: forwarded to ``ClipPlayer`` (scrub rate, frames /
                 second). Ignored in the static path.
             highlight: explicit highlight band passed through to
@@ -625,6 +647,10 @@ class Sequence:
                 priority — matching the carousel's behavior.
             arrows: per-family arrow-on/off toggles forwarded to
                 ``ClipPlayer``.
+            entity_kinds: optional entity-kind whitelist forwarded to the
+                timeline painter.
+            agent_ids: optional backward-compatible Agent ID whitelist.
+            track_groups: optional category whitelist.
             families: optional whitelist of family leaves to render
                 (``"condition"``, ``"containment"``, ``"state"``,
                 ``"pose"``, ``"influence"``, ``"action"``,
@@ -633,19 +659,35 @@ class Sequence:
                 auto-render for any entity whose sub-rows survive;
                 entities with no surviving sub-rows drop completely.
                 ``None`` = all families. Ignored in the static path.
+            track_visibility: grouped whole-kind or stable per-entity
+                switches. For example,
+                ``{"agent": {"agent_4": False, "agent_5": False}}``
+                hides those Agents and their child rows. Omitted switches
+                remain visible.
+            height: optional total figure/player height in pixels.
+            width: optional total figure/player width in pixels.
+            show_inline_labels: whether timeline bars include inline text.
 
         Returns:
-            ``PIL.Image.Image`` when ``static=True`` and ``t`` is a
-            scalar. Otherwise ``cascade_av.viz.ClipPlayer``.
+            ``PIL.Image.Image`` when ``static=True`` and ``t`` is a scalar;
+            a plain ``plotly.graph_objects.Figure`` in ``paper_figure``
+            mode; otherwise ``cascade_av.viz.ClipPlayer``.
 
         Raises:
             ValueError: if more than one of ``t`` / ``match`` /
                 ``context`` is set; if ``static=True`` is paired with a
                 non-scalar ``t``; if ``match`` / ``context`` refer to a
-                different ``clip_id``.
+                different ``clip_id``; or if paper-mode arguments are
+                invalid.
             ImportError: if the optional ``[viz]`` extra is not
                 installed (Pillow / Plotly / ipywidgets).
         """
+        if mode not in {"auto", "paper_figure"}:
+            raise ValueError(
+                "mode must be 'auto' or 'paper_figure'; "
+                f"got {mode!r}"
+            )
+
         # 1. Mutual exclusion — at most one of t / match / context.
         provided = sum(arg is not None for arg in (t, match, context))
         if provided > 1:
@@ -667,6 +709,20 @@ class Sequence:
                 f"sequence.clip_id={self.clip_id!r})"
             )
 
+        if mode == "paper_figure" and provided:
+            raise ValueError(
+                "mode='paper_figure' uses `timestamps`; it cannot be "
+                "combined with `t`, `match`, or `context`"
+            )
+        if mode == "paper_figure" and static:
+            raise ValueError(
+                "mode='paper_figure' cannot be combined with static=True"
+            )
+        if mode == "auto" and timestamps is not None:
+            raise ValueError(
+                "`timestamps` is only valid with mode='paper_figure'"
+            )
+
         # 3. static=True only makes sense for a scalar `t`.
         scalar_t = isinstance(t, (int, float)) and not isinstance(t, bool)
         if static and not scalar_t:
@@ -679,12 +735,32 @@ class Sequence:
         # module must remain importable without Pillow / Plotly /
         # ipywidgets on the path. Failures surface at call time only.
         try:
-            from cascade_av.viz import ClipPlayer, render_frame
+            from cascade_av.viz import (
+                ClipPlayer,
+                render_frame,
+                render_paper_figure,
+            )
         except ImportError as exc:
             raise ImportError(
                 "Sequence.visualize() requires the 'viz' extra. Install with: "
                 "pip install 'cascade-av[viz]'"
             ) from exc
+
+        if mode == "paper_figure":
+            return render_paper_figure(
+                self,
+                timestamps=() if timestamps is None else timestamps,
+                highlight=highlight,
+                arrows=arrows,
+                entity_kinds=entity_kinds,
+                agent_ids=agent_ids,
+                track_groups=track_groups,
+                families=families,
+                track_visibility=track_visibility,
+                height=height,
+                width=1400 if width is None else width,
+                show_inline_labels=show_inline_labels,
+            )
 
         duration = float(self.duration_s) if self.duration_s else 0.0
 
@@ -759,7 +835,14 @@ class Sequence:
             fps=fps,
             highlight=resolved_highlight,
             arrows=arrows,
+            entity_kinds=entity_kinds,
+            agent_ids=agent_ids,
+            track_groups=track_groups,
             families=families,
+            track_visibility=track_visibility,
+            height=height,
+            width=width,
+            show_inline_labels=show_inline_labels,
         )
 
     # -- state_at implementation ---------------------------------------------

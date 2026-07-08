@@ -103,6 +103,9 @@ Single Python package: `cascade_av`. Sub-packages mirror the data flow.
     palette as hex strings.
   - `render.py` — `render_frame` (headless single-frame decode →
     `PIL.Image`) and `render_timeline` (static Plotly figure).
+  - `paper.py` — `render_paper_figure`, a static Plotly composition of
+    zero to three explicitly selected video frames above the shared timeline
+    painter, with stable per-entity track visibility switches.
   - `widget.py` — `ClipPlayer`, an interactive Plotly + ipywidgets
     scrubber.
   - `carousel.py` — `build_matchset_carousel`, fans a `MatchSet` out
@@ -190,6 +193,34 @@ issue / PR pages. User-facing reference material lives under
 Record significant choices here as short ADR-style entries. Newest first.
 When adding a new entry, copy the [ADR template](#adr-template) at the
 bottom of this file.
+
+### 2026-07-08 — Paper figures use stable entity switches and explicit frames
+
+- **Context:** Publication figures need several exact moments above one
+  annotation timeline and must be able to omit individual entities. The
+  existing `ClipPlayer` is interactive, owns a moving playhead and controls,
+  and decodes only one current frame. Timeline `track_id` values cannot serve
+  as entity selectors because they come from reusable `_track_index` layout
+  lanes; non-overlapping entities may share one.
+- **Decision:** Add an opt-in `paper_figure` visualization mode backed by the
+  plain-Plotly `render_paper_figure` function. It preserves zero to three
+  caller-supplied timestamps left-to-right and rejects explicit timestamps
+  outside actual video coverage rather than clamping them. Track visibility
+  is grouped by entity kind and keyed by stable top-level annotation IDs; child
+  rows inherit their owner, and ambiguous duplicate IDs are rejected. The
+  DevKit timeline's canonical top-to-bottom order is Ego, Agents, Traffic
+  Lights, Objects, Environments. The annotator UI owns its ordering
+  independently.
+- **Alternatives considered:** Reusing `ClipPlayer` was rejected because a
+  `FigureWidget`, controls, and moving playhead are inappropriate for static
+  export. Selecting `_track_index` lanes was rejected because it can hide more
+  than one entity. Returning separate frame and timeline objects was rejected
+  because it leaves reproducible layout composition to every caller.
+- **Consequences:** Paper figures return a serializable Plotly `Figure` and
+  batch-decode requested frames once. An empty timestamp list remains useful
+  for a video-free timeline-only figure. Omitted visibility switches default
+  on; hiding an entity removes its parent, descendants, and arrows connected to
+  hidden segments. Existing visualization calls retain their prior dispatch.
 
 ### 2026-05-12 — Tools live under `tools/`
 
