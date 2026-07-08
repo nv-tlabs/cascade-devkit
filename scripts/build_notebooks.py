@@ -1205,9 +1205,11 @@ def build_visualize() -> None:
         3. `seq.visualize(t=..., static=True)` — single decoded frame
            as a `PIL.Image` (great for static reports).
         4. `viz.render_timeline(seq)` — static Plotly timeline figure.
-        5. `matches.visualize()` — fan out a query result into a
+        5. `mode="paper_figure"` — compose up to three selected frames
+           above per-entity-filtered tracks for reports and papers.
+        6. `matches.visualize()` — fan out a query result into a
            carousel of mini-players, one per match.
-        6. `families=[...]` — render only a subset of the annotation
+        7. `families=[...]` — render only a subset of the annotation
            families (just the actions, just the conditions, etc.).
 
         > Requires the optional `viz` extra (`uv sync --extra viz`)
@@ -1281,7 +1283,7 @@ def build_visualize() -> None:
 
         `viz.render_timeline(seq, highlight=...)` returns a static
         `plotly.graph_objects.Figure` with one row per track group
-        (Environments / Lights / Objects / Agents / Ego) and the
+        (Ego / Agents / Traffic Lights / Objects / Environments) and the
         five causal-arrow families overlaid. The `highlight` band
         marks a window — pass `m.interval` to focus attention on
         the match.
@@ -1291,7 +1293,64 @@ def build_visualize() -> None:
         fig
         """),
         md("""
-        ## 5. `matches.visualize()` — carousel of mini-players
+        ## 5. `mode="paper_figure"` — selected frames + selected tracks
+
+        Publication figures often need a few exact moments from the
+        clip above one shared annotation timeline. Paper mode accepts
+        zero to three explicit timestamps and places the frames
+        left-to-right in the order you pass them.
+
+        `track_visibility` can switch a whole kind or individual
+        top-level entities by stable annotation ID. Here we hide up to
+        two Agent tracks while leaving every omitted entity visible.
+        Their child rows and any causal arrows connected to them
+        disappear too. The direct equivalent is
+        `viz.render_paper_figure(seq, ...)`.
+        """),
+        code("""
+        # Use the match start, midpoint, and end, snapped to actual video
+        # frame timestamps so the figure is exactly reproducible.
+        requested_timestamps = [
+            float(m.interval.start),
+            float((m.interval.start + m.interval.end) / 2),
+            float(m.interval.end),
+        ]
+        video_timestamps_us = seq.video.timestamps
+        paper_timestamps = [
+            float(
+                video_timestamps_us[
+                    abs(video_timestamps_us - int(round(t * 1_000_000))).argmin()
+                ]
+            ) / 1_000_000
+            for t in requested_timestamps
+        ]
+
+        # Select by stable Agent.id, not by `_track_index` (a reusable
+        # visual lane). Ignore blank or duplicate IDs because those are
+        # intentionally ambiguous selectors.
+        all_agent_ids = [agent.id for agent in seq.annotation.annotation.agents]
+        hidden_agent_ids = [
+            agent_id
+            for agent_id in all_agent_ids[-2:]
+            if agent_id and all_agent_ids.count(agent_id) == 1
+        ]
+        track_visibility = {
+            "agent": {agent_id: False for agent_id in hidden_agent_ids}
+        }
+
+        paper_figure = seq.visualize(
+            mode="paper_figure",
+            timestamps=paper_timestamps,
+            highlight=(m.interval.start, m.interval.end),
+            track_visibility=track_visibility,
+            width=1200,
+        )
+        print("frame timestamps:", [f"{t:.3f}s" for t in paper_timestamps])
+        print(f"hidden Agent tracks: {len(hidden_agent_ids)}")
+        paper_figure
+        """),
+        md("""
+        ## 6. `matches.visualize()` — carousel of mini-players
 
         A whole `MatchSet` can be turned into a carousel of
         `ClipPlayer`s, one per match. By default the carousel:
@@ -1319,7 +1378,7 @@ def build_visualize() -> None:
         matches.visualize(limit=3, unique_clips=True)
         """),
         md("""
-        ## 6. `families=[...]` — render only selected annotation families
+        ## 7. `families=[...]` — render only selected annotation families
 
         Every visualize entry point (`seq.visualize`, `render_timeline`,
         `matches.visualize`) accepts a `families` whitelist. Pass a list
@@ -1333,7 +1392,8 @@ def build_visualize() -> None:
         whose sub-rows survive the filter; entities with zero
         surviving sub-rows drop entirely (no orphan headers). This is
         the same composition rule used by `track_groups`, `entity_kinds`,
-        and `agent_ids` — all four whitelists AND together.
+        `agent_ids`, and the clip-local `track_visibility` switches:
+        every supplied segment filter ANDs together.
         """),
         code("""
         # Just the action rows across the clip — ego actions and any

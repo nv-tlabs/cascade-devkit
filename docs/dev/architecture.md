@@ -217,10 +217,12 @@ bottom of this file.
   than one entity. Returning separate frame and timeline objects was rejected
   because it leaves reproducible layout composition to every caller.
 - **Consequences:** Paper figures return a serializable Plotly `Figure` and
-  batch-decode requested frames once. An empty timestamp list remains useful
-  for a video-free timeline-only figure. Omitted visibility switches default
-  on; hiding an entity removes its parent, descendants, and arrows connected to
-  hidden segments. Existing visualization calls retain their prior dispatch.
+  batch-decode requested frames once. Embedded frames use bounded quality-90
+  JPEG transport so notebooks do not serialize full-resolution lossless PNGs.
+  An empty timestamp list remains useful for a video-free timeline-only figure.
+  Omitted visibility switches default on; hiding an entity removes its parent,
+  descendants, and arrows connected to hidden segments. Existing visualization
+  calls retain their prior dispatch.
 
 ### 2026-05-12 — Tools live under `tools/`
 

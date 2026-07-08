@@ -123,8 +123,10 @@ Timestamp rules are deliberately strict for reproducible figures:
   `t`, `match`, `context`, or `static=True`.
 
 When frames are requested, the sequence must have an accessible video.
-The timeline filters described below, plus `highlight`, `height`,
-`width`, and `show_inline_labels`, are available in paper mode.
+They are embedded as quality-90 JPEGs capped at 1920 pixels on the longer
+edge, keeping saved HTML and executed notebooks compact without changing
+the source video. The timeline filters described below, plus `highlight`,
+`height`, `width`, and `show_inline_labels`, are available in paper mode.
 
 ## Track order
 
@@ -340,7 +342,7 @@ when you're surveying which clips show the behaviour.
 | `src/cascade_av/dataset.py` | `Sequence.visualize` — high-level dispatcher for frame, player, and paper-figure modes; forwards every timeline filter |
 
 The walkthrough notebook at [`notebooks/06_visualize.ipynb`](../../notebooks/06_visualize.ipynb)
-demos the interactive entry points against a real clip, with section 6
-dedicated to the `families` whitelist. The runnable
-[`examples/07_visualize.py`](../../examples/07_visualize.py) also writes
-a paper figure.
+demos the interactive entry points and a three-frame, per-entity-filtered
+paper figure against a real clip. The runnable
+[`examples/07_visualize.py`](../../examples/07_visualize.py) also writes a
+paper figure.
