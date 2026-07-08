@@ -276,6 +276,39 @@ def test_render_timeline_returns_figure() -> None:
     assert isinstance(fig, go.Figure)
 
 
+def test_track_categories_are_rendered_in_exact_top_to_bottom_order() -> None:
+    """All five populated categories follow the canonical reading order."""
+    fig = render_timeline(_seq(_make_all_categories_bundle()))
+    tickvals = list(fig.layout.yaxis.tickvals or ())
+    ticktext = list(fig.layout.yaxis.ticktext or ())
+    axis_range = tuple(float(value) for value in fig.layout.yaxis.range)
+
+    # Plotly maps the second range endpoint to the top of the plotting area.
+    # Sort by the actual visual direction so this assertion catches either a
+    # category-order regression or an accidentally un-reversed y-axis.
+    top_down = sorted(
+        zip(tickvals, ticktext, strict=True),
+        key=lambda item: float(item[0]),
+        reverse=axis_range[0] < axis_range[1],
+    )
+    categories: list[str] = []
+    for _tickval, html in top_down:
+        color = _label_color(html)
+        if color is None:
+            continue
+        category = _HEX_TO_CATEGORY[color]
+        if not categories or categories[-1] != category:
+            categories.append(category)
+
+    assert categories == [
+        "Ego",
+        "Agents",
+        "Traffic Lights",
+        "Objects",
+        "Environments",
+    ]
+
+
 def test_arrow_palette_disjoint_from_entity_palette() -> None:
     """Arrow-family colors must not collide with entity row-fill colors.
 
@@ -340,15 +373,15 @@ def test_render_timeline_layout_is_light_with_locked_axes() -> None:
     # the override knob, and `test_adaptive_height_grows_with_lanes`
     # pins the lane-count scaling.
     assert fig.layout.height >= 240
-    # y-axis is one tick per populated band (Environments, Ego, Agents
+    # y-axis is one tick per populated band (Ego, Agents, Environments
     # families in this fixture). Traffic Lights / Objects contribute zero
     # bands because the fixture has no light / object entities. With
     # short-form tick labels we resolve category via the per-entity
     # block shapes, not by parsing the tick text.
     yticks = list(fig.layout.yaxis.ticktext or ())
     assert len(yticks) > 0, "expected at least one populated band"
-    # Categories appear in canonical reading order (Environments first,
-    # then Agents, then Ego — no Traffic Lights / Objects since the
+    # Categories appear in canonical reading order (Ego first, then
+    # Agents, then Environments — no Traffic Lights / Objects since the
     # fixture has none). Pull the order from the `entity_block:*` shape
     # names which preserve y-axis order.
     block_categories: list[str] = []
@@ -359,10 +392,9 @@ def test_render_timeline_layout_is_light_with_locked_axes() -> None:
         cat = name.split(":")[1]
         if not block_categories or block_categories[-1] != cat:
             block_categories.append(cat)
-    assert block_categories[0] == "Environments"
+    assert block_categories == ["Ego", "Agents", "Environments"]
     assert "Traffic Lights" not in block_categories
     assert "Objects" not in block_categories
-    assert {"Environments", "Agents", "Ego"}.issubset(set(block_categories))
     # x-axis range is [0, duration].
     xrange = list(fig.layout.xaxis.range or ())
     assert xrange[0] == 0
@@ -947,6 +979,173 @@ def test_filter_propagation_drops_arrows_with_filtered_endpoints() -> None:
     assert _arrow_shapes(fig, "because_of") == []
     # And the agent-targeted action_target arrows also vanish.
     assert _arrow_shapes(fig, "action_target") == []
+
+
+def _make_stable_id_visibility_bundle() -> AnnotationBundle:
+    """Agents' stable IDs intentionally differ from their list positions."""
+    env = Environment(
+        id="env_0",
+        type="fst:Road",
+        start_timestamp="0:0.0",
+        end_timestamp="0:10.0",
+    )
+
+    def _agent(stable_id: str, track_index: int) -> Agent:
+        return Agent(
+            id=stable_id,
+            track_index=track_index,
+            type="oxd:Car",
+            visibility_start_timestamp="0:0.0",
+            visibility_end_timestamp="0:10.0",
+            actions=[
+                AgentAction(
+                    id=f"{stable_id}_action",
+                    action_type="Yield",
+                    because_of=["env_0"],
+                    start_timestamp="0:1.0",
+                    end_timestamp="0:4.0",
+                )
+            ],
+        )
+
+    # agent_4 and agent_5 occupy positions 0 and 1, respectively. A
+    # positional implementation that parses the numeric suffix would hide
+    # the wrong tracks (or none), which is why this fixture is deliberately
+    # non-aligned.
+    agents = [_agent("agent_4", 0), _agent("agent_5", 1), _agent("agent_9", 2)]
+    ego = EgoVehicle(
+        actions=[
+            EgoAction(
+                id="ego_action",
+                type="oxd:Decelerate",
+                because_of=["agent_4", "agent_5", "agent_9"],
+                start_timestamp="0:2.0",
+                end_timestamp="0:5.0",
+            )
+        ]
+    )
+    return AnnotationBundle(
+        video=VideoMeta(clip_id="stable-visibility", duration_s=10.0),
+        annotation=SilAvAnnotation(
+            environments=[env],
+            ego_vehicle=ego,
+            agents=agents,
+        ),
+    )
+
+
+def test_track_visibility_hides_agent_stable_ids_descendants_and_arrows() -> None:
+    bundle = _make_stable_id_visibility_bundle()
+    full = render_timeline(_seq(bundle))
+    filtered = render_timeline(
+        _seq(bundle),
+        track_visibility={
+            "agent": {"agent_4": False, "agent_5": False},
+        },
+    )
+
+    full_segments = {shape["name"] for shape in _segment_shapes(full)}
+    filtered_segments = {
+        shape["name"] for shape in _segment_shapes(filtered)
+    }
+    for position in (0, 1, 2):
+        assert any(
+            name.startswith(f"segment:agent_{position}_")
+            for name in full_segments
+        )
+        assert any(
+            name.startswith(f"segment:agent_action_{position}_")
+            for name in full_segments
+        )
+
+    # Stable IDs agent_4/agent_5 own positional segments 0/1. Both their
+    # parent rows and action descendants disappear; agent_9 at position 2
+    # remains visible.
+    for hidden_position in (0, 1):
+        assert not any(
+            name.startswith(f"segment:agent_{hidden_position}_")
+            or name.startswith(f"segment:agent_action_{hidden_position}_")
+            for name in filtered_segments
+        )
+    assert any(
+        name.startswith("segment:agent_2_") for name in filtered_segments
+    )
+    assert any(
+        name.startswith("segment:agent_action_2_")
+        for name in filtered_segments
+    )
+
+    filtered_arrows = [
+        shape["name"]
+        for shape in _shapes(filtered)
+        if (shape.get("name") or "").startswith("arrow:")
+    ]
+    assert filtered_arrows, "the visible agent's arrows should remain"
+    for hidden_position in (0, 1):
+        assert not any(
+            f"agent_action_{hidden_position}_" in name
+            or f"->agent_{hidden_position}_" in name
+            for name in filtered_arrows
+        )
+    assert any("agent_action_2_" in name for name in filtered_arrows)
+    assert any("->agent_2_" in name for name in filtered_arrows)
+
+
+def test_track_visibility_can_hide_stable_entities_across_kinds() -> None:
+    """Every non-Agent kind uses the same grouped stable-ID contract."""
+    fig = render_timeline(
+        _seq(_make_all_categories_bundle()),
+        track_visibility={
+            "ego": {"ego": False},
+            "light": {"light_0": False},
+            "object": {"obj_0": False},
+            "env": {"env_0": False},
+        },
+    )
+
+    block_names = {
+        shape.get("name") for shape in _entity_block_shapes(fig)
+    }
+    assert block_names == {"entity_block:Agents:0"}
+    segment_names = {shape["name"] for shape in _segment_shapes(fig)}
+    assert segment_names
+    assert all(name.startswith("segment:agent_") for name in segment_names)
+
+
+def test_track_visibility_rejects_ambiguous_duplicate_stable_id() -> None:
+    def _agent(track_index: int) -> Agent:
+        return Agent(
+            id="duplicate-agent",
+            track_index=track_index,
+            type="oxd:Car",
+            visibility_start_timestamp="0:0.0",
+            visibility_end_timestamp="0:5.0",
+        )
+
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="duplicate-ids", duration_s=5.0),
+        annotation=SilAvAnnotation(agents=[_agent(0), _agent(1)]),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"ambiguous 'agent' entity IDs.*duplicate-agent.*more than once",
+    ):
+        render_timeline(
+            _seq(bundle),
+            track_visibility={"agent": {"duplicate-agent": False}},
+        )
+
+
+def test_track_visibility_treats_blank_id_selector_as_unknown() -> None:
+    with pytest.raises(
+        ValueError,
+        match=r"unknown 'agent' entity IDs.*''",
+    ):
+        render_timeline(
+            _seq(_make_full_bundle()),
+            track_visibility={"agent": {"": False}},
+        )
 
 
 # ---------------------------------------------------------------------------
