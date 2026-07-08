@@ -36,7 +36,7 @@ _MIN_PLOTLY_DIMENSION = 10
 
 
 def _validate_timestamps(timestamps: Sequence[float]) -> list[float]:
-    """Return finite timestamp seconds, preserving caller order."""
+    """Return finite timestamp seconds in caller order for validation."""
     if isinstance(timestamps, (str, bytes)):
         raise TypeError("timestamps must be a sequence of numeric seconds")
 
@@ -154,12 +154,13 @@ def render_paper_figure(
 ) -> "go.Figure":
     """Return a static Plotly figure with up to three frames above tracks.
 
-    ``timestamps`` are seconds in the source video. Their input order is
-    preserved left-to-right, duplicates are allowed, and explicit values are
-    never silently clamped. An empty sequence is valid and produces a
-    timeline-only paper figure without accessing ``seq.video``. Requested
-    frames are embedded as quality-90 JPEGs, capped at 1920 pixels on the
-    longer edge, so notebook and HTML artifacts stay portable.
+    ``timestamps`` are seconds in the source video. Frames are rendered in
+    ascending chronological order from left to right regardless of input
+    order. Duplicates remain as separate frames, and explicit values are never
+    silently clamped. An empty sequence is valid and produces a timeline-only
+    paper figure without accessing ``seq.video``. Requested frames are embedded
+    as quality-90 JPEGs, capped at 1920 pixels on the longer edge, so notebook
+    and HTML artifacts stay portable.
 
     ``track_visibility`` switches whole kinds or individual top-level entity
     IDs. For example, ``{"agent": {"agent_4": False}}`` hides that Agent's
@@ -215,6 +216,18 @@ def render_paper_figure(
     )
     timeline_px = _timeline_px_for(paint)
     frames = _decode_frames(seq, resolved_timestamps)
+
+    # Validate and decode in caller order so any indexed errors still refer to
+    # the original request. Stable-sort the timestamp/frame pairs only for
+    # layout: duplicates remain distinct, adjacent slots.
+    chronological_frames = sorted(
+        zip(resolved_timestamps, frames, strict=True),
+        key=lambda item: item[0],
+    )
+    resolved_timestamps = [
+        timestamp for timestamp, _frame in chronological_frames
+    ]
+    frames = [frame for _timestamp, frame in chronological_frames]
 
     if not frames:
         fig.update_layout(

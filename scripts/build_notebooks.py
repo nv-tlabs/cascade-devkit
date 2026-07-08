@@ -1297,8 +1297,9 @@ def build_visualize() -> None:
 
         Publication figures often need a few exact moments from the
         clip above one shared annotation timeline. Paper mode accepts
-        zero to three explicit timestamps and places the frames
-        left-to-right in the order you pass them.
+        zero to three explicit timestamps and sorts the frames
+        chronologically from left to right. Duplicate timestamps remain
+        separate frames.
 
         `track_visibility` can switch a whole kind or individual
         top-level entities by stable annotation ID. Here we hide up to

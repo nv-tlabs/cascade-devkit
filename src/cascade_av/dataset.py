@@ -636,9 +636,11 @@ class Sequence:
                 figure and cannot be combined with ``t``, ``match``,
                 ``context``, or ``static=True``.
             timestamps: zero to three explicit video timestamps for
-                ``mode="paper_figure"``. Input order is preserved
-                left-to-right. Values outside the video's actual timestamp
-                coverage raise instead of being silently clamped.
+                ``mode="paper_figure"``. Frames render in ascending
+                chronological order from left to right regardless of input
+                order; duplicate timestamps remain separate. Values outside
+                the video's actual timestamp coverage raise instead of being
+                silently clamped.
             fps: forwarded to ``ClipPlayer`` (scrub rate, frames /
                 second). Ignored in the static path.
             highlight: explicit highlight band passed through to

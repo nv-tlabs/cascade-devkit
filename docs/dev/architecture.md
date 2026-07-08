@@ -194,6 +194,28 @@ Record significant choices here as short ADR-style entries. Newest first.
 When adding a new entry, copy the [ADR template](#adr-template) at the
 bottom of this file.
 
+### 2026-07-08 — Paper figures render frames chronologically
+
+- **Context:** The initial paper-figure contract preserved caller order, which
+  allowed a figure's frames to move backward and forward in time. Publication
+  figures should read as a temporal sequence without requiring every caller to
+  sort its timestamp selection first.
+- **Decision:** After validating and batch-decoding the zero to three requested
+  timestamps, stable-sort each timestamp/frame pair in ascending order before
+  composing the figure. Duplicate timestamps remain separate adjacent frames.
+  Sorting after validation preserves caller-indexed errors; direct and
+  high-level rendering share the behavior.
+- **Alternatives considered:** Requiring callers to pre-sort was rejected
+  because it makes chronological output optional and inconsistent. Sorting
+  before validation was rejected because an error such as `timestamps[1]`
+  would no longer identify the caller's original value. Deduplicating was
+  rejected because repeated frames may be intentional.
+- **Consequences:** Every paper figure reads earliest-to-latest from left to
+  right. Existing callers that intentionally supplied a nonchronological
+  narrative order now receive chronological output; chronological callers and
+  the executed notebook output are unchanged. This supersedes only the
+  caller-order clause in the paper-figure decision below.
+
 ### 2026-07-08 — Paper figures use stable entity switches and explicit frames
 
 - **Context:** Publication figures need several exact moments above one
@@ -203,14 +225,15 @@ bottom of this file.
   as entity selectors because they come from reusable `_track_index` layout
   lanes; non-overlapping entities may share one.
 - **Decision:** Add an opt-in `paper_figure` visualization mode backed by the
-  plain-Plotly `render_paper_figure` function. It preserves zero to three
-  caller-supplied timestamps left-to-right and rejects explicit timestamps
-  outside actual video coverage rather than clamping them. Track visibility
-  is grouped by entity kind and keyed by stable top-level annotation IDs; child
-  rows inherit their owner, and ambiguous duplicate IDs are rejected. The
-  DevKit timeline's canonical top-to-bottom order is Ego, Agents, Traffic
-  Lights, Objects, Environments. The annotator UI owns its ordering
-  independently.
+  plain-Plotly `render_paper_figure` function. The initial implementation
+  preserved zero to three caller-supplied timestamps left-to-right; that
+  ordering clause is superseded by the chronological-order decision above.
+  Explicit timestamps outside actual video coverage are rejected rather than
+  clamped. Track visibility is grouped by entity kind and keyed by stable
+  top-level annotation IDs; child rows inherit their owner, and ambiguous
+  duplicate IDs are rejected. The DevKit timeline's canonical top-to-bottom
+  order is Ego, Agents, Traffic Lights, Objects, Environments. The annotator UI
+  owns its ordering independently.
 - **Alternatives considered:** Reusing `ClipPlayer` was rejected because a
   `FigureWidget`, controls, and moving playhead are inappropriate for static
   export. Selecting `_track_index` lanes was rejected because it can hide more

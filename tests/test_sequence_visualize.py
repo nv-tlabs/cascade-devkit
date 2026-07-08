@@ -252,21 +252,27 @@ def test_context_with_mismatched_clip_id_raises_value_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_paper_figure_mode_returns_plain_figure_and_batches_timestamps() -> None:
+def test_paper_figure_mode_returns_plain_chronological_figure() -> None:
     seq = _seq_with_fake_video(duration=10.0)
     reader = seq.video
 
     fig = seq.visualize(
         mode="paper_figure",
-        timestamps=[2.0, 1.0, 3.0],
+        timestamps=[3.0, 1.0, 2.0],
     )
 
     assert type(fig) is go.Figure
     assert len(reader.calls) == 1
     np.testing.assert_array_equal(
-        reader.calls[0], np.array([2_000_000, 1_000_000, 3_000_000])
+        reader.calls[0], np.array([3_000_000, 1_000_000, 2_000_000])
     )
     assert len(fig.layout.images) == 3
+    captions = [
+        annotation.text
+        for annotation in fig.layout.annotations
+        if annotation.xref == "paper" and annotation.yref == "paper"
+    ]
+    assert captions == ["t = 1 s", "t = 2 s", "t = 3 s"]
 
 
 def test_paper_figure_mode_rejects_incompatible_arguments_before_decode() -> None:

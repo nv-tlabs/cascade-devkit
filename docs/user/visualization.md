@@ -115,8 +115,9 @@ Timestamp rules are deliberately strict for reproducible figures:
 
 - Pass zero to three finite numeric timestamps in seconds. An empty list
   creates a timeline-only figure and does not access the video.
-- Input order is preserved left-to-right, so the example above displays
-  4.8 s, then 1.2 s, then 3.0 s. Duplicate timestamps are allowed.
+- Frames are sorted chronologically from left to right, so the unsorted
+  example above displays 1.2 s, then 3.0 s, then 4.8 s. Duplicate timestamps
+  are retained as separate frames.
 - Every value must lie within the video's actual timestamp coverage.
   Out-of-coverage values raise `ValueError`; they are never clamped.
 - `mode="paper_figure"` uses `timestamps`, so it cannot be combined with
