@@ -65,11 +65,9 @@ def entity_color(kind: str) -> str:
 # "Objects", "Agents", "Ego".
 #
 # Notes:
-#   - Traffic Lights · state in the annotator picks a hex based on each
-#     individual state's `color` attribute (green / yellow / red /
-#     other). The simple port settles on the annotator's default
-#     `#dc2626` (red); per-state tinting can land in a follow-up if it
-#     proves visually load-bearing.
+#   - Traffic Lights · state uses the default `#dc2626` here because
+#     `family_color()` has no state instance. The painter overrides it with
+#     `_light_state_color(seg.meta["color"])` for each concrete state.
 #   - The arrow palette in `viz.timeline._ARROW_COLORS` overlaps two
 #     family hexes by design (`#14b8a6` = link_to / Agents·pose;
 #     `#f97316` = action_target / influence / signal_head). The
@@ -111,6 +109,20 @@ _CATEGORY_KIND: dict[str, str] = {
     "Agents": "agent",
     "Traffic Lights": "light",
 }
+
+_LIGHT_STATE_PALETTE: dict[str, str] = {
+    "green": "#22c55e",
+    "yellow": "#eab308",
+    "red": "#ef4444",
+    "other": "#888",
+}
+_LIGHT_STATE_FALLBACK = "#dc2626"
+
+
+def _light_state_color(color: object) -> str:
+    """Return the annotator's semantic fill for one LightStates color."""
+    normalized = color.strip().casefold() if isinstance(color, str) else ""
+    return _LIGHT_STATE_PALETTE.get(normalized, _LIGHT_STATE_FALLBACK)
 
 
 def family_color(category: str, family: str) -> str:

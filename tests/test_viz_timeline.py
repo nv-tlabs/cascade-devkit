@@ -1099,26 +1099,29 @@ def test_disabling_arrow_family_drops_its_arrowheads() -> None:
     assert heads == []
 
 
-def test_arrowhead_has_visible_outline() -> None:
-    """Each arrowhead marker carries a 1.5px Tailwind slate-900
-    (`#0f172a`) outline so the head pops off any same-hue target
-    row on the `plotly_white` template. Family fill is preserved;
-    only `marker.line` changes from the prior invisible
-    `{"width": 0}`.
-    """
+def test_arrowhead_fill_and_outline_match_the_arrow_path() -> None:
     fig = render_timeline(_seq(_make_full_bundle()))
-    heads = [
-        t for t in fig.data if (t.name or "").startswith("arrowhead:")
-    ]
+    paths = {
+        str(shape["name"]).removeprefix("arrow:"): shape
+        for shape in _shapes(fig)
+        if str(shape.get("name", "")).startswith("arrow:")
+    }
+    heads = {
+        str(trace.name).removeprefix("arrowhead:"): trace
+        for trace in fig.data
+        if str(trace.name or "").startswith("arrowhead:")
+    }
+
+    assert heads.keys() == paths.keys()
     assert heads, "expected at least one arrowhead marker on the rich bundle"
-    for head in heads:
+    for arrow_id, head in heads.items():
+        path_color = paths[arrow_id]["line"]["color"]
         line = head.marker.line
         assert float(line.width) == 1.5, (
             f"arrowhead {head.name} has width={line.width!r}, expected 1.5"
         )
-        assert line.color == "#0f172a", (
-            f"arrowhead {head.name} has color={line.color!r}, expected '#0f172a'"
-        )
+        assert head.marker.color == path_color
+        assert line.color == path_color
 
 
 # ---------------------------------------------------------------------------
@@ -1872,6 +1875,79 @@ def test_segment_fill_uses_family_color() -> None:
     assert (
         shapes_by_prefix["agent_cont_"] != shapes_by_prefix["agent_action_"]
     )
+
+
+def test_traffic_light_state_fill_matches_each_semantic_color() -> None:
+    from cascade_av.spec import (
+        LightStates,
+        ObjectStateEntry,
+        SignalHead,
+        TrafficLight,
+        TrafficObject,
+    )
+
+    colors = ["Green", " yellow ", "RED", "Other", None, "Blue"]
+    states = [
+        LightStates(
+            id=f"state_{index}",
+            type="Fixed",
+            color=color,
+            start_timestamp=f"0:{index}.0",
+            end_timestamp=f"0:{index + 1}.0",
+        )
+        for index, color in enumerate(colors)
+    ]
+    light = TrafficLight(
+        id="light_0",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:6.0",
+        signal_heads=[
+            SignalHead(
+                id="head_0",
+                start_timestamp="0:0.0",
+                end_timestamp="0:6.0",
+                state_sequence=states,
+            )
+        ],
+    )
+    obj = TrafficObject(
+        id="obj_0",
+        type="oxd:Cone",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:6.0",
+        state_sequence=[
+            ObjectStateEntry(
+                id="obj_state_0",
+                motion_state="Static",
+                start_timestamp="0:0.0",
+                end_timestamp="0:6.0",
+            )
+        ],
+    )
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="semantic-light-colors", duration_s=6.0),
+        annotation=SilAvAnnotation(traffic_lights=[light], traffic_objects=[obj]),
+    )
+
+    fig = render_timeline(_seq(bundle))
+    fills = {
+        str(shape["name"]).removeprefix("segment:"): shape["fillcolor"]
+        for shape in _segment_shapes(fig)
+    }
+    expected = ["#22c55e", "#eab308", "#ef4444", "#888", "#dc2626", "#dc2626"]
+    for index, expected_fill in enumerate(expected):
+        matching = [
+            fill
+            for segment_id, fill in fills.items()
+            if segment_id.startswith(f"light_state_0_0_{index}_")
+        ]
+        assert matching == [expected_fill]
+    object_state_fill = next(
+        fill
+        for segment_id, fill in fills.items()
+        if segment_id.startswith("obj_state_0_0_")
+    )
+    assert object_state_fill == "#d97706"
 
 
 def test_track_groups_filter_accepts_legacy_short_names() -> None:

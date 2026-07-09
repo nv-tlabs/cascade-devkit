@@ -275,6 +275,33 @@ def test_paper_figure_mode_returns_plain_chronological_figure() -> None:
     assert captions == ["t = 1 s", "t = 2 s", "t = 3 s"]
 
 
+def test_paper_figure_mode_forwards_containment_default_and_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import cascade_av.viz as viz
+
+    seq = _seq_with_fake_video(duration=10.0)
+    calls: list[bool] = []
+
+    def fake_render_paper_figure(
+        _sequence: Sequence,
+        **kwargs: object,
+    ) -> go.Figure:
+        calls.append(bool(kwargs["show_containments"]))
+        return go.Figure()
+
+    monkeypatch.setattr(viz, "render_paper_figure", fake_render_paper_figure)
+
+    seq.visualize(mode="paper_figure", timestamps=[])
+    seq.visualize(
+        mode="paper_figure",
+        timestamps=[],
+        show_containments=True,
+    )
+
+    assert calls == [False, True]
+
+
 def test_paper_figure_mode_rejects_incompatible_arguments_before_decode() -> None:
     seq = _seq_with_fake_video(duration=10.0)
     reader = seq.video
@@ -291,6 +318,7 @@ def test_paper_figure_mode_rejects_incompatible_arguments_before_decode() -> Non
         {"mode": "paper_figure", "timestamps": [2.0], "context": context},
         {"mode": "paper_figure", "timestamps": [2.0], "static": True},
         {"timestamps": [2.0]},
+        {"show_containments": False},
         {"mode": "not-a-mode"},
     ]
     for kwargs in incompatible:

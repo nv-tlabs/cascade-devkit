@@ -57,6 +57,14 @@ def _validate_timestamps(timestamps: Sequence[float]) -> list[float]:
         timestamp = float(value)
         if not math.isfinite(timestamp):
             raise ValueError(f"timestamps[{index}] must be finite; got {value!r}")
+        if timestamp < 0:
+            raise ValueError(
+                f"timestamps[{index}] must be non-negative; got {value!r}"
+            )
+        # Canonicalize signed zero so captions and exported metadata never
+        # display ``-0`` even when the caller supplied ``-0.0``.
+        if timestamp == 0:
+            timestamp = 0.0
         resolved.append(timestamp)
     return resolved
 
@@ -151,16 +159,17 @@ def render_paper_figure(
     width: int = _DEFAULT_WIDTH,
     height: int | None = None,
     show_inline_labels: bool = True,
+    show_containments: bool = False,
 ) -> "go.Figure":
     """Return a static Plotly figure with up to three frames above tracks.
 
-    ``timestamps`` are seconds in the source video. Frames are rendered in
-    ascending chronological order from left to right regardless of input
-    order. Duplicates remain as separate frames, and explicit values are never
-    silently clamped. An empty sequence is valid and produces a timeline-only
-    paper figure without accessing ``seq.video``. Requested frames are embedded
-    as quality-90 JPEGs, capped at 1920 pixels on the longer edge, so notebook
-    and HTML artifacts stay portable.
+    ``timestamps`` are non-negative seconds in the source video. Frames are
+    rendered in ascending chronological order from left to right regardless of
+    input order. Duplicates remain as separate frames, and explicit values are
+    never silently clamped. An empty sequence is valid and produces a
+    timeline-only paper figure without accessing ``seq.video``. Requested
+    frames are embedded as quality-90 JPEGs, capped at 1920 pixels on the
+    longer edge, so notebook and HTML artifacts stay portable.
 
     ``track_visibility`` switches whole kinds or individual top-level entity
     IDs. For example, ``{"agent": {"agent_4": False}}`` hides that Agent's
@@ -184,6 +193,9 @@ def render_paper_figure(
         show_inline_labels: whether timeline bars carry inline text. When
             enabled, every visible box gets its complete label, including
             narrow boxes; labels at the time-axis edges anchor inward.
+        show_containments: whether to render containment-family rows and their
+            connected arrows. Defaults to False for publication layouts;
+            pass True to restore them.
 
     Returns:
         A plain ``plotly.graph_objects.Figure`` suitable for HTML or static
@@ -201,6 +213,11 @@ def render_paper_figure(
     resolved_timestamps = _validate_timestamps(timestamps)
     resolved_width = _validate_dimension("width", width)
     resolved_height = _validate_dimension("height", height, optional=True)
+    if not isinstance(show_containments, bool):
+        raise TypeError(
+            "show_containments must be a boolean; "
+            f"got {show_containments!r}"
+        )
     assert resolved_width is not None
 
     fig = go.Figure()
@@ -216,6 +233,7 @@ def render_paper_figure(
         track_visibility=track_visibility,
         show_inline_labels=show_inline_labels,
         inline_label_mode="full",
+        show_containments=show_containments,
     )
     timeline_px = _timeline_px_for(paint)
     frames = _decode_frames(seq, resolved_timestamps)

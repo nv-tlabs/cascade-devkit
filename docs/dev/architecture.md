@@ -194,6 +194,32 @@ Record significant choices here as short ADR-style entries. Newest first.
 When adding a new entry, copy the [ADR template](#adr-template) at the
 bottom of this file.
 
+### 2026-07-09 — Paper figures use semantic colors and focused defaults
+
+- **Context:** Publication renders exposed four visual inconsistencies: arrow
+  paths ended in dark-outlined tips, every Traffic-Light state used one red
+  fill regardless of its annotation, containment rows dominated compact paper
+  layouts, and raw video pre-roll could produce a negative sampled caption.
+- **Decision:** Use each arrow family's color for its path, arrowhead fill, and
+  arrowhead outline across all timeline-backed views. Mirror the annotator's
+  per-state Green/Yellow/Red/Other palette in the shared painter. In paper mode
+  only, hide all containment families by default behind an explicit
+  `show_containments=True` opt-in. Reject negative paper timestamps and sample
+  notebook/example frames exclusively from actual non-negative video
+  timestamps.
+- **Alternatives considered:** Removing the arrowhead outline was unnecessary;
+  retaining a same-color outline keeps its size stable. Changing the public
+  context-free `family_color("Traffic Lights", "state")` fallback was rejected
+  because semantic color requires a concrete state instance. Hiding
+  containment globally was rejected because interactive timelines rely on
+  those rows. Clamping negative timestamps to zero was rejected because zero
+  may not be an actual frame and paper mode promises no silent clamping.
+- **Consequences:** Arrow styling and Light-state meaning are consistent in
+  static and interactive timelines. Paper figures are less cluttered and
+  never caption sampled frames below zero; callers can restore containment
+  rows and arrows explicitly. Existing non-paper containment defaults remain
+  unchanged.
+
 ### 2026-07-09 — Paper figures preserve complete box labels
 
 - **Context:** The shared timeline painter optimizes interactive views by

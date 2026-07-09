@@ -552,6 +552,7 @@ def annotation_to_segments(bundle: AnnotationBundle) -> list[Segment]:
                             "_sh_index": hi,
                             "_stateIndex": si,
                             "_isLightStateSubtrack": True,
+                            "color": st.color,
                         },
                         family="state",
                     )

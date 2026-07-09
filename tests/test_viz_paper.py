@@ -17,11 +17,15 @@ from cascade_av.spec import (
     Agent,
     AgentAction,
     AnnotationBundle,
+    Containment,
     EgoAction,
     EgoVehicle,
     Environment,
     Influence,
+    SignalHead,
     SilAvAnnotation,
+    TrafficLight,
+    TrafficObject,
     VideoMeta,
 )
 from cascade_av.viz import render_paper_figure, render_timeline
@@ -159,6 +163,165 @@ def test_paper_timeline_omits_influence_and_keeps_because_of_arrows() -> None:
         for name in shape_names
     )
     assert any(name.startswith("arrow:because_of:") for name in shape_names)
+
+
+def _sequence_with_all_containment_families() -> Sequence:
+    def containment(id_: str) -> Containment:
+        return Containment(
+            id=id_,
+            env_id="env_0",
+            start_timestamp="0:0.0",
+            end_timestamp="0:3.0",
+        )
+
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="paper-containments", duration_s=3.0),
+        annotation=SilAvAnnotation(
+            environments=[
+                Environment(
+                    id="env_0",
+                    type="fst:Road",
+                    start_timestamp="0:0.0",
+                    end_timestamp="0:3.0",
+                )
+            ],
+            ego_vehicle=EgoVehicle(
+                actions=[
+                    EgoAction(
+                        id="ego_action",
+                        type="oxd:Continue",
+                        start_timestamp="0:0.0",
+                        end_timestamp="0:3.0",
+                    )
+                ],
+                containment=[containment("ego_containment")],
+            ),
+            agents=[
+                Agent(
+                    id="agent_0",
+                    type="oxd:Car",
+                    visibility_start_timestamp="0:0.0",
+                    visibility_end_timestamp="0:3.0",
+                    actions=[
+                        AgentAction(
+                            id="agent_action",
+                            action_type="Yield",
+                            start_timestamp="0:0.0",
+                            end_timestamp="0:3.0",
+                        )
+                    ],
+                    containment=[containment("agent_containment")],
+                )
+            ],
+            traffic_objects=[
+                TrafficObject(
+                    id="obj_0",
+                    type="oxd:Cone",
+                    visibility_start_timestamp="0:0.0",
+                    visibility_end_timestamp="0:3.0",
+                    containment=[containment("object_containment")],
+                )
+            ],
+            traffic_lights=[
+                TrafficLight(
+                    id="light_0",
+                    visibility_start_timestamp="0:0.0",
+                    visibility_end_timestamp="0:3.0",
+                    containment=[containment("light_containment")],
+                    signal_heads=[
+                        SignalHead(
+                            id="head_0",
+                            start_timestamp="0:0.0",
+                            end_timestamp="0:3.0",
+                            env_controlled=[containment("head_containment")],
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+    return Sequence.from_annotation(bundle)
+
+
+def test_paper_containment_rows_and_arrows_default_off_with_opt_in() -> None:
+    seq = _sequence_with_all_containment_families()
+    containment_prefixes = (
+        "segment:ego_cont_",
+        "segment:agent_cont_",
+        "segment:obj_cont_",
+        "segment:light_phys_cont_",
+        "segment:light_cont_",
+    )
+
+    default = render_paper_figure(seq, timestamps=())
+    default_names = {str(shape.name or "") for shape in default.layout.shapes}
+    assert not any(
+        name.startswith(containment_prefixes) for name in default_names
+    )
+    assert not any(
+        name.startswith("arrow:containment:") for name in default_names
+    )
+    assert not any(
+        str(trace.name or "").startswith("arrowhead:containment:")
+        for trace in default.data
+    )
+    default_ticks = " ".join(str(tick) for tick in default.layout.yaxis.ticktext)
+    assert "containment" not in default_ticks.lower()
+    assert "TL control" not in default_ticks
+    for parent_prefix in (
+        "segment:agent_0_",
+        "segment:obj_0_",
+        "segment:light_0_",
+        "segment:env_0_",
+    ):
+        assert any(name.startswith(parent_prefix) for name in default_names)
+
+    opted_in = render_paper_figure(
+        seq,
+        timestamps=(),
+        show_containments=True,
+    )
+    opted_in_names = {
+        str(shape.name or "") for shape in opted_in.layout.shapes
+    }
+    for prefix in containment_prefixes:
+        assert any(name.startswith(prefix) for name in opted_in_names)
+    assert any(
+        name.startswith("arrow:containment:") for name in opted_in_names
+    )
+    assert any(
+        str(trace.name or "").startswith("arrowhead:containment:")
+        for trace in opted_in.data
+    )
+    opted_in_ticks = " ".join(
+        str(tick) for tick in opted_in.layout.yaxis.ticktext
+    )
+    assert "containment" in opted_in_ticks.lower()
+    assert "TL control" in opted_in_ticks
+
+    rows_only = render_paper_figure(
+        seq,
+        timestamps=(),
+        show_containments=True,
+        arrows={"containment": False},
+    )
+    rows_only_names = {
+        str(shape.name or "") for shape in rows_only.layout.shapes
+    }
+    for prefix in containment_prefixes:
+        assert any(name.startswith(prefix) for name in rows_only_names)
+    assert not any(
+        name.startswith("arrow:containment:") for name in rows_only_names
+    )
+    assert not any(
+        str(trace.name or "").startswith("arrowhead:containment:")
+        for trace in rows_only.data
+    )
+
+    shared = render_timeline(seq)
+    shared_names = {str(shape.name or "") for shape in shared.layout.shapes}
+    for prefix in containment_prefixes:
+        assert any(name.startswith(prefix) for name in shared_names)
 
 
 def _sequence_with_edge_labels() -> Sequence:
@@ -404,6 +567,38 @@ def test_unsorted_out_of_range_timestamp_reports_caller_index() -> None:
     assert reader.calls == []
 
 
+def test_negative_timestamp_is_rejected_even_when_video_covers_it() -> None:
+    seq, _reader = _sequence_with_video()
+    reader = FakeVideoReader(
+        height=8,
+        width=12,
+        timestamps=np.array([-1_000_000, 0, 1_000_000, 2_000_000]),
+    )
+    seq._cameras = {seq.annotation_camera: reader}  # type: ignore[assignment]
+
+    with pytest.raises(
+        ValueError,
+        match=r"timestamps\[0\].*non-negative",
+    ):
+        render_paper_figure(seq, timestamps=(-0.5,))
+
+    assert reader.calls == []
+
+
+def test_signed_zero_is_valid_and_captions_as_zero() -> None:
+    seq, reader = _sequence_with_video()
+
+    fig = render_paper_figure(seq, timestamps=(-0.0,))
+
+    np.testing.assert_array_equal(reader.calls[0], np.array([0]))
+    captions = [
+        annotation.text
+        for annotation in fig.layout.annotations
+        if annotation.xref == "paper" and annotation.yref == "paper"
+    ]
+    assert captions == ["t = 0 s"]
+
+
 def test_embedded_frame_long_edge_is_capped_at_1920_pixels() -> None:
     seq, _reader = _sequence_with_video()
     reader = _SolidFrameVideoReader(
@@ -520,6 +715,19 @@ def test_invalid_dimensions_fail_before_video_decode(
             seq,
             timestamps=(1.0,),
             **{dimension: value},  # type: ignore[arg-type]
+        )
+
+    assert reader.calls == []
+
+
+def test_invalid_show_containments_fails_before_video_decode() -> None:
+    seq, reader = _sequence_with_video()
+
+    with pytest.raises(TypeError, match="show_containments must be a boolean"):
+        render_paper_figure(
+            seq,
+            timestamps=(1.0,),
+            show_containments="yes",  # type: ignore[arg-type]
         )
 
     assert reader.calls == []
