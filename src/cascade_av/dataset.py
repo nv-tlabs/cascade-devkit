@@ -636,9 +636,11 @@ class Sequence:
                 figure and cannot be combined with ``t``, ``match``,
                 ``context``, or ``static=True``.
             timestamps: zero to three explicit video timestamps for
-                ``mode="paper_figure"``. Input order is preserved
-                left-to-right. Values outside the video's actual timestamp
-                coverage raise instead of being silently clamped.
+                ``mode="paper_figure"``. Frames render in ascending
+                chronological order from left to right regardless of input
+                order; duplicate timestamps remain separate. Values outside
+                the video's actual timestamp coverage raise instead of being
+                silently clamped.
             fps: forwarded to ``ClipPlayer`` (scrub rate, frames /
                 second). Ignored in the static path.
             highlight: explicit highlight band passed through to
@@ -653,10 +655,11 @@ class Sequence:
             track_groups: optional category whitelist.
             families: optional whitelist of family leaves to render
                 (``"condition"``, ``"containment"``, ``"state"``,
-                ``"pose"``, ``"influence"``, ``"action"``,
+                ``"pose"``, ``"action"``,
                 ``"property"``, ``"signal_head"``, ``"env_control"``,
-                ``"physical_containment"``). Parent entity headers
-                auto-render for any entity whose sub-rows survive;
+                ``"physical_containment"``). The removed ``"influence"``
+                leaf remains accepted as a compatibility no-op. Parent entity
+                headers auto-render for any entity whose sub-rows survive;
                 entities with no surviving sub-rows drop completely.
                 ``None`` = all families. Ignored in the static path.
             track_visibility: grouped whole-kind or stable per-entity

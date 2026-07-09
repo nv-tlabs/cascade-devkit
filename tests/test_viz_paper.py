@@ -14,9 +14,13 @@ from PIL import Image
 
 from cascade_av.dataset import Sequence
 from cascade_av.spec import (
+    Agent,
+    AgentAction,
     AnnotationBundle,
     EgoAction,
     EgoVehicle,
+    Environment,
+    Influence,
     SilAvAnnotation,
     VideoMeta,
 )
@@ -96,6 +100,67 @@ def test_zero_timestamps_returns_timeline_without_touching_video() -> None:
     assert any((shape.name or "").startswith("segment:") for shape in fig.layout.shapes)
 
 
+def test_paper_timeline_omits_influence_and_keeps_because_of_arrows() -> None:
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="paper-causal", duration_s=3.0),
+        annotation=SilAvAnnotation(
+            environments=[
+                Environment(
+                    id="env_0",
+                    type="fst:Road",
+                    start_timestamp="0:0.0",
+                    end_timestamp="0:3.0",
+                )
+            ],
+            ego_vehicle=EgoVehicle(
+                actions=[
+                    EgoAction(
+                        id="ego_action",
+                        type="oxd:Decelerate",
+                        because_of=["agent_action"],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ],
+                influenced_by=[
+                    Influence(
+                        id="ego_influence",
+                        influencers=["env_0"],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ],
+            ),
+            agents=[
+                Agent(
+                    id="agent_0",
+                    type="oxd:Car",
+                    visibility_start_timestamp="0:0.0",
+                    visibility_end_timestamp="0:3.0",
+                    actions=[
+                        AgentAction(
+                            id="agent_action",
+                            action_type="Yield",
+                            start_timestamp="0:1.0",
+                            end_timestamp="0:2.0",
+                        )
+                    ],
+                )
+            ],
+        ),
+    )
+
+    fig = render_paper_figure(Sequence.from_annotation(bundle), timestamps=())
+    shape_names = {str(shape.name or "") for shape in fig.layout.shapes}
+
+    assert not any(
+        name.startswith("segment:ego_infl_")
+        or name.startswith("arrow:influence:")
+        for name in shape_names
+    )
+    assert any(name.startswith("arrow:because_of:") for name in shape_names)
+
+
 @pytest.mark.parametrize(
     "timestamps",
     [
@@ -120,7 +185,7 @@ def test_one_to_three_timestamps_are_decoded_in_one_batch(
     assert len(fig.layout.images) == len(timestamps)
 
 
-def test_timestamp_order_is_preserved_left_to_right() -> None:
+def test_timestamps_render_in_chronological_order_with_duplicates() -> None:
     seq, _reader = _sequence_with_video()
     reader = _SolidFrameVideoReader(
         height=8,
@@ -128,12 +193,15 @@ def test_timestamp_order_is_preserved_left_to_right() -> None:
         timestamps=np.array([0, 1_000_000, 2_000_000, 3_000_000]),
     )
     seq._cameras = {seq.annotation_camera: reader}  # type: ignore[assignment]
-    requested = (2.0, 1.0, 3.0)
+    requested = [2.0, 2.0, 1.0]
 
     fig = render_paper_figure(seq, timestamps=requested)
 
+    assert requested == [2.0, 2.0, 1.0]
     assert len(reader.calls) == 1
-    np.testing.assert_array_equal(reader.calls[0], np.array([2_000_000, 1_000_000, 3_000_000]))
+    np.testing.assert_array_equal(
+        reader.calls[0], np.array([2_000_000, 2_000_000, 1_000_000])
+    )
     images = list(fig.layout.images)
     assert [image.name for image in images] == ["frame-0", "frame-1", "frame-2"]
     assert [float(image.x) for image in images] == sorted(float(image.x) for image in images)
@@ -145,13 +213,22 @@ def test_timestamp_order_is_preserved_left_to_right() -> None:
         _decode_image_source(str(image.source)).getpixel((0, 0))[0]
         for image in images
     ]
-    assert transported_red == pytest.approx([120, 60, 180], abs=3)
+    assert transported_red == pytest.approx([60, 120, 120], abs=3)
     captions = [
         annotation.text
         for annotation in fig.layout.annotations
         if annotation.xref == "paper" and annotation.yref == "paper"
     ]
-    assert captions == ["t = 2 s", "t = 1 s", "t = 3 s"]
+    assert captions == ["t = 1 s", "t = 2 s", "t = 2 s"]
+
+
+def test_unsorted_out_of_range_timestamp_reports_caller_index() -> None:
+    seq, reader = _sequence_with_video()
+
+    with pytest.raises(ValueError, match=r"timestamps\[1\]=3\.001"):
+        render_paper_figure(seq, timestamps=(2.0, 3.001, 1.0))
+
+    assert reader.calls == []
 
 
 def test_embedded_frame_long_edge_is_capped_at_1920_pixels() -> None:
@@ -187,7 +264,7 @@ def test_frames_are_positioned_above_the_timeline() -> None:
 @pytest.mark.parametrize(
     ("timestamps", "exception"),
     [
-        pytest.param((0.0, 1.0, 2.0, 3.0), ValueError, id="four"),
+        pytest.param((2.0, 1.0, 1.0, 2.0), ValueError, id="four-with-duplicates"),
         pytest.param((float("nan"),), ValueError, id="nan"),
         pytest.param((float("inf"),), ValueError, id="positive-infinity"),
         pytest.param((float("-inf"),), ValueError, id="negative-infinity"),

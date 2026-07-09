@@ -439,11 +439,267 @@ def test_reversed_highlight_is_normalized() -> None:
 
 def test_all_arrow_families_present_by_default() -> None:
     fig = render_timeline(_seq(_make_full_bundle()))
-    # The fixture wires up at least one of each family.
-    for family in ("because_of", "link_to", "containment", "influence", "action_target"):
+    # The fixture wires up at least one of each rendered family.
+    for family in ("because_of", "link_to", "containment", "action_target"):
         assert len(_arrow_shapes(fig, family)) > 0, (
             f"expected at least one {family} arrow with default settings"
         )
+
+
+def test_influence_rows_and_arrows_are_omitted_but_because_of_remains() -> None:
+    fig = render_timeline(_seq(_make_full_bundle()))
+    names = {shape.get("name", "") for shape in _shapes(fig)}
+
+    assert not any(
+        name.startswith("segment:ego_infl_")
+        or name.startswith("segment:agent_infl_")
+        for name in names
+    )
+    assert "influences" not in _yticks(fig)
+    assert _arrow_shapes(fig, "influence") == []
+    assert len(_arrow_shapes(fig, "because_of")) > 0
+
+    trace_names = {trace.name or "" for trace in fig.data}
+    assert not any(
+        name.startswith("arrowhead:influence:")
+        or name.startswith("hover:arrow:influence:")
+        for name in trace_names
+    )
+    assert any(name.startswith("arrowhead:because_of:") for name in trace_names)
+
+
+def test_because_of_arrows_resolve_nested_segment_ids() -> None:
+    bundle = _make_all_categories_bundle()
+    ego_action = bundle.annotation.ego_vehicle.actions[0]
+    agent = bundle.annotation.agents[0]
+    agent.properties.append(
+        AgentProperty(
+            id="agent_prop_0",
+            property_type="Stopped",
+            start_timestamp="0:1.0",
+            end_timestamp="0:3.0",
+        )
+    )
+    ego_action.because_of = [
+        "agent_0_act_0",
+        "ls_0",
+        "agent_prop_0",
+        "sh_0",
+        "light_phys_0",
+    ]
+    agent.actions[0].because_of = ["ego_act_0", "obj_state_0", "cond_0"]
+
+    fig = render_timeline(_seq(bundle))
+    arrows = _arrow_shapes(fig, "because_of")
+
+    assert len(arrows) == 8
+    arrow_pairs = {
+        tuple(shape["name"].split(":", 2)[2].split("->", 1))
+        for shape in arrows
+    }
+    for source_prefix, target_prefix in (
+        ("ego_act_", "agent_action_0_0_"),
+        ("ego_act_", "light_state_0_0_0_"),
+        ("ego_act_", "agent_prop_0_0_"),
+        ("ego_act_", "light_sh_0_0_"),
+        ("ego_act_", "light_phys_cont_0_0_"),
+        ("agent_action_0_0_", "ego_act_"),
+        ("agent_action_0_0_", "obj_state_0_0_"),
+        ("agent_action_0_0_", "cond_0_"),
+    ):
+        assert any(
+            source.startswith(source_prefix) and target.startswith(target_prefix)
+            for source, target in arrow_pairs
+        ), (
+            "missing because_of arrow with prefixes "
+            f"{source_prefix!r} -> {target_prefix!r}"
+        )
+
+    action_only = render_timeline(_seq(bundle), families=["action"])
+    action_pairs = {
+        tuple(shape["name"].split(":", 2)[2].split("->", 1))
+        for shape in _arrow_shapes(action_only, "because_of")
+    }
+    assert len(action_pairs) == 2
+    assert any(
+        source.startswith("ego_act_")
+        and target.startswith("agent_action_0_0_")
+        for source, target in action_pairs
+    )
+    assert any(
+        source.startswith("agent_action_0_0_")
+        and target.startswith("ego_act_")
+        for source, target in action_pairs
+    )
+
+
+def test_lowercase_ego_alias_never_shadows_a_real_stable_id() -> None:
+    real_ego_id = Agent(
+        id="ego",
+        type="oxd:Car",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:3.0",
+    )
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="lowercase-ego", duration_s=3.0),
+        annotation=SilAvAnnotation(
+            ego_vehicle=EgoVehicle(
+                actions=[
+                    EgoAction(
+                        id="ego_action",
+                        type="oxd:Decelerate",
+                        because_of=["ego"],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ]
+            ),
+            agents=[real_ego_id],
+        ),
+    )
+
+    arrows = _arrow_shapes(render_timeline(_seq(bundle)), "because_of")
+
+    assert len(arrows) == 1
+    assert "->agent_0_" in arrows[0]["name"]
+    assert "->ego_parent_" not in arrows[0]["name"]
+
+
+def test_lowercase_ego_alias_does_not_shadow_hidden_influence_id() -> None:
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="hidden-lowercase-ego", duration_s=3.0),
+        annotation=SilAvAnnotation(
+            ego_vehicle=EgoVehicle(
+                actions=[
+                    EgoAction(
+                        id="ego_action",
+                        type="oxd:Decelerate",
+                        because_of=["ego"],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ],
+                influenced_by=[
+                    Influence(
+                        id="ego",
+                        influencers=[],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ],
+            )
+        ),
+    )
+
+    assert _arrow_shapes(render_timeline(_seq(bundle)), "because_of") == []
+
+
+def test_duplicate_ids_follow_query_index_last_writer_resolution() -> None:
+    from cascade_av.query.index import IdIndex
+
+    agents = [
+        Agent(
+            id="duplicate",
+            type="oxd:Car",
+            visibility_start_timestamp="0:0.0",
+            visibility_end_timestamp="0:3.0",
+            track_index=index,
+        )
+        for index in range(2)
+    ]
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="duplicate-id", duration_s=3.0),
+        annotation=SilAvAnnotation(
+            ego_vehicle=EgoVehicle(
+                actions=[
+                    EgoAction(
+                        id="ego_action",
+                        type="oxd:Decelerate",
+                        because_of=["duplicate"],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ]
+            ),
+            agents=agents,
+        ),
+    )
+
+    subject = IdIndex(bundle).get("duplicate")
+    arrows = _arrow_shapes(render_timeline(_seq(bundle)), "because_of")
+
+    assert subject is not None and subject.obj is agents[1]
+    assert len(arrows) == 1
+    assert "->agent_1_" in arrows[0]["name"]
+
+
+def test_supplemental_light_containment_cannot_override_query_index_id() -> None:
+    from cascade_av.query.index import IdIndex
+    from cascade_av.spec import TrafficLight
+
+    light = TrafficLight(
+        id="duplicate",
+        visibility_start_timestamp="0:0.0",
+        visibility_end_timestamp="0:3.0",
+        containment=[
+            Containment(
+                id="duplicate",
+                start_timestamp="0:0.0",
+                end_timestamp="0:3.0",
+            )
+        ],
+    )
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="supplemental-duplicate", duration_s=3.0),
+        annotation=SilAvAnnotation(
+            ego_vehicle=EgoVehicle(
+                actions=[
+                    EgoAction(
+                        id="ego_action",
+                        type="oxd:Decelerate",
+                        because_of=["duplicate"],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ]
+            ),
+            traffic_lights=[light],
+        ),
+    )
+
+    subject = IdIndex(bundle).get("duplicate")
+    arrows = _arrow_shapes(render_timeline(_seq(bundle)), "because_of")
+
+    assert subject is not None and subject.obj is light
+    assert len(arrows) == 1
+    assert "->light_0_" in arrows[0]["name"]
+    assert "->light_phys_cont_" not in arrows[0]["name"]
+
+
+def test_influence_only_ego_does_not_leave_an_orphan_parent_row() -> None:
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="influence-only", duration_s=3.0),
+        annotation=SilAvAnnotation(
+            ego_vehicle=EgoVehicle(
+                influenced_by=[
+                    Influence(
+                        id="ego_influence",
+                        influencers=[],
+                        start_timestamp="0:0.5",
+                        end_timestamp="0:2.5",
+                    )
+                ]
+            )
+        ),
+    )
+
+    fig = render_timeline(_seq(bundle))
+
+    assert not any(
+        shape["name"].startswith("segment:ego_")
+        for shape in _segment_shapes(fig)
+    )
+    assert "Ego" not in _yticks(fig)
 
 
 def test_arrows_toggle_off_one_family() -> None:
@@ -461,12 +717,11 @@ def test_arrows_keep_only_one_family() -> None:
             "because_of": True,
             "link_to": False,
             "containment": False,
-            "influence": False,
             "action_target": False,
         },
     )
     assert len(_arrow_shapes(fig, "because_of")) > 0
-    for family in ("link_to", "containment", "influence", "action_target"):
+    for family in ("link_to", "containment", "action_target"):
         assert _arrow_shapes(fig, family) == [], f"expected no {family} arrows after toggling off"
 
 
@@ -495,7 +750,7 @@ def test_render_timeline_on_empty_bundle() -> None:
     # No segment shapes and no arrow shapes.
     segment_shapes = [s for s in _shapes(fig) if s.get("name", "").startswith("segment:")]
     assert segment_shapes == []
-    for family in ("because_of", "link_to", "containment", "influence", "action_target"):
+    for family in ("because_of", "link_to", "containment", "action_target"):
         assert _arrow_shapes(fig, family) == []
     # With the family-band layout, an empty bundle has zero populated
     # bands, so the y-axis tick list is empty. The figure still
@@ -551,7 +806,7 @@ def _category_y_range(fig: go.Figure, category: str) -> tuple[float, float] | No
 
 def _agents_row_segment_shapes(fig: go.Figure) -> list[dict]:
     """All segment shapes whose vertical mid lies inside any Agents
-    entity block (parent + containment + influence + action + property
+    entity block (parent + containment + action + property
     rows for every agent)."""
     y_range = _category_y_range(fig, "Agents")
     if y_range is None:
@@ -804,9 +1059,7 @@ def test_hover_trace_count_matches_segments_plus_arrow_overlays() -> None:
     # Every arrow family contributes one path shape per arrow.
     n_arrows = sum(
         len(_arrow_shapes(fig, family))
-        for family in (
-            "because_of", "link_to", "containment", "influence", "action_target",
-        )
+        for family in ("because_of", "link_to", "containment", "action_target")
     )
     assert len(seg_hover) == n_segments
     assert len(arrow_mid_hover) == n_arrows
@@ -822,7 +1075,7 @@ def test_each_enabled_arrow_family_contributes_an_arrowhead_marker() -> None:
     """For every family with at least one arrow, there's at least one
     matching arrowhead marker trace."""
     fig = render_timeline(_seq(_make_full_bundle()))
-    for family in ("because_of", "link_to", "containment", "influence", "action_target"):
+    for family in ("because_of", "link_to", "containment", "action_target"):
         arrows = _arrow_shapes(fig, family)
         if not arrows:
             continue
@@ -942,7 +1195,7 @@ def test_agent_ids_filter_keeps_only_listed_agents() -> None:
 def test_track_groups_filter_collapses_axis_to_visible_rows() -> None:
     """`track_groups=["Agents"]` keeps only Agents' family bands on
     the y-axis. With the family-band layout that's multiple ticks
-    (parent + containment + influence + action + property). The
+    (parent + containment + action + property). The
     per-entity background band is the canonical "this row belongs to
     Agents" signal."""
     fig = render_timeline(_seq(_make_full_bundle()), track_groups=["Agents"])
@@ -1168,9 +1421,9 @@ def _yticks_raw(fig: go.Figure) -> list[str]:
 
 def test_paint_emits_band_per_populated_family() -> None:
     """The full-bundle fixture has Environments (parent + condition),
-    Ego (containment + influence + action), and Agents (parent +
-    containment + influence + action + property). Every populated
-    family in those categories must show up as a band on the y-axis.
+    Ego (containment + action), and Agents (parent + containment + action +
+    property). Every populated rendered family in those categories must show
+    up as a band on the y-axis.
 
     Parent rows carry the entity track name; sub-rows carry just the
     family leaf (the visual grouping is handled by the per-entity
@@ -1187,7 +1440,6 @@ def test_paint_emits_band_per_populated_family() -> None:
         # category cue.
         "conditions",
         "containment",
-        "influences",
         "actions",
         "properties",
     }
@@ -1465,8 +1717,8 @@ def test_per_entity_bands() -> None:
 def test_singleton_ego_parent_label_is_bare_ego() -> None:
     """Ego is a singleton — no `_track_index`, no name field — so its
     parent row label is just `"Ego"` (no `Track N` ordinal). Sub-rows
-    are the bare family leaves (`"containment"`, `"influences"`,
-    `"actions"`, `"properties"`) with no entity prefix; the Ego
+    are the bare family leaves (`"containment"`, `"actions"`,
+    `"properties"`) with no entity prefix; the Ego
     background band carries the category cue.
 
     We anchor on the Ego entity_block shape's row range to find the Ego
@@ -1490,7 +1742,7 @@ def test_singleton_ego_parent_label_is_bare_ego() -> None:
     assert "Ego" in ego_labels, (
         f"Ego parent label `Ego` missing from Ego block ticks {ego_labels!r}"
     )
-    legal_subrow_leaves = {"containment", "influences", "actions", "properties"}
+    legal_subrow_leaves = {"containment", "actions", "properties"}
     for label in ego_labels:
         assert label == "Ego" or label in legal_subrow_leaves, (
             f"Ego tick label {label!r} is neither the `Ego` parent nor a "
@@ -1598,8 +1850,8 @@ def test_segment_fill_uses_family_color() -> None:
             continue
         sid = name[len("segment:"):]
         for prefix in (
-            "agent_action_", "agent_cont_", "agent_prop_", "agent_infl_",
-            "ego_act_", "ego_cont_", "ego_infl_",
+            "agent_action_", "agent_cont_", "agent_prop_",
+            "ego_act_", "ego_cont_",
             "cond_",
         ):
             if sid.startswith(prefix):
@@ -1611,11 +1863,9 @@ def test_segment_fill_uses_family_color() -> None:
     assert shapes_by_prefix["agent_cont_"] == "#22c55e"
     assert shapes_by_prefix["agent_action_"] == "#c084fc"
     assert shapes_by_prefix["agent_prop_"] == "#d8b4fe"
-    assert shapes_by_prefix["agent_infl_"] == "#f97316"
     # Ego subtracks have their own palette.
     assert shapes_by_prefix["ego_act_"] == "#3b82f6"
     assert shapes_by_prefix["ego_cont_"] == "#22c55e"
-    assert shapes_by_prefix["ego_infl_"] == "#f97316"
     # Env condition.
     assert shapes_by_prefix["cond_"] == "#06b6d4"
     # Distinct fills are present on the figure.
@@ -1646,7 +1896,7 @@ def test_track_groups_filter_accepts_legacy_short_names() -> None:
 
 def test_band_tick_text_matches_annotator_terse_style() -> None:
     """Tick labels use the annotator's terse leaf words: plural
-    "conditions"/"actions"/"properties"/"influences"/"states", and
+    "conditions"/"actions"/"properties"/"states", and
     short "TL control" / "signal head" / "containment" for the
     paren-disambiguated families."""
     from cascade_av.spec import (
@@ -1750,7 +2000,7 @@ def test_band_tick_text_matches_annotator_terse_style() -> None:
     # background band tells you which block each "states" belongs to.
     assert "actions" in yticks
     assert "properties" in yticks
-    assert "influences" in yticks
+    assert "influences" not in yticks
 
 
 # ---------------------------------------------------------------------------
@@ -1785,7 +2035,7 @@ def test_entity_block_shape_per_entity() -> None:
 
 def test_entity_block_spans_all_its_bands() -> None:
     """The Agent block's y-range covers the agent_0 parent row + every
-    sub-row (containment / influence / action / property), and extends
+    rendered sub-row (containment / action / property), and extends
     0.5 units past the first/last band so the lane band edges are
     fully enclosed.
 
@@ -2030,11 +2280,11 @@ def test_tick_label_color_matches_category_for_parent_and_sub_rows() -> None:
         if color != "#a855f7":
             break  # crossed into the next entity block
         agent_leaves_seen += 1
-    # `_make_full_bundle` puts one containment, one influence, one
-    # action, and one property on agent_0 — four sub-row family heads
+    # `_make_full_bundle` puts one rendered containment, action, and property
+    # on agent_0 — three sub-row family heads
     # all colored purple. (Trailing sub-rows are blank and skipped.)
-    assert agent_leaves_seen >= 4, (
-        f"expected ≥4 purple Agents sub-rows, saw {agent_leaves_seen}"
+    assert agent_leaves_seen >= 3, (
+        f"expected ≥3 purple Agents sub-rows, saw {agent_leaves_seen}"
     )
 
 
@@ -2119,8 +2369,8 @@ def test_entity_block_skipped_when_category_filtered_out() -> None:
 
 def test_families_filter_drops_non_whitelisted_family_rows() -> None:
     """`families=["action"]` renders only `action` sub-rows. The
-    full-bundle fixture has condition, action, containment, influence,
-    and property segments — under the filter only the action rows
+    full-bundle fixture has rendered condition, action, containment, and
+    property segments — under the filter only the action rows
     survive on the y-axis. Parent rows ("Agent Track 1", "Ego") are
     excluded from the sub-row set; they're tested separately by the
     parent-retention tests."""
@@ -2398,6 +2648,16 @@ def test_families_filter_accepts_every_recognized_leaf(leaf: str) -> None:
     # complete without raising — we don't assert anything about the
     # resulting figure shape, just that the kwarg is accepted.
     render_timeline(_seq(_make_all_categories_bundle()), families=[leaf])
+
+
+def test_removed_influence_family_filter_is_a_compatibility_noop() -> None:
+    fig = render_timeline(
+        _seq(_make_full_bundle()),
+        families=["influence"],
+    )
+
+    assert _segment_shapes(fig) == []
+    assert _arrow_shapes(fig, "influence") == []
 
 
 def test_entity_block_spans_label_margin_via_paper_xref() -> None:

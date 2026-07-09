@@ -11,6 +11,7 @@ Types match the commit convention in [`CONTRIBUTING.md`](../../CONTRIBUTING.md):
 
 ## Entries
 
+- 2026-07-08 fix(viz): render paper-figure frames chronologically, omit Influence rows/arrows from shared DevKit timelines, and resolve `because_of` arrows to nested actions, states, properties, and other visible stable-ID targets (#7)
 - 2026-07-01 chore(deps): upgrade Bleach to 6.4.0 for the available sanitizer fixes; track the remaining EOL risk in #1 (#2)
 <!-- Add new entries above this line -->
 - 2026-07-08 feat(viz): add publication-figure rendering and ego-first tracks — `viz.render_paper_figure` and `Sequence.visualize(mode="paper_figure")` now compose zero to three explicitly selected video frames above the shared Plotly timeline, preserve timestamp order, reject out-of-coverage timestamps instead of silently clamping, embed frames as bounded quality-90 JPEGs, and return a plain exportable `Figure`; grouped `track_visibility` switches hide whole kinds or individual stable entity IDs (including every descendant and connected arrow), reject ambiguous duplicate IDs, and remain clip-local; the canonical DevKit order is now Ego → Agents → Traffic Lights → Objects → Environments while the annotator UI remains independent; notebook 06 demonstrates three match-focused frames plus per-Agent switching with executed output; the `[viz]` extra now declares its runtime NumPy dependency directly. (#6)

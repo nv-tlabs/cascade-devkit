@@ -194,6 +194,59 @@ Record significant choices here as short ADR-style entries. Newest first.
 When adding a new entry, copy the [ADR template](#adr-template) at the
 bottom of this file.
 
+### 2026-07-08 — DevKit timelines omit Influence rows and draw action causes
+
+- **Context:** `Influence` records were rendered as both dedicated family rows
+  and purple arrows, which consumed vertical space without expressing the
+  action-rooted causal relation needed in publication figures. Meanwhile,
+  `because_of` arrows resolved only top-level parent IDs even though valid
+  references can target nested actions, light/object states, properties,
+  conditions, and other segment-backed records.
+- **Decision:** Keep `Influence` intact in the schema, query DSL, and public
+  `annotation_to_segments()` output, but filter its rows and arrows at the
+  shared DevKit timeline painter. Represent action causality with `because_of`
+  arrows and resolve every visible segment-backed stable annotation ID,
+  including nested records and the synthetic Ego anchor. Dangling references
+  remain non-fatal and are omitted.
+- **Alternatives considered:** Removing `Influence` from the schema or segment
+  adapter was rejected because it would discard semantic data and break
+  non-rendering consumers. Mapping every causal target to its top-level parent
+  was rejected because it loses the annotated action/state/property endpoint.
+  Rejecting the former `families=["influence"]` selector was avoided as an
+  unnecessary hard break; it remains a documented compatibility no-op while
+  the row itself is absent.
+- **Consequences:** Static timelines, `ClipPlayer`, carousels, and paper figures
+  share a more compact layout with no influence family. The `influence` family
+  selector remains accepted as a compatibility no-op, and the arrow toggle has
+  no rendered effect; `influenced_by` queries remain supported. All ID-backed
+  arrow families share the expanded resolver: it follows `IdIndex` collision
+  semantics and supplements visible Traffic-Light containments without
+  overriding canonical indexed IDs (#10). `because_of` arrows now cover every
+  non-dangling visible target and still disappear when either endpoint is
+  filtered out.
+
+### 2026-07-08 — Paper figures render frames chronologically
+
+- **Context:** The initial paper-figure contract preserved caller order, which
+  allowed a figure's frames to move backward and forward in time. Publication
+  figures should read as a temporal sequence without requiring every caller to
+  sort its timestamp selection first.
+- **Decision:** After validating and batch-decoding the zero to three requested
+  timestamps, stable-sort each timestamp/frame pair in ascending order before
+  composing the figure. Duplicate timestamps remain separate adjacent frames.
+  Sorting after validation preserves caller-indexed errors; direct and
+  high-level rendering share the behavior.
+- **Alternatives considered:** Requiring callers to pre-sort was rejected
+  because it makes chronological output optional and inconsistent. Sorting
+  before validation was rejected because an error such as `timestamps[1]`
+  would no longer identify the caller's original value. Deduplicating was
+  rejected because repeated frames may be intentional.
+- **Consequences:** Every paper figure reads earliest-to-latest from left to
+  right. Existing callers that intentionally supplied a nonchronological
+  narrative order now receive chronological output; chronological callers and
+  the executed notebook output are unchanged. This supersedes only the
+  caller-order clause in the paper-figure decision below.
+
 ### 2026-07-08 — Paper figures use stable entity switches and explicit frames
 
 - **Context:** Publication figures need several exact moments above one
@@ -203,14 +256,15 @@ bottom of this file.
   as entity selectors because they come from reusable `_track_index` layout
   lanes; non-overlapping entities may share one.
 - **Decision:** Add an opt-in `paper_figure` visualization mode backed by the
-  plain-Plotly `render_paper_figure` function. It preserves zero to three
-  caller-supplied timestamps left-to-right and rejects explicit timestamps
-  outside actual video coverage rather than clamping them. Track visibility
-  is grouped by entity kind and keyed by stable top-level annotation IDs; child
-  rows inherit their owner, and ambiguous duplicate IDs are rejected. The
-  DevKit timeline's canonical top-to-bottom order is Ego, Agents, Traffic
-  Lights, Objects, Environments. The annotator UI owns its ordering
-  independently.
+  plain-Plotly `render_paper_figure` function. The initial implementation
+  preserved zero to three caller-supplied timestamps left-to-right; that
+  ordering clause is superseded by the chronological-order decision above.
+  Explicit timestamps outside actual video coverage are rejected rather than
+  clamped. Track visibility is grouped by entity kind and keyed by stable
+  top-level annotation IDs; child rows inherit their owner, and ambiguous
+  duplicate IDs are rejected. The DevKit timeline's canonical top-to-bottom
+  order is Ego, Agents, Traffic Lights, Objects, Environments. The annotator UI
+  owns its ordering independently.
 - **Alternatives considered:** Reusing `ClipPlayer` was rejected because a
   `FigureWidget`, controls, and moving playhead are inappropriate for static
   export. Selecting `_track_index` lanes was rejected because it can hide more

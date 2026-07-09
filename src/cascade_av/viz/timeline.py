@@ -15,10 +15,12 @@ inside the interactive widget.
 
 Segment colors follow PR-1's `entity_color()` palette so the headless view
 and the annotator share one set of hex strings. Causal relationships
-(`because_of`, `link_to`, `containment`, `influence`, `action_target`) are
-drawn as upward-curving bezier `path` shapes between segment centers,
-mirroring `drawBecauseOfCurve` in `tools/annotator/web/src/components/
-Timeline.tsx`. Each family has its own color:
+(`because_of`, `link_to`, `containment`, `action_target`) are drawn as
+upward-curving bezier `path` shapes between segment centers, mirroring
+`drawBecauseOfCurve` in `tools/annotator/web/src/components/Timeline.tsx`.
+The schema's `Influence` side-channel remains available to queries and segment
+consumers but is intentionally omitted from rendered rows and arrows. Each
+rendered arrow family has its own color:
 
 - `because_of`     → rose      (`#f43f5e`) — same hue family as the
                                               annotator's "BECAUSE" pill
@@ -28,7 +30,6 @@ Timeline.tsx`. Each family has its own color:
                                               `plotly_white` template).
 - `link_to`        → teal      (`#14b8a6`)
 - `containment`    → green     (`#10b981`)
-- `influence`      → purple    (`#a78bfa`)
 - `action_target`  → orange    (`#f97316`)
 
 These are chosen to be high-contrast against `plotly_white` while
@@ -98,9 +99,8 @@ _TRACK_KINDS: frozenset[str] = frozenset(
 #   - Traffic Lights: parent → physical_containment → (per sh:
 #                     signal_head → env_control → state)
 #   - Objects:        parent → containment → state
-#   - Agents:         parent → containment → pose → influence →
-#                     action → property
-#   - Ego:            containment → influence → action → property
+#   - Agents:         parent → containment → pose → action → property
+#   - Ego:            containment → action → property
 #                     (singleton — no parent bar; track id is the
 #                     synthetic "ego_act")
 _BAND_ORDER_BY_CATEGORY: dict[str, tuple[str, ...]] = {
@@ -114,26 +114,28 @@ _BAND_ORDER_BY_CATEGORY: dict[str, tuple[str, ...]] = {
         "state",
     ),
     "Objects": ("parent", "containment", "state"),
-    "Agents": ("parent", "containment", "pose", "influence", "action", "property"),
+    "Agents": ("parent", "containment", "pose", "action", "property"),
     # Ego is a singleton — no `_track_index`, no per-entity name — but it
     # still emits a `parent` band so the families filter retains an "Ego"
     # header above whichever sub-rows survive (without the parent band,
     # `families=["action"]` would render the ego action sub-row labelled
     # "actions" with no indication that it belongs to Ego).
-    "Ego": ("parent", "containment", "influence", "action", "property"),
+    "Ego": ("parent", "containment", "action", "property"),
 }
 
 # Recognized family-leaf names accepted by the `families=[...]` filter
-# kwarg. Derived from `_BAND_ORDER_BY_CATEGORY` with `"parent"` removed
-# — parent rows are NOT named in the whitelist; they auto-render for
-# entities whose sub-rows survive the filter. The set is built at
-# import time so the recognized list never drifts from the band-order
-# truth table.
+# kwarg. Derived from `_BAND_ORDER_BY_CATEGORY` with `"parent"` removed,
+# plus the removed `"influence"` leaf as a compatibility no-op. Parent rows
+# are NOT named in the whitelist; they auto-render for entities whose
+# sub-rows survive the filter.
 _RECOGNIZED_FAMILIES: frozenset[str] = frozenset(
-    f
-    for families in _BAND_ORDER_BY_CATEGORY.values()
-    for f in families
-    if f != "parent"
+    {
+        f
+        for families in _BAND_ORDER_BY_CATEGORY.values()
+        for f in families
+        if f != "parent"
+    }
+    | {"influence"}
 )
 
 # Families that, in Traffic Lights, repeat per signal head and need an
@@ -148,18 +150,16 @@ _PER_SH_FAMILIES: tuple[str, ...] = ("signal_head", "env_control", "state")
 _FAMILY_SUB_ROW_META_KEY: dict[str, str] = {
     "condition": "_cond_track_index",
     "containment": "_cont_track_index",
-    "influence": "_influence_track_index",
     "physical_containment": "_cont_track_index",
 }
 
 # Per-family tick-label leaf text. Mirrors the annotator's terse
-# row-label text (`Timeline.tsx:230-275`): conditions/influences/
-# actions/properties/states pluralized; TL control / signal head
+# row-label text (`Timeline.tsx:230-275`): conditions/actions/
+# properties/states pluralized; TL control / signal head
 # substituted; env_control labeled "containment" under each signal
 # head (the annotator's actual on-screen leaf).
 _FAMILY_LABEL: dict[str, str] = {
     "condition": "conditions",
-    "influence": "influences",
     "action": "actions",
     "property": "properties",
     "state": "states",
@@ -184,7 +184,7 @@ _ENTITY_TRACK_PREFIX: dict[str, str] = {
 #   - entity_idx:   0-based entity ordinal within the category, parsed
 #                   from each segment's `track_id` (e.g.
 #                   `"agent_0"` → 0). Ego always uses ordinal 0.
-#   - family:       one of the eleven `SegmentFamily` literals.
+#   - family:       one of the rendered `SegmentFamily` literals.
 #   - sub_row_idx:  0-based sub-row index *within this family for this
 #                   entity*. Data-driven from each segment's
 #                   `_X_track_index` meta key (see
@@ -205,7 +205,6 @@ _ARROW_COLORS: dict[str, str] = {
     "because_of": "#f43f5e",
     "link_to": "#14b8a6",
     "containment": "#10b981",
-    "influence": "#a78bfa",
     "action_target": "#f97316",
 }
 
@@ -795,52 +794,172 @@ def _segments_by_entity_id(
     bundle: "AnnotationBundle",
     segments: list[Segment],
 ) -> dict[str, Segment]:
-    """Build an `entity-id → Segment` lookup table.
+    """Build a stable annotation-ID → rendered-segment lookup table.
 
-    The annotator's TS code keeps an `entityToSeg` map keyed on each
-    entity's stable id (`env_<n>`, `obj_<n>`, `light_<n>`, `agent_<n>`).
-    Our `Segment.id` is synthetic — it includes a nonce — so we can't
-    use it directly. Instead, we walk the bundle in the same order that
-    `annotation_to_segments` does and pair each entity with the parent
-    segment we just emitted.
-
-    Only parent rows participate (environments, traffic objects, traffic
-    lights, agents); subtracks resolve back to the same parent.
+    ``Segment.id`` values are synthetic and include a nonce, while causal
+    fields store stable schema IDs. Walk every segment-backed model in the
+    same order as :class:`~cascade_av.query.IdIndex` and pair its stable ID
+    with the emitted segment. Later duplicate IDs overwrite earlier ones, so
+    visualization and query resolution agree. Visible Traffic-Light
+    containments, which the canonical index does not yet cover, supplement
+    that surface without overriding canonical IDs. This covers nested action,
+    state, property, containment, condition, and signal-head targets in
+    addition to top-level entities.
     """
+    from cascade_av.query.index import KINDS, IdIndex
+
     ann = bundle.annotation
-    # Filter to parent rows in their original emission order. `meta`
-    # marks them with `_objKind`.
-    parents = [s for s in segments if (s.meta or {}).get("_objKind")]
-    pi = 0
     by_id: dict[str, Segment] = {}
+    canonical_index = IdIndex(bundle)
+    canonical_ids = {
+        subject.id
+        for kind in KINDS
+        for subject in canonical_index.of_kind(kind)
+    }
+    real_ids: set[str] = set()
 
-    def _next_parent_for(kind: str) -> Segment | None:
-        nonlocal pi
-        # Advance past any non-matching parents (defensive — should
-        # always match in emission order).
-        while pi < len(parents):
-            seg = parents[pi]
-            pi += 1
-            if (seg.meta or {}).get("_objKind") == kind:
-                return seg
-        return None
+    def _add(
+        stable_id: str,
+        *,
+        id_starts_with: str,
+        meta_key: str | None = None,
+        meta_val: Any = None,
+        supplemental: bool = False,
+    ) -> None:
+        if not stable_id:
+            return
+        real_ids.add(stable_id)
+        if supplemental and stable_id in canonical_ids:
+            return
+        segment = _find_seg(
+            segments,
+            id_starts_with=id_starts_with,
+            meta_key=meta_key,
+            meta_val=meta_val,
+        )
+        if segment is None:
+            # Preserve last-writer semantics even when the winning entity has
+            # no rendered segment (notably a removed Influence record).
+            by_id.pop(stable_id, None)
+        else:
+            by_id[stable_id] = segment
 
-    for env in ann.environments:
-        s = _next_parent_for("environment")
-        if s is not None and env.id:
-            by_id.setdefault(env.id, s)
-    for obj in ann.traffic_objects:
-        s = _next_parent_for("traffic_object")
-        if s is not None and obj.id:
-            by_id.setdefault(obj.id, s)
-    for light in ann.traffic_lights:
-        s = _next_parent_for("traffic_light")
-        if s is not None and light.id:
-            by_id.setdefault(light.id, s)
-    for agent in ann.agents:
-        s = _next_parent_for("agent")
-        if s is not None and agent.id:
-            by_id.setdefault(agent.id, s)
+    # IdIndex installs the synthetic Ego anchor before all real IDs. A real
+    # entity using the reserved "Ego" ID therefore follows its documented
+    # last-writer behavior even though such an annotation is ambiguous.
+    ego_parent = _find_seg(segments, id_starts_with="ego_parent_")
+    if ego_parent is not None:
+        by_id["Ego"] = ego_parent
+
+    for env_index, env in enumerate(ann.environments):
+        _add(env.id, id_starts_with=f"env_{env_index}_")
+    for condition_index, condition in enumerate(ann.conditions):
+        _add(condition.id, id_starts_with=f"cond_{condition_index}_")
+
+    for object_index, obj in enumerate(ann.traffic_objects):
+        _add(obj.id, id_starts_with=f"obj_{object_index}_")
+        for containment_index, containment in enumerate(obj.containment):
+            _add(
+                containment.id,
+                id_starts_with=(
+                    f"obj_cont_{object_index}_{containment_index}_"
+                ),
+            )
+        for state_index, state in enumerate(obj.state_sequence):
+            _add(
+                state.id,
+                id_starts_with=f"obj_state_{object_index}_{state_index}_",
+            )
+
+    for light_index, light in enumerate(ann.traffic_lights):
+        _add(light.id, id_starts_with=f"light_{light_index}_")
+        for containment_index, containment in enumerate(light.containment):
+            _add(
+                containment.id,
+                id_starts_with=(
+                    f"light_phys_cont_{light_index}_{containment_index}_"
+                ),
+                supplemental=True,
+            )
+        for head_index, head in enumerate(light.signal_heads):
+            _add(
+                head.id,
+                id_starts_with=f"light_sh_{light_index}_{head_index}_",
+            )
+            for state_index, state in enumerate(head.state_sequence):
+                _add(
+                    state.id,
+                    id_starts_with=(
+                        f"light_state_{light_index}_{head_index}_{state_index}_"
+                    ),
+                )
+            for containment_index, containment in enumerate(
+                head.env_controlled
+            ):
+                _add(
+                    containment.id,
+                    id_starts_with=(
+                        f"light_cont_{light_index}_{head_index}_"
+                        f"{containment_index}_"
+                    ),
+                    supplemental=True,
+                )
+
+    for action_index, action in enumerate(ann.ego_vehicle.actions):
+        _add(
+            action.id,
+            id_starts_with="ego_act_",
+            meta_key="_egoActIndex",
+            meta_val=action_index,
+        )
+    for property_index, prop in enumerate(ann.ego_vehicle.properties):
+        _add(prop.id, id_starts_with=f"ego_prop_{property_index}_")
+    for containment_index, containment in enumerate(
+        ann.ego_vehicle.containment
+    ):
+        _add(
+            containment.id,
+            id_starts_with=f"ego_cont_{containment_index}_",
+        )
+    for influence_index, influence in enumerate(ann.ego_vehicle.influenced_by):
+        _add(
+            influence.id,
+            id_starts_with=f"ego_infl_{influence_index}_",
+        )
+
+    for agent_index, agent in enumerate(ann.agents):
+        _add(agent.id, id_starts_with=f"agent_{agent_index}_")
+        for action_index, action in enumerate(agent.actions):
+            _add(
+                action.id,
+                id_starts_with=(
+                    f"agent_action_{agent_index}_{action_index}_"
+                ),
+            )
+        for property_index, prop in enumerate(agent.properties):
+            _add(
+                prop.id,
+                id_starts_with=f"agent_prop_{agent_index}_{property_index}_",
+            )
+        for containment_index, containment in enumerate(agent.containment):
+            _add(
+                containment.id,
+                id_starts_with=(
+                    f"agent_cont_{agent_index}_{containment_index}_"
+                ),
+            )
+        for influence_index, influence in enumerate(agent.influenced_by):
+            _add(
+                influence.id,
+                id_starts_with=(
+                    f"agent_infl_{agent_index}_{influence_index}_"
+                ),
+            )
+
+    # Older fixtures/exporters used lowercase "ego" for the synthetic anchor.
+    # Keep that alias only when no real stable ID claimed it.
+    if ego_parent is not None and "ego" not in real_ids:
+        by_id.setdefault("ego", ego_parent)
     return by_id
 
 
@@ -1020,9 +1139,9 @@ def _paint_timeline_onto(
         highlight: optional `(t0, t1)` in seconds — translucent yellow
             band drawn behind the rows.
         arrows: optional family-on/off toggle. Recognized keys are
-            `"because_of"`, `"link_to"`, `"containment"`, `"influence"`,
-            `"action_target"`. Missing keys default to `True`. Unknown
-            keys are ignored.
+            `"because_of"`, `"link_to"`, `"containment"`, and
+            `"action_target"`. Missing keys default to `True`. Unknown keys
+            are ignored.
         entity_kinds: optional whitelist of segment kinds to draw.
             Recognized values are `"env"`, `"light"`, `"object"`,
             `"agent"`, `"ego"`. `None` = all kinds.
@@ -1041,7 +1160,8 @@ def _paint_timeline_onto(
             recognized values are the per-category family leaves —
             `"condition"`, `"containment"`, `"physical_containment"`,
             `"signal_head"`, `"env_control"`, `"state"`, `"pose"`,
-            `"influence"`, `"action"`, `"property"`. Parent rows
+            `"action"`, `"property"`. The removed `"influence"` leaf is
+            accepted as a compatibility no-op. Parent rows
             (the entity-track headers like "Env Track 1" / "Agent
             Track 2") are NOT named in this whitelist — they auto-
             render for any entity that has at least one surviving
@@ -1149,10 +1269,30 @@ def _paint_timeline_onto(
 
     shapes: list[dict[str, Any]] = []
 
-    # Flatten the bundle into segments via PR-1's port. Empty bundles
-    # produce an empty list — we'll still emit shapes-free axis layout,
-    # which is what the spec asks for.
-    segments = annotation_to_segments(bundle)
+    # Flatten the bundle via the public semantic segment adapter, then apply
+    # the DevKit renderer's presentation policy. ``Influence`` remains in the
+    # schema, query API, and ``annotation_to_segments`` output, but it no
+    # longer consumes timeline rows or produces arrows. Empty bundles still
+    # emit a shapes-free axis layout.
+    segments = [
+        segment
+        for segment in annotation_to_segments(bundle)
+        if segment.family != "influence"
+    ]
+    # ``annotation_to_segments`` creates the synthetic Ego parent whenever
+    # Ego has any child, including Influence. If Influence was the only child,
+    # the renderer-side removal above would otherwise leave a blank Ego row.
+    if not any(
+        segment.track_id == "ego_act" and segment.family != "parent"
+        for segment in segments
+    ):
+        segments = [
+            segment
+            for segment in segments
+            if not (
+                segment.track_id == "ego_act" and segment.family == "parent"
+            )
+        ]
 
     # ---------------------------------------------------------------
     # Segment-level filter. Used both for the rectangle/label loop
@@ -1543,7 +1683,7 @@ def _paint_timeline_onto(
                     "color": _ARROW_COLORS[family],
                     # Tailwind slate-900 outline — pops off any
                     # same-hue target row (containment-green over
-                    # Env, influence-purple over Agents, etc.) on
+                    # Env, action-target orange over Agents, etc.) on
                     # the `plotly_white` background. Family color
                     # stays as the fill so the head is still
                     # identifiable by hue.
@@ -1661,20 +1801,7 @@ def _paint_timeline_onto(
                     )
                     _add_arrow(src, by_id.get(cont.env_id), "containment")
 
-    # 3d. influence — the annotator draws an arrow from an influence
-    #     subtrack to each of its influencers.
-    if enabled_arrows["influence"]:
-        for ii, infl in enumerate(ann.ego_vehicle.influenced_by):
-            src = _find_seg(segments, id_starts_with=f"ego_infl_{ii}_")
-            for influencer_id in infl.influencers:
-                _add_arrow(src, by_id.get(influencer_id), "influence")
-        for ai, agent in enumerate(ann.agents):
-            for ii, infl in enumerate(agent.influenced_by):
-                src = _find_seg(segments, id_starts_with=f"agent_infl_{ai}_{ii}_")
-                for influencer_id in infl.influencers:
-                    _add_arrow(src, by_id.get(influencer_id), "influence")
-
-    # 3e. action_target — actions only (not properties).
+    # 3d. action_target — actions only (not properties).
     if enabled_arrows["action_target"]:
         for i, act in enumerate(ann.ego_vehicle.actions):
             src = _find_seg(
@@ -1852,9 +1979,9 @@ def render_timeline(
         highlight: optional `(t0, t1)` in seconds. When set, a single
             translucent yellow vrect is drawn behind the rows.
         arrows: optional family-on/off toggle. Recognized keys are
-            `"because_of"`, `"link_to"`, `"containment"`, `"influence"`,
-            `"action_target"`. Missing keys default to `True`. Unknown
-            keys are ignored.
+            `"because_of"`, `"link_to"`, `"containment"`, and
+            `"action_target"`. Missing keys default to `True`. Unknown keys
+            are ignored.
         entity_kinds: optional kind whitelist (`"env"`, `"light"`,
             `"object"`, `"agent"`, `"ego"`). `None` = all kinds.
         agent_ids: optional `Agent.id` whitelist. Restricts only the
@@ -1867,7 +1994,8 @@ def render_timeline(
         families: optional whitelist of family leaves to render
             (`"condition"`, `"containment"`, `"physical_containment"`,
             `"signal_head"`, `"env_control"`, `"state"`, `"pose"`,
-            `"influence"`, `"action"`, `"property"`). Parent entity
+            `"action"`, `"property"`). The removed `"influence"` leaf is
+            accepted as a compatibility no-op. Parent entity
             headers auto-render for any entity whose sub-rows survive
             — entities with zero surviving sub-rows drop completely.
             `None` = all families. Unrecognized leaves (e.g. the
