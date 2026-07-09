@@ -194,6 +194,29 @@ Record significant choices here as short ADR-style entries. Newest first.
 When adding a new entry, copy the [ADR template](#adr-template) at the
 bottom of this file.
 
+### 2026-07-09 — Paper figures preserve complete box labels
+
+- **Context:** The shared timeline painter optimizes interactive views by
+  shortening labels to eight characters and omitting them on boxes narrower
+  than 6% of clip duration. Full text remains available on hover, but
+  publication exports have no hover fallback, so entity/action names appeared
+  ellipsized or disappeared entirely.
+- **Decision:** Add a private full-label policy to the shared painter and use
+  it only from `render_paper_figure()`. With inline labels enabled, every
+  visible paper box emits its complete text regardless of duration. Labels on
+  the left/right half anchor toward the plot interior so time-axis edge boxes
+  do not direct text outside the canvas. Keep the compact policy unchanged for
+  `render_timeline`, `ClipPlayer`, and carousels.
+- **Alternatives considered:** Changing the shared default was rejected
+  because dense interactive timelines rely on compact labels and hover text.
+  Fixed-width annotation boxes were rejected because Plotly clips their text.
+  Distorting temporal box widths to make text fit was rejected because it
+  would misrepresent annotation timing.
+- **Consequences:** Paper-mode HTML and static exports retain every box name,
+  including narrow intervals. Long labels may extend across neighboring boxes;
+  callers can filter tracks/families, increase figure width, or set
+  `show_inline_labels=False` for dense compositions.
+
 ### 2026-07-08 — DevKit timelines omit Influence rows and draw action causes
 
 - **Context:** `Influence` records were rendered as both dedicated family rows

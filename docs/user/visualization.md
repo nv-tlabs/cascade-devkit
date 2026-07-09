@@ -129,6 +129,13 @@ edge, keeping saved HTML and executed notebooks compact without changing
 the source video. The timeline filters described below, plus `highlight`,
 `height`, `width`, and `show_inline_labels`, are available in paper mode.
 
+Paper figures preserve the complete name on every visible timeline box:
+labels are never shortened with an ellipsis or omitted just because a box is
+narrow. Boxes at either end of the time axis anchor their labels toward the
+plot interior. Very dense figures can therefore have overlapping text; use
+the visibility/family filters, a wider `width`, or
+`show_inline_labels=False` when a label-free composition is preferable.
+
 ## Track order
 
 All timeline-backed entry points use this canonical top-to-bottom order:
@@ -309,7 +316,7 @@ These shape the figure without dropping content.
 | Kwarg | Type | Default | What it does |
 |---|---|---|---|
 | `highlight` | `tuple[float, float]` | `None` | Paint a translucent yellow band across `(t0, t1)` — used to mark a match interval or window of interest. |
-| `show_inline_labels` | `bool` | `True` | When `False`, suppress the in-bar text labels. Hover tooltips still fire. Useful for screenshots / dense clips. |
+| `show_inline_labels` | `bool` | `True` | When `False`, suppress the in-bar text labels. Paper mode otherwise preserves every complete box label; other timeline views use compact labels plus full hover text. |
 | `height` | `int` | `None` (adaptive) | Pin the total figure height in pixels. Default scales with the deepest sub-lane stack. |
 
 ### Carousel-only: `unique_clips` — one player per clip vs one per match

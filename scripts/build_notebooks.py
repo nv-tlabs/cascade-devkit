@@ -1307,6 +1307,10 @@ def build_visualize() -> None:
         Their child rows and any causal arrows connected to them
         disappear too. The direct equivalent is
         `viz.render_paper_figure(seq, ...)`.
+
+        Unlike compact interactive timelines, paper figures keep the
+        complete name on every visible box, including narrow boxes; no
+        label is ellipsized or relegated to a hover-only tooltip.
         """),
         code("""
         # Use the match start, midpoint, and end, snapped to actual video

@@ -50,7 +50,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from cascade_av.viz.colors import entity_color, family_color
 from cascade_av.viz.segments import Segment, annotation_to_segments, assign_lanes
@@ -85,6 +85,7 @@ _CATEGORIES: tuple[str, ...] = (
 # entities by their stable ``id``. Omitted kinds and IDs remain visible.
 # Ego is a singleton addressed by the synthetic ID ``"ego"``.
 TrackVisibility = Mapping[str, bool | Mapping[str, bool]]
+_InlineLabelMode = Literal["compact", "full"]
 _TRACK_KINDS: frozenset[str] = frozenset(
     {"ego", "agent", "light", "object", "env"}
 )
@@ -1116,6 +1117,7 @@ def _paint_timeline_onto(
     families: list[str] | None = None,
     track_visibility: TrackVisibility | None = None,
     show_inline_labels: bool = True,
+    inline_label_mode: _InlineLabelMode = "compact",
 ) -> PaintResult:
     """Append timeline shapes for `seq` onto `fig`, on the given axes.
 
@@ -1184,6 +1186,12 @@ def _paint_timeline_onto(
             (the historical behaviour). Callers wanting a maximally
             compact timeline (very short clips, dashboard cards)
             pass `False` so the rectangles stay clean.
+        inline_label_mode: private renderer policy. ``"compact"`` keeps the
+            interactive timeline's width threshold and eight-character
+            ellipsis. ``"full"`` emits the complete label for every visible
+            segment and anchors edge labels toward the plot interior. The
+            latter is used by publication figures, where hover-only text is
+            not an acceptable fallback.
 
     Returns:
         A `PaintResult` describing the painted band stack — band keys
@@ -1206,6 +1214,7 @@ def _paint_timeline_onto(
     import plotly.graph_objects as go
     bundle = seq.annotation
     duration = float(seq.duration_s) if seq.duration_s else 0.0
+    axis_end = duration if duration > 0 else 1.0
 
     # Resolve the arrow-family toggles up front.
     enabled_arrows = dict(_DEFAULT_ARROWS)
@@ -1545,32 +1554,57 @@ def _paint_timeline_onto(
             }
         )
 
-        # Inline label — centered on the rectangle. Suppressed for
-        # very narrow segments where the truncated text would clip.
-        # The threshold is proportional to the clip duration so the
-        # same segment scales sensibly across clip lengths (see
-        # `_INLINE_LABEL_MIN_WIDTH_FRAC`). When duration is unknown
-        # (sentinel 0.0), keep every label — the painter falls back
-        # to the absolute-zero floor so empty/zero-duration bundles
-        # still render their labels for inspection.
+        # Inline label. Compact interactive timelines suppress narrow boxes
+        # and truncate text; publication figures keep every complete label
+        # because static exports have no hover fallback. Full labels use an
+        # inward-facing anchor so boxes at either time-axis edge do not send
+        # their text outside the figure canvas.
         seg_width = max(seg.t1 - seg.t0, 0.0)
         min_inline_width = (
             _INLINE_LABEL_MIN_WIDTH_FRAC * duration if duration > 0 else 0.0
         )
-        if (
-            show_inline_labels
-            and seg_width >= min_inline_width
-        ):
+        segment_t0 = min(seg.t0, seg.t1)
+        segment_t1 = max(seg.t0, seg.t1)
+        segment_intersects_axis = segment_t1 >= 0.0 and segment_t0 <= axis_end
+        label_width_allowed = (
+            inline_label_mode == "full" or seg_width >= min_inline_width
+        )
+        label_axis_allowed = (
+            inline_label_mode != "full" or segment_intersects_axis
+        )
+        if show_inline_labels and label_width_allowed and label_axis_allowed:
+            label_x = (seg.t0 + seg.t1) / 2.0
+            label_text = _truncate_label(seg.label)
+            full_label_layout: dict[str, Any] = {}
+            if inline_label_mode == "full":
+                label_text = seg.label
+                visible_t0 = min(max(segment_t0, 0.0), axis_end)
+                visible_t1 = min(max(segment_t1, 0.0), axis_end)
+                if (visible_t0 + visible_t1) / 2.0 <= axis_end / 2.0:
+                    label_x = visible_t0
+                    full_label_layout = {
+                        "xanchor": "left",
+                        "xshift": 2,
+                        "align": "left",
+                    }
+                else:
+                    label_x = visible_t1
+                    full_label_layout = {
+                        "xanchor": "right",
+                        "xshift": -2,
+                        "align": "right",
+                    }
             annotations.append(
                 {
-                    "x": (seg.t0 + seg.t1) / 2.0,
+                    "x": label_x,
                     "y": (y0 + y1) / 2.0,
                     "xref": xref,
                     "yref": yref,
-                    "text": _truncate_label(seg.label),
+                    "text": label_text,
                     "showarrow": False,
                     "font": {"size": _INLINE_LABEL_FONT_SIZE, "color": "#0f172a"},
                     "name": f"label:{seg.id}",
+                    **full_label_layout,
                 }
             )
 
@@ -1874,7 +1908,7 @@ def _paint_timeline_onto(
         **{
             xaxis_key: {
                 "title": "Time (s)",
-                "range": [0, duration if duration > 0 else 1.0],
+                "range": [0, axis_end],
                 "showgrid": False,
                 "zeroline": False,
             },
