@@ -1214,6 +1214,7 @@ def _paint_timeline_onto(
     import plotly.graph_objects as go
     bundle = seq.annotation
     duration = float(seq.duration_s) if seq.duration_s else 0.0
+    axis_end = duration if duration > 0 else 1.0
 
     # Resolve the arrow-family toggles up front.
     enabled_arrows = dict(_DEFAULT_ARROWS)
@@ -1562,31 +1563,37 @@ def _paint_timeline_onto(
         min_inline_width = (
             _INLINE_LABEL_MIN_WIDTH_FRAC * duration if duration > 0 else 0.0
         )
-        if show_inline_labels and (
+        segment_t0 = min(seg.t0, seg.t1)
+        segment_t1 = max(seg.t0, seg.t1)
+        segment_intersects_axis = segment_t1 >= 0.0 and segment_t0 <= axis_end
+        label_width_allowed = (
             inline_label_mode == "full" or seg_width >= min_inline_width
-        ):
+        )
+        label_axis_allowed = (
+            inline_label_mode != "full" or segment_intersects_axis
+        )
+        if show_inline_labels and label_width_allowed and label_axis_allowed:
             label_x = (seg.t0 + seg.t1) / 2.0
             label_text = _truncate_label(seg.label)
             full_label_layout: dict[str, Any] = {}
             if inline_label_mode == "full":
                 label_text = seg.label
-                if duration > 0:
-                    visible_t0 = min(max(min(seg.t0, seg.t1), 0.0), duration)
-                    visible_t1 = min(max(max(seg.t0, seg.t1), 0.0), duration)
-                    if (visible_t0 + visible_t1) / 2.0 <= duration / 2.0:
-                        label_x = visible_t0
-                        full_label_layout = {
-                            "xanchor": "left",
-                            "xshift": 2,
-                            "align": "left",
-                        }
-                    else:
-                        label_x = visible_t1
-                        full_label_layout = {
-                            "xanchor": "right",
-                            "xshift": -2,
-                            "align": "right",
-                        }
+                visible_t0 = min(max(segment_t0, 0.0), axis_end)
+                visible_t1 = min(max(segment_t1, 0.0), axis_end)
+                if (visible_t0 + visible_t1) / 2.0 <= axis_end / 2.0:
+                    label_x = visible_t0
+                    full_label_layout = {
+                        "xanchor": "left",
+                        "xshift": 2,
+                        "align": "left",
+                    }
+                else:
+                    label_x = visible_t1
+                    full_label_layout = {
+                        "xanchor": "right",
+                        "xshift": -2,
+                        "align": "right",
+                    }
             annotations.append(
                 {
                     "x": label_x,
@@ -1901,7 +1908,7 @@ def _paint_timeline_onto(
         **{
             xaxis_key: {
                 "title": "Time (s)",
-                "range": [0, duration if duration > 0 else 1.0],
+                "range": [0, axis_end],
                 "showgrid": False,
                 "zeroline": False,
             },

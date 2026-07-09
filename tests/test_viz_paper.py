@@ -267,6 +267,73 @@ def test_show_inline_labels_false_still_suppresses_paper_box_names() -> None:
     )
 
 
+def test_paper_does_not_pull_off_axis_box_labels_onto_the_canvas() -> None:
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="off-axis-labels", duration_s=10.0),
+        annotation=SilAvAnnotation(
+            agents=[
+                Agent(
+                    id="agent_0",
+                    type="oxd:CarBeyondClip",
+                    visibility_start_timestamp="0:11.0",
+                    visibility_end_timestamp="0:12.0",
+                    actions=[
+                        AgentAction(
+                            id="off_axis_action",
+                            action_type="WaitBeyondClip",
+                            start_timestamp="0:11.2",
+                            end_timestamp="0:11.8",
+                        )
+                    ],
+                )
+            ]
+        ),
+    )
+
+    fig = render_paper_figure(Sequence.from_annotation(bundle), timestamps=())
+
+    assert len(
+        [
+            shape
+            for shape in fig.layout.shapes
+            if str(shape.name or "").startswith("segment:")
+        ]
+    ) == 2
+    assert not any(
+        str(annotation.name or "").startswith("label:")
+        for annotation in fig.layout.annotations
+    )
+
+
+def test_paper_full_labels_use_fallback_axis_for_unknown_duration() -> None:
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="unknown-duration-labels", duration_s=0.0),
+        annotation=SilAvAnnotation(
+            agents=[
+                Agent(
+                    id="agent_0",
+                    type="oxd:UnknownDurationVehicle",
+                    visibility_start_timestamp="0:0.0",
+                    visibility_end_timestamp="0:0.2",
+                )
+            ]
+        ),
+    )
+
+    fig = render_paper_figure(Sequence.from_annotation(bundle), timestamps=())
+    labels = [
+        annotation
+        for annotation in fig.layout.annotations
+        if str(annotation.name or "").startswith("label:")
+    ]
+
+    assert tuple(fig.layout.xaxis.range) == (0, 1.0)
+    assert len(labels) == 1
+    assert labels[0].text == "oxd:UnknownDurationVehicle [Agent]"
+    assert labels[0].xanchor == "left"
+    assert int(labels[0].xshift) > 0
+
+
 @pytest.mark.parametrize(
     "timestamps",
     [
