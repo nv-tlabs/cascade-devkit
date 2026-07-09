@@ -26,6 +26,7 @@ from cascade_av.query.dsl import (
     And,
     AttrPredicate,
     AttrRef,
+    Before,
     BecauseOf,
     EntityClause,
     EntityRef,
@@ -36,6 +37,7 @@ from cascade_av.query.dsl import (
     QueryParseError,
     Then,
     While,
+    WhileStrict,
     Within,
     parse,
 )
@@ -51,7 +53,7 @@ from cascade_av.query.context import (
     LightStateInWindow,
     context_at,
 )
-from cascade_av.query.engine import Match, MatchSet, evaluate
+from cascade_av.query.engine import IDLESS_RECORD_ID, Match, MatchSet, evaluate
 from cascade_av.query.index import IdIndex, Subject
 from cascade_av.query.spatial import (
     agent_visibility_interval,
@@ -102,6 +104,7 @@ __all__ = [
     "group_by_on_dataset",
     "Match",
     "MatchSet",
+    "IDLESS_RECORD_ID",
     "QueryParseError",
     "AttrPredicate",
     "AttrRef",
@@ -111,7 +114,9 @@ __all__ = [
     "Or",
     "Not",
     "While",
+    "WhileStrict",
     "Then",
+    "Before",
     "BecauseOf",
     "InfluencedBy",
     "Within",

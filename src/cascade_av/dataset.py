@@ -270,25 +270,33 @@ class CascadeDataset(PhysicalAIAVDatasetInterface):
 
     # -- DSL search / aggregations -------------------------------------------
 
-    def find(self, dsl: str) -> MatchSet:
+    def find(self, dsl: str, *, strict_identity: bool = False) -> MatchSet:
         """Run a DSL query over every clip in the dataset.
 
         Returns a single MatchSet whose entries reference entities
-        across the corpus. See `docs/user/query_language.md`.
+        across the corpus. Set ``strict_identity=True`` to exclude records
+        with blank IDs. See `docs/user/query_language.md`.
         """
-        return find_on_dataset(self, dsl)
+        return find_on_dataset(self, dsl, strict_identity=strict_identity)
 
-    def count(self, dsl: str) -> int:
-        """Number of clips with ≥1 match for `dsl`."""
-        return count_on_dataset(self, dsl)
+    def count(self, dsl: str, *, strict_identity: bool = False) -> int:
+        """Number of clips with ≥1 match for `dsl`.
 
-    def group_by(self, dsl: str, key: str) -> dict[object, int]:
+        Set ``strict_identity=True`` to ignore match candidates with blank IDs.
+        """
+        return count_on_dataset(self, dsl, strict_identity=strict_identity)
+
+    def group_by(
+        self, dsl: str, key: str, *, strict_identity: bool = False
+    ) -> dict[object, int]:
         """Run `dsl`, bucket matches by `key` (dotted path), return `{value: n_clips}`."""
-        return group_by_on_dataset(self, dsl, key)
+        return group_by_on_dataset(self, dsl, key, strict_identity=strict_identity)
 
-    def histogram(self, dsl: str, key: str) -> dict[object, int]:
+    def histogram(
+        self, dsl: str, key: str, *, strict_identity: bool = False
+    ) -> dict[object, int]:
         """Alias of `group_by` (kept for API symmetry per spec §4.3)."""
-        return group_by_on_dataset(self, dsl, key)
+        return group_by_on_dataset(self, dsl, key, strict_identity=strict_identity)
 
     DEFAULT_DOWNLOAD_FEATURES: ClassVar[tuple[str, ...]] = (
         "egomotion",
@@ -547,16 +555,22 @@ class Sequence:
             self._triplets = extract_causal_triplets(self.annotation)
         return self._triplets
 
-    def find(self, dsl: str) -> MatchSet:
+    def find(self, dsl: str, *, strict_identity: bool = False) -> MatchSet:
         """Run a DSL query against this clip's annotation bundle.
 
         If this Sequence was constructed via `CascadeDataset.get_sequence`,
         the returned MatchSet carries a weakref to the parent dataset so
         follow-up operations like `matches.visualize()` can find it.
         Standalone Sequences (constructed via `from_annotation`) return a
-        MatchSet whose `.dataset` is None.
+        MatchSet whose `.dataset` is None. Set ``strict_identity=True`` to
+        exclude records with blank IDs.
         """
-        return find_on_bundle(self.annotation, dsl, dataset=self._parent)
+        return find_on_bundle(
+            self.annotation,
+            dsl,
+            dataset=self._parent,
+            strict_identity=strict_identity,
+        )
 
     def state_at(
         self, t: float, t_end: float | None = None

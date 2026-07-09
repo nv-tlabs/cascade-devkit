@@ -33,6 +33,12 @@ ego.action = decel because_of agent.type = ped
 # yellow light precedes ego stopping (within 3s)
 light.color = yellow then(3) ego.action = stop
 
+# yellow light ends, then ego stops within 3s (no overlap or endpoint touch)
+light.color = yellow before(3) ego.action = stop
+
+# pedestrian visibility and ego deceleration overlap for positive duration
+agent.type = ped while_strict ego.action = decel
+
 # during a red light, ego never stops
 within light.color = red: not ego.action = stop
 
@@ -112,8 +118,14 @@ same.
 
 **Reserved words** (never usable as identifiers):
 ```
-and  or  not  in  while  then  because_of  influenced_by  within  true  false
+and  or  not  in  while  while_strict  then  before  because_of
+influenced_by  within  true  false
 ```
+
+For backward compatibility with queries written before the strict
+operators existed, `before` and `while_strict` are still accepted as
+literal atoms in a predicate's value position. Quoting such literal
+values is recommended (`clip.brief_description = "before"`).
 
 **Comments** start with `#` and run to end of line. Allowed anywhere
 whitespace is allowed.
@@ -137,7 +149,9 @@ and_expr        := temporal_expr ( 'and' temporal_expr )*
 temporal_expr   := unary_expr ( temporal_op unary_expr )*
 
 temporal_op     := 'while'
+                 | 'while_strict'
                  | 'then' ( '(' NUMBER 's'? ')' )?
+                 | 'before' ( '(' NUMBER 's'? ')' )?
                  | 'because_of'
                  | 'influenced_by'
 
@@ -173,6 +187,10 @@ LHS — see §4.2 for the disambiguation rules (a bare ident on the RHS is
 parsed as an `attr_ref` only when it names a known scalar attribute on
 the LHS entity; otherwise it falls through to a literal value atom).
 
+For `before`, a parenthesized number immediately after the operator is
+the optional gap bound. A parenthesized expression is instead the right
+operand, so both `A before(5) B` and `A before (B)` are unambiguous.
+
 ### Precedence (lowest to highest)
 
 | Level | Construct |
@@ -180,12 +198,13 @@ the LHS entity; otherwise it falls through to a literal value atom).
 | 1 | `within W: E` |
 | 2 | `or` |
 | 3 | `and` |
-| 4 | `while`, `then(K)`, `because_of`, `influenced_by` |
+| 4 | `while`, `while_strict`, `then(K)`, `before(K)`, `because_of`, `influenced_by` |
 | 5 | `not` |
 | 6 | entity clause, entity ref, attribute predicate, parentheses |
 
-`while`, `then`, `because_of`, `influenced_by` are **left-associative**
-(same level — chainable left-to-right).
+`while`, `while_strict`, `then`, `before`, `because_of`, and
+`influenced_by` are **left-associative** (same level — chainable
+left-to-right).
 
 ---
 
@@ -202,7 +221,23 @@ Every expression evaluates to a `MatchSet`: a set of
 - `interval` is the entity's parseable lifetime. When the entity has no
   meaningful interval (e.g. `clip` itself, or an `Agent` missing
   visibility timestamps), the interval is **the whole clip** — so
-  interval algebra (`while`, `then`) stays total.
+  interval algebra (`while`, `while_strict`, `then`, `before`) stays
+  total.
+
+Each public `Match` also exposes `record_ids`, a tuple containing the
+IDs of the records represented by `entity_ref`. Temporal tuple entities
+are flattened left-to-right. `IDLESS_RECORD_ID` (the value `None`) is an
+explicit marker for a record whose schema `id` is blank or missing;
+clip matches use `clip_id`, and the ego vehicle uses its conventional
+synthetic ID `"Ego"`.
+
+By default, id-less records continue to match exactly as before. Pass
+`strict_identity=True` to `evaluate`, the `find_on_*` / aggregation
+helpers, `CascadeDataset.find` / `count` / `group_by` / `histogram`, or
+`Sequence.find` to exclude match candidates that declare an `id` field
+but have no value. Intrinsically identified roots without a schema
+`id` field, namely the clip and ego vehicle, remain eligible. The option
+is evaluator-scoped and defaults to `False` for backward compatibility.
 
 ### 4.2 Attribute predicates
 
@@ -504,15 +539,54 @@ are equivalent; the comma form matches the worked examples in §1.
 
 ### 4.5 Temporal operators
 
-- `A while B` — pairs `(mA, mB)` with `mA.interval ∩ mB.interval ≠ ∅`.
-  Each yields a match tuple `(clip_id, [mA.entity, mB.entity], iA ∩ iB)`.
-- `A then(K) B` — pairs where `mB.interval.start ≥ mA.interval.start`
-  AND
-  (`mA.interval.overlaps(mB.interval)` OR
-   `0 ≤ mB.interval.start - mA.interval.end ≤ K`).
-  Default `K = 0` (must touch or overlap).
-- **Chainable**: `A then(2) B then(3) C` parses left-to-right as
-  `(A then(2) B) then(3) C`.
+Intervals are closed ranges. Consequently, `[0, 5]` and `[5, 9]`
+intersect at the zero-duration interval `[5, 5]`. The legacy operators
+retain that endpoint-touch behavior; the strict variants exclude it.
+
+- `A while B` — pairs `(mA, mB)` whenever
+  `mA.interval ∩ mB.interval ≠ ∅`. Endpoint-only touch counts as an
+  intersection. Each pair yields
+  `(clip_id, (mA.entity, mB.entity), mA.interval ∩ mB.interval)`.
+- `A while_strict B` — applies the same intersection, but emits the pair
+  only when the intersection has positive duration:
+  `intersection.end - intersection.start > 0`. Overlap matches;
+  endpoint-only touch does not.
+- `A then(K) B` — the existing permissive sequence operator. It pairs
+  matches where `mB.interval.start ≥ mA.interval.start` and either the
+  intervals overlap or
+  `0 ≤ mB.interval.start - mA.interval.end ≤ K`. Bare `then` uses
+  `K = 0`, so it accepts overlap and endpoint touch but no positive gap.
+- `A before(K) B` — strict ordering with an optional maximum gap. Both
+  intervals must exist and
+  `gap = mB.interval.start - mA.interval.end` must be strictly positive.
+  With `K`, the pair must also satisfy `gap ≤ K`; bare `before` has no
+  upper bound. Both `before(5)` and `before(5s)` mean five seconds.
+  Each pair yields a match whose interval spans
+  `[mA.interval.start, mB.interval.end]`. In particular, `before(0)`
+  never matches.
+
+The strict-overlap boundary cases are:
+
+| A interval | B interval | `while` | `while_strict` |
+|---|---|---:|---:|
+| `[0, 5]` | `[3, 9]` | match (`[3, 5]`) | match (`[3, 5]`) |
+| `[0, 5]` | `[5, 9]` | match (`[5, 5]`) | no |
+| `[0, 5]` | `[6, 9]` | no | no |
+
+The distinction between permissive `then` and strict `before` is:
+
+| A interval | B interval | `then(3)` | `before(3)` | `before` |
+|---|---|---:|---:|---:|
+| `[0, 5]` | `[3, 9]` | match (overlap) | no | no |
+| `[0, 5]` | `[5, 9]` | match (touch) | no | no |
+| `[0, 5]` | `[6, 9]` | match | match | match |
+| `[0, 5]` | `[9, 12]` | no (gap 4) | no | match |
+| `[3, 9]` | `[0, 5]` | no (B starts first) | no | no |
+
+All temporal operators are chainable at the same precedence level and
+parse left-to-right. For example, `A before(2) B while_strict C` parses
+as `(A before(2) B) while_strict C`; parentheses can override that
+grouping.
 
 ### 4.6 Relational operator — `because_of`
 
@@ -723,8 +797,8 @@ Property-type aliases live in the `agent_property_type` /
 `erratic`, `emergency`, `on_duty`, `double_parked`, `outside_camera`,
 `stopped` (→ `"Stopped"`, on both `agent` and `ego`), `other`.
 Properties carry their own start/end timestamps, so
-`while` / `then` / `because_of` over `agent.prop` works the same as
-over actions.
+`while` / `while_strict` / `then` / `before` / `because_of` over
+`agent.prop` works the same as over actions.
 
 ### 4.12 Booleans must be explicit
 
@@ -779,7 +853,7 @@ four within the first half-hour of using the DevKit.
 
 | Type | Where it lives | What it is |
 |---|---|---|
-| `Match` | `cascade_av.query` | One hit: `(clip_id, entity, interval)`. `interval` is the entity's lifetime clipped to the operator's window. |
+| `Match` | `cascade_av.query` | One hit: `(clip_id, entity, interval)`. `interval` is the entity's lifetime clipped to the operator's window; `record_ids` projects the represented record identities. |
 | `MatchSet` | `cascade_av.query` | The full result of `ds.find(...)`. A tuple of `Match`es plus a weakref back to the producing dataset. |
 | `Sequence` | `cascade_av.dataset` | The per-clip handle returned by `ds.get_sequence(clip_id)`: parsed annotation + camera / sensor accessors + `.visualize()`. |
 | `ContextWindow` | `cascade_av.query.context` | A snapshot of every entity in a clip whose annotated time range overlaps a given interval — agents, ego actions, environments, conditions, light states, traffic objects. Built by `ds.context_for(match)`. |
@@ -794,6 +868,7 @@ list(matches.clips())     # unique clip_ids (preserves first-seen order)
 matches.matches           # the underlying tuple[Match, ...]
 matches.matches[0].entity # the schema object that matched (Agent, EgoAction, …)
 matches.matches[0].interval  # cascade_av.query.time.Interval (start, end in seconds)
+matches.matches[0].record_ids  # tuple[str | None, ...]; None marks an id-less record
 matches.intervals()       # list[Interval] for every Match with an interval
 matches.entities()        # list of every entity object
 matches.sequences()       # iterator of (Match, Sequence) pairs — resolves clips
@@ -801,6 +876,16 @@ matches.sequences()       # iterator of (Match, Sequence) pairs — resolves cli
 matches.visualize()       # carousel of mini-players (one per match)
 bool(matches)             # True iff there is at least one match
 ```
+
+For an identity-verifiable result set, opt in at the query entry point:
+
+```python
+matches = ds.find("agent.action.type = walk", strict_identity=True)
+```
+
+The default remains permissive. This opt-in only changes candidate
+eligibility; it does not change the semantics of any temporal,
+relational, or boolean operator.
 
 `matches.sequences()` and `matches.visualize()` require the
 `MatchSet` to have been produced by a dataset-aware entry point

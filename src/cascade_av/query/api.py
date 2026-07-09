@@ -26,6 +26,7 @@ def find_on_bundle(
     dsl_text: str,
     *,
     dataset: Any | None = None,
+    strict_identity: bool = False,
 ) -> MatchSet:
     """Parse `dsl_text` and evaluate it against a single bundle.
 
@@ -33,48 +34,62 @@ def find_on_bundle(
     Sequence), the returned MatchSet carries a weakref back to it so
     follow-up operations like `matches.visualize()` or `matches.context()`
     can find the source. Without `dataset=`, `MatchSet.dataset` returns
-    None.
+    None. Set ``strict_identity=True`` to exclude ID-bearing records whose
+    ID is blank; the default preserves permissive historical behavior.
     """
     expr = parse(dsl_text)
-    ms = evaluate(expr, bundle)
+    ms = evaluate(expr, bundle, strict_identity=strict_identity)
     if dataset is None:
         return ms
     return MatchSet(ms.matches, _dataset=weakref.ref(dataset))
 
 
-def find_on_dataset(dataset: "CascadeDataset", dsl_text: str) -> MatchSet:
+def find_on_dataset(
+    dataset: "CascadeDataset", dsl_text: str, *, strict_identity: bool = False
+) -> MatchSet:
     """Run the query across every clip in a dataset; return a union MatchSet.
 
     The returned MatchSet carries a weakref to `dataset` so follow-up
     operations can find the source. Access via `MatchSet.dataset`.
+    ``strict_identity`` has the same opt-in semantics as `find_on_bundle`.
     """
     expr = parse(dsl_text)
     all_matches: list[Match] = []
     for clip_id, (_path, _batch, bundle) in dataset._by_clip.items():
-        ms = evaluate(expr, bundle)
+        ms = evaluate(expr, bundle, strict_identity=strict_identity)
         all_matches.extend(ms.matches)
     return MatchSet(tuple(all_matches), _dataset=weakref.ref(dataset))
 
 
-def count_on_dataset(dataset: "CascadeDataset", dsl_text: str) -> int:
-    """Number of clips with ≥1 match for `dsl_text`."""
+def count_on_dataset(
+    dataset: "CascadeDataset", dsl_text: str, *, strict_identity: bool = False
+) -> int:
+    """Number of clips with ≥1 match for `dsl_text`.
+
+    Set ``strict_identity=True`` to ignore match candidates with blank IDs.
+    """
     expr = parse(dsl_text)
     n = 0
     for _clip_id, (_path, _batch, bundle) in dataset._by_clip.items():
-        ms = evaluate(expr, bundle)
+        ms = evaluate(expr, bundle, strict_identity=strict_identity)
         if ms:
             n += 1
     return n
 
 
 def group_by_on_dataset(
-    dataset: "CascadeDataset", dsl_text: str, key: str
+    dataset: "CascadeDataset",
+    dsl_text: str,
+    key: str,
+    *,
+    strict_identity: bool = False,
 ) -> dict[object, int]:
     """Run `dsl_text` and bucket clips by the value of `key` on each
     matched entity. Returns `{value: count_of_clips}`.
 
     `key` is a dotted path resolved the same way attribute predicates
     are. Example: `"agent.type"`, `"ego.action.type"`.
+    Set ``strict_identity=True`` to ignore match candidates with blank IDs.
     """
     key_path = tuple(s.strip().lower() for s in key.split("."))
     if not key_path:
@@ -88,7 +103,7 @@ def group_by_on_dataset(
     buckets: dict[object, set[str]] = {}
 
     for _clip_id, (_path, _batch, bundle) in dataset._by_clip.items():
-        ms = evaluate(expr, bundle)
+        ms = evaluate(expr, bundle, strict_identity=strict_identity)
         if not ms:
             continue
         clip_id = bundle.video.clip_id
@@ -110,7 +125,7 @@ def _read_key(
     """Read the dotted key off a Match.entity. The match entity may be
     the entity itself (e.g. an `Agent` for `agent.type`), a sub-entity
     (e.g. an `EgoAction` for `ego.action.type`), or a tuple (from
-    `while`/`then`/`because_of`).
+    `while`/`while_strict`/`then`/`before`/`because_of`).
     """
     if isinstance(entity, tuple) and entity:
         entity = entity[0]

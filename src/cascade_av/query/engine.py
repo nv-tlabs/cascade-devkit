@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import weakref
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Iterator, Sequence
+from typing import TYPE_CHECKING, Any, Final, Iterator, Sequence
 
 from cascade_av.query.constants import ALIAS_FAMILIES, resolve_alias
 from cascade_av.query.dsl import (
     And,
     AttrPredicate,
     AttrRef,
+    Before,
     BecauseOf,
     EntityClause,
     EntityRef,
@@ -31,6 +32,7 @@ from cascade_av.query.dsl import (
     QueryParseError,
     Then,
     While,
+    WhileStrict,
     Within,
 )
 from cascade_av.query.entities import (
@@ -38,9 +40,9 @@ from cascade_av.query.entities import (
     EntityDescriptor,
     action_type_matches,
 )
-from cascade_av.query.index import IdIndex
+from cascade_av.query.index import EGO_ID, IdIndex
 from cascade_av.query.time import Interval
-from cascade_av.spec import AgentAction, AnnotationBundle, EgoAction
+from cascade_av.spec import AgentAction, AnnotationBundle, EgoAction, EgoVehicle
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
     # Imported lazily for the `sequences()` return annotation; a runtime
@@ -55,11 +57,47 @@ if TYPE_CHECKING:  # pragma: no cover — typing only
 # ---------------------------------------------------------------------------
 
 
+IDLESS_RECORD_ID: Final[None] = None
+"""Public marker used by :attr:`Match.record_ids` for a record with no ID."""
+
+
+def _record_ids(entity: object) -> tuple[str | None, ...]:
+    """Project the schema record IDs represented by a match entity.
+
+    Temporal operators build nested tuples of their operand entities, so the
+    projection recursively flattens tuples while preserving operand order and
+    duplicates. The two query roots without a schema ``id`` field have stable
+    public identities: the bundle uses its clip ID and the ego vehicle uses the
+    same synthetic ``"Ego"`` anchor as :class:`IdIndex`.
+    """
+    if isinstance(entity, tuple):
+        return tuple(record_id for item in entity for record_id in _record_ids(item))
+    if isinstance(entity, AnnotationBundle):
+        return (entity.video.clip_id,)
+    if isinstance(entity, EgoVehicle):
+        return (EGO_ID,)
+
+    record_id = getattr(entity, "id", IDLESS_RECORD_ID)
+    if isinstance(record_id, str) and record_id:
+        return (record_id,)
+    return (IDLESS_RECORD_ID,)
+
+
 @dataclass(frozen=True)
 class Match:
     clip_id: str
     entity: object
     interval: Interval | None
+
+    @property
+    def record_ids(self) -> tuple[str | None, ...]:
+        """IDs of the records represented by this match.
+
+        ``IDLESS_RECORD_ID`` (``None``) marks a schema record whose ID is
+        absent or blank. Composite temporal matches are flattened recursively
+        in left-to-right operand order.
+        """
+        return _record_ids(self.entity)
 
 
 @dataclass(frozen=True)
@@ -299,11 +337,22 @@ def _compare(left: object, op: str, right_set: frozenset[Any], right_raw: object
     return False
 
 
-def evaluate(expr: Expr, bundle: AnnotationBundle) -> MatchSet:
+def evaluate(
+    expr: Expr, bundle: AnnotationBundle, *, strict_identity: bool = False
+) -> MatchSet:
     """Top-level entry: evaluate `expr` against one bundle. Returns a
     MatchSet whose entries reference entities inside this bundle only.
+
+    When ``strict_identity`` is true, schema records that declare an ``id``
+    field but have a blank/missing value are excluded from matching. The
+    default remains permissive for backward compatibility.
     """
-    ctx = _Context(bundle=bundle, window=None, id_index=IdIndex(bundle))
+    ctx = _Context(
+        bundle=bundle,
+        window=None,
+        id_index=IdIndex(bundle),
+        strict_identity=strict_identity,
+    )
     return _eval(expr, ctx)
 
 
@@ -312,6 +361,23 @@ class _Context:
     bundle: AnnotationBundle
     window: tuple[Interval, ...] | None
     id_index: IdIndex
+    strict_identity: bool = False
+
+
+_NO_ID_FIELD = object()
+
+
+def _candidate_is_eligible(candidate: object, ctx: _Context) -> bool:
+    """Whether ``candidate`` may participate under the identity policy.
+
+    Bundle and ego roots intentionally have no schema ``id`` field and remain
+    eligible in strict mode. Records that do expose ``id`` must carry a
+    truthy value, matching :meth:`IdIndex._add`'s addressability rule.
+    """
+    if not ctx.strict_identity:
+        return True
+    record_id = getattr(candidate, "id", _NO_ID_FIELD)
+    return record_id is _NO_ID_FIELD or bool(record_id)
 
 
 def _eval(expr: Expr, ctx: _Context) -> MatchSet:
@@ -329,8 +395,12 @@ def _eval(expr: Expr, ctx: _Context) -> MatchSet:
         return _eval_not(expr, ctx)
     if isinstance(expr, While):
         return _eval_while(expr, ctx)
+    if isinstance(expr, WhileStrict):
+        return _eval_while_strict(expr, ctx)
     if isinstance(expr, Then):
         return _eval_then(expr, ctx)
+    if isinstance(expr, Before):
+        return _eval_before(expr, ctx)
     if isinstance(expr, BecauseOf):
         return _eval_because_of(expr, ctx)
     if isinstance(expr, InfluencedBy):
@@ -418,6 +488,9 @@ def _candidate_matches(
     raw_value: object,
     ctx: _Context,
 ) -> bool:
+    if not _candidate_is_eligible(candidate, ctx):
+        return False
+
     # Attribute-to-attribute comparison short-circuits before reading the
     # LHS through the alias / list / action-type machinery — both sides
     # are scalar values pulled from the same candidate, and the None
@@ -471,6 +544,8 @@ def _candidate_satisfies(
 
     We return True if at least one match exists for `candidate`.
     """
+    if not _candidate_is_eligible(candidate, ctx):
+        return False
     if isinstance(expr, AttrPredicate):
         return _attr_matches_for_candidate(entity_name, candidate, expr, ctx)
     if isinstance(expr, EntityClause):
@@ -619,6 +694,23 @@ def _eval_while(node: While, ctx: _Context) -> MatchSet:
     return MatchSet(tuple(out))
 
 
+def _eval_while_strict(node: WhileStrict, ctx: _Context) -> MatchSet:
+    left = _eval(node.left, ctx)
+    right = _eval(node.right, ctx)
+    out: list[Match] = []
+    for a in left.matches:
+        for b in right.matches:
+            if a.clip_id != b.clip_id:
+                continue
+            if a.interval is None or b.interval is None:
+                continue
+            iv = _intersect(a.interval, b.interval)
+            if iv is None or iv.end - iv.start <= 0:
+                continue
+            out.append(Match(a.clip_id, (a.entity, b.entity), iv))
+    return MatchSet(tuple(out))
+
+
 def _eval_then(node: Then, ctx: _Context) -> MatchSet:
     left = _eval(node.left, ctx)
     right = _eval(node.right, ctx)
@@ -639,6 +731,32 @@ def _eval_then(node: Then, ctx: _Context) -> MatchSet:
                 continue
             iv = Interval(min(ai.start, bi.start), max(ai.end, bi.end))
             out.append(Match(a.clip_id, (a.entity, b.entity), iv))
+    return MatchSet(tuple(out))
+
+
+def _eval_before(node: Before, ctx: _Context) -> MatchSet:
+    left = _eval(node.left, ctx)
+    right = _eval(node.right, ctx)
+    out: list[Match] = []
+    for a in left.matches:
+        for b in right.matches:
+            if a.clip_id != b.clip_id:
+                continue
+            ai, bi = a.interval, b.interval
+            if ai is None or bi is None:
+                continue
+            gap = bi.start - ai.end
+            if gap <= 0:
+                continue
+            if node.k is not None and gap > node.k:
+                continue
+            out.append(
+                Match(
+                    a.clip_id,
+                    (a.entity, b.entity),
+                    Interval(ai.start, bi.end),
+                )
+            )
     return MatchSet(tuple(out))
 
 
@@ -701,7 +819,7 @@ def _rhs_target_entities(expr: Expr) -> frozenset[str]:
         return _rhs_target_entities(expr.left) | _rhs_target_entities(expr.right)
     if isinstance(expr, Not):
         return _rhs_target_entities(expr.expr)
-    if isinstance(expr, (While, Then, BecauseOf, InfluencedBy)):
+    if isinstance(expr, (While, WhileStrict, Then, Before, BecauseOf, InfluencedBy)):
         return _rhs_target_entities(expr.left) | _rhs_target_entities(expr.right)
     if isinstance(expr, Within):
         return _rhs_target_entities(expr.body)
@@ -825,7 +943,11 @@ def _influenced_by_owner_pairs(
         if node_left.entity == "ego":
             return [(ann.ego_vehicle, list(ann.ego_vehicle.influenced_by))]
         # agent
-        return [(a, list(a.influenced_by)) for a in ann.agents]
+        return [
+            (a, list(a.influenced_by))
+            for a in ann.agents
+            if _candidate_is_eligible(a, ctx)
+        ]
 
     # EntityClause path — entity guaranteed to be 'ego' or 'agent'
     assert isinstance(node_left, EntityClause)
@@ -881,6 +1003,8 @@ def _eval_influenced_by(node: InfluencedBy, ctx: _Context) -> MatchSet:
     matches: list[Match] = []
     for owner, infl_list in owners:
         for infl in infl_list:
+            if not _candidate_is_eligible(infl, ctx):
+                continue
             infl_iv = _interval_from_strings_or_clip_influence(infl, ctx.bundle)
             iv = _intersect_window(infl_iv, ctx.window)
             if iv is None or iv.duration <= 0:
@@ -938,6 +1062,8 @@ def _eval_entity_ref(node: EntityRef, ctx: _Context) -> MatchSet:
     desc = ENTITIES[node.entity]
     matches: list[Match] = []
     for c in desc.candidates(ctx.bundle):
+        if not _candidate_is_eligible(c, ctx):
+            continue
         iv = desc.interval(c, ctx.bundle)
         iv = _intersect_window(iv, ctx.window)
         if iv is None and ctx.window is not None:
@@ -961,9 +1087,12 @@ def _eval_within(node: Within, ctx: _Context) -> MatchSet:
     if not windows:
         return MatchSet(())
     sub_ctx = _Context(
-        bundle=ctx.bundle, window=windows, id_index=ctx.id_index,
+        bundle=ctx.bundle,
+        window=windows,
+        id_index=ctx.id_index,
+        strict_identity=ctx.strict_identity,
     )
     return _eval(node.body, sub_ctx)
 
 
-__all__ = ["Match", "MatchSet", "evaluate"]
+__all__ = ["IDLESS_RECORD_ID", "Match", "MatchSet", "evaluate"]
