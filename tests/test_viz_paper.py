@@ -24,7 +24,7 @@ from cascade_av.spec import (
     SilAvAnnotation,
     VideoMeta,
 )
-from cascade_av.viz import render_paper_figure
+from cascade_av.viz import render_paper_figure, render_timeline
 from tests.conftest import FakeVideoReader
 
 
@@ -159,6 +159,112 @@ def test_paper_timeline_omits_influence_and_keeps_because_of_arrows() -> None:
         for name in shape_names
     )
     assert any(name.startswith("arrow:because_of:") for name in shape_names)
+
+
+def _sequence_with_edge_labels() -> Sequence:
+    bundle = AnnotationBundle(
+        video=VideoMeta(clip_id="paper-labels", duration_s=10.0),
+        annotation=SilAvAnnotation(
+            agents=[
+                Agent(
+                    id="agent_0",
+                    type="oxd:EmergencyVehicleWithTrailer",
+                    visibility_start_timestamp="0:0.0",
+                    visibility_end_timestamp="0:10.0",
+                    actions=[
+                        AgentAction(
+                            id="left_action",
+                            action_type="YieldAtUnprotectedCrosswalk",
+                            start_timestamp="0:0.0",
+                            end_timestamp="0:0.2",
+                        ),
+                        AgentAction(
+                            id="right_action",
+                            action_type="DecelerateForEmergencyVehicleWithTrailer",
+                            start_timestamp="0:9.8",
+                            end_timestamp="0:10.0",
+                        ),
+                    ],
+                )
+            ]
+        ),
+    )
+    return Sequence.from_annotation(bundle)
+
+
+def test_paper_box_labels_are_complete_even_for_narrow_edge_segments() -> None:
+    seq = _sequence_with_edge_labels()
+
+    fig = render_paper_figure(seq, timestamps=())
+
+    shapes = {
+        str(shape.name).removeprefix("segment:"): shape
+        for shape in fig.layout.shapes
+        if str(shape.name or "").startswith("segment:")
+    }
+    labels = {
+        str(annotation.name).removeprefix("label:"): annotation
+        for annotation in fig.layout.annotations
+        if str(annotation.name or "").startswith("label:")
+    }
+    assert labels.keys() == shapes.keys()
+    assert all("…" not in str(annotation.text) for annotation in labels.values())
+
+    parent_id = next(
+        segment_id for segment_id in labels if segment_id.startswith("agent_0_")
+    )
+    left_id = next(
+        segment_id
+        for segment_id in labels
+        if segment_id.startswith("agent_action_0_0_")
+    )
+    right_id = next(
+        segment_id
+        for segment_id in labels
+        if segment_id.startswith("agent_action_0_1_")
+    )
+    assert labels[parent_id].text == "oxd:EmergencyVehicleWithTrailer [Agent]"
+    assert labels[left_id].text == "YieldAtUnprotectedCrosswalk"
+    assert labels[right_id].text == "DecelerateForEmergencyVehicleWithTrailer"
+
+    assert labels[left_id].xanchor == "left"
+    assert float(labels[left_id].x) == pytest.approx(float(shapes[left_id].x0))
+    assert int(labels[left_id].xshift) > 0
+    assert labels[right_id].xanchor == "right"
+    assert float(labels[right_id].x) == pytest.approx(float(shapes[right_id].x1))
+    assert int(labels[right_id].xshift) < 0
+    for segment_id, annotation in labels.items():
+        shape = shapes[segment_id]
+        assert annotation.xref == shape.xref
+        assert annotation.yref == shape.yref
+        assert min(float(shape.x0), float(shape.x1)) <= float(annotation.x) <= max(
+            float(shape.x0), float(shape.x1)
+        )
+        payload = annotation.to_plotly_json()
+        assert "width" not in payload
+        assert "height" not in payload
+
+    compact = render_timeline(seq)
+    compact_labels = [
+        annotation
+        for annotation in compact.layout.annotations
+        if str(annotation.name or "").startswith("label:")
+    ]
+    assert len(compact_labels) == 1
+    assert compact_labels[0].text == "oxd:Eme…"
+
+
+def test_show_inline_labels_false_still_suppresses_paper_box_names() -> None:
+    fig = render_paper_figure(
+        _sequence_with_edge_labels(),
+        timestamps=(),
+        show_inline_labels=False,
+    )
+
+    assert not any(
+        str(annotation.name or "").startswith("label:")
+        for annotation in fig.layout.annotations
+    )
 
 
 @pytest.mark.parametrize(

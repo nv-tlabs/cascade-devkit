@@ -670,6 +670,8 @@ class Sequence:
             height: optional total figure/player height in pixels.
             width: optional total figure/player width in pixels.
             show_inline_labels: whether timeline bars include inline text.
+                Paper figures preserve complete labels on every visible box;
+                other timeline views retain their compact label policy.
 
         Returns:
             ``PIL.Image.Image`` when ``static=True`` and ``t`` is a scalar;

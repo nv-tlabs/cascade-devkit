@@ -181,7 +181,9 @@ def render_paper_figure(
         width: figure width in pixels.
         height: optional total figure height in pixels. The default adapts to
             both the frame aspect ratio and timeline lane depth.
-        show_inline_labels: whether timeline bars carry inline text.
+        show_inline_labels: whether timeline bars carry inline text. When
+            enabled, every visible box gets its complete label, including
+            narrow boxes; labels at the time-axis edges anchor inward.
 
     Returns:
         A plain ``plotly.graph_objects.Figure`` suitable for HTML or static
@@ -213,6 +215,7 @@ def render_paper_figure(
         families=families,
         track_visibility=track_visibility,
         show_inline_labels=show_inline_labels,
+        inline_label_mode="full",
     )
     timeline_px = _timeline_px_for(paint)
     frames = _decode_frames(seq, resolved_timestamps)
