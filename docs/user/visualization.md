@@ -113,8 +113,8 @@ paper = viz.render_paper_figure(
 
 Timestamp rules are deliberately strict for reproducible figures:
 
-- Pass zero to three finite numeric timestamps in seconds. An empty list
-  creates a timeline-only figure and does not access the video.
+- Pass zero to three finite, non-negative numeric timestamps in seconds. An
+  empty list creates a timeline-only figure and does not access the video.
 - Frames are sorted chronologically from left to right, so the unsorted
   example above displays 1.2 s, then 3.0 s, then 4.8 s. Duplicate timestamps
   are retained as separate frames.
@@ -127,7 +127,8 @@ When frames are requested, the sequence must have an accessible video.
 They are embedded as quality-90 JPEGs capped at 1920 pixels on the longer
 edge, keeping saved HTML and executed notebooks compact without changing
 the source video. The timeline filters described below, plus `highlight`,
-`height`, `width`, and `show_inline_labels`, are available in paper mode.
+`height`, `width`, `show_inline_labels`, and `show_containments` are available
+in paper mode.
 
 Paper figures preserve the complete name on every visible timeline box:
 labels are never shortened with an ellipsis or omitted just because a box is
@@ -135,6 +136,12 @@ narrow. Boxes at either end of the time axis anchor their labels toward the
 plot interior. Very dense figures can therefore have overlapping text; use
 the visibility/family filters, a wider `width`, or
 `show_inline_labels=False` when a label-free composition is preferable.
+
+Containment-family rows and their connected arrows are hidden by default in
+paper mode. This covers general entity containment, Traffic-Light physical
+containment, and signal-head environment containment. Pass
+`show_containments=True` to restore them. Other timeline views retain their
+existing containment rows by default.
 
 ## Track order
 
@@ -148,6 +155,11 @@ All timeline-backed entry points use this canonical top-to-bottom order:
 
 Filtering a group out collapses the y-axis while preserving the relative
 order of the groups that remain.
+
+Traffic-Light state boxes use their annotated semantic color: green, yellow,
+red, or neutral gray for `Other`; missing and unknown colors use the existing
+dark-red fallback. Arrowheads use the same family color for both their fill
+and outline as the corresponding arrow path.
 
 ## Filters
 
@@ -191,6 +203,10 @@ Type: `dict[str, bool]` · Default: all-on
 Three documented families. Pass `False` for any you want to hide;
 unmentioned keys default to on.
 
+Paper figures still use these all-on arrow toggles, but their containment rows
+default to hidden, so no containment arrow is drawable until
+`show_containments=True` restores those rows.
+
 ```python
 seq.visualize(arrows={"because_of": False, "containment": False})
 ```
@@ -209,6 +225,16 @@ containment records. Dangling IDs remain non-fatal and do not paint an arrow.
 `viz.annotation_to_segments()`, but timeline-backed DevKit views intentionally
 do not render influence rows or influence arrows. For compatibility,
 `families=["influence"]` is still accepted and renders no rows.
+
+### `show_containments` — paper-only containment-family switch
+
+Type: `bool` · Default: `False` in paper mode
+
+Paper figures omit the `containment`, `physical_containment`, and
+`env_control` rows by default. Pass `show_containments=True` to restore those
+rows and make their connected containment arrows eligible to render. This
+switch is paper-only; ordinary timelines keep containment content visible by
+default.
 
 ### `entity_kinds` — whitelist segment kinds
 
@@ -294,9 +320,11 @@ A segment paints only if it survives every supplied selector:
 
 ```
 track_groups  ∧  entity_kinds  ∧  agent_ids  ∧  families  ∧  track_visibility
+              ∧  paper_containment_switch
 ```
 
-Arrows paint only if BOTH endpoints survived the segment filter.
+The final switch applies only to paper figures. Arrows paint only if BOTH
+endpoints survived the segment filter.
 
 ```python
 # Just agent actions for two specific agents, no Ego rows in the way,

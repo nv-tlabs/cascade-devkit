@@ -96,11 +96,21 @@ def main() -> None:
     # here to demonstrate a track switch without assuming a corpus-specific
     # entity ID.
     video_timestamps = seq.video.timestamps
+    nonnegative_video_timestamps = video_timestamps[video_timestamps >= 0]
+    if nonnegative_video_timestamps.size == 0:
+        raise RuntimeError("paper figure requires a video frame at t >= 0")
     frame_indexes = list(
-        dict.fromkeys((0, len(video_timestamps) // 2, len(video_timestamps) - 1))
+        dict.fromkeys(
+            (
+                0,
+                len(nonnegative_video_timestamps) // 2,
+                len(nonnegative_video_timestamps) - 1,
+            )
+        )
     )
     paper_timestamps = [
-        float(video_timestamps[index]) / 1_000_000 for index in frame_indexes
+        float(nonnegative_video_timestamps[index]) / 1_000_000
+        for index in frame_indexes
     ]
     paper_fig = viz.render_paper_figure(
         seq,

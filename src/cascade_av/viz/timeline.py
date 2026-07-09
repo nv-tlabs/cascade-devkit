@@ -52,7 +52,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from cascade_av.viz.colors import entity_color, family_color
+from cascade_av.viz.colors import _light_state_color, entity_color, family_color
 from cascade_av.viz.segments import Segment, annotation_to_segments, assign_lanes
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
@@ -88,6 +88,9 @@ TrackVisibility = Mapping[str, bool | Mapping[str, bool]]
 _InlineLabelMode = Literal["compact", "full"]
 _TRACK_KINDS: frozenset[str] = frozenset(
     {"ego", "agent", "light", "object", "env"}
+)
+_CONTAINMENT_FAMILIES: frozenset[str] = frozenset(
+    {"containment", "physical_containment", "env_control"}
 )
 
 # Per-category family ordering. Mirrors the annotator's row layout in
@@ -1118,6 +1121,7 @@ def _paint_timeline_onto(
     track_visibility: TrackVisibility | None = None,
     show_inline_labels: bool = True,
     inline_label_mode: _InlineLabelMode = "compact",
+    show_containments: bool = True,
 ) -> PaintResult:
     """Append timeline shapes for `seq` onto `fig`, on the given axes.
 
@@ -1192,6 +1196,11 @@ def _paint_timeline_onto(
             segment and anchors edge labels toward the plot interior. The
             latter is used by publication figures, where hover-only text is
             not an acceptable fallback.
+        show_containments: private presentation switch. When False, omit the
+            general, Traffic-Light physical, and signal-head environment
+            containment families. Parent entity rows retain their normal
+            visibility/orphan behavior. Shared timeline views keep the True
+            default; paper mode defaults off.
 
     Returns:
         A `PaintResult` describing the painted band stack — band keys
@@ -1287,6 +1296,7 @@ def _paint_timeline_onto(
         segment
         for segment in annotation_to_segments(bundle)
         if segment.family != "influence"
+        and (show_containments or segment.family not in _CONTAINMENT_FAMILIES)
     ]
     # ``annotation_to_segments`` creates the synthetic Ego parent whenever
     # Ego has any child, including Influence. If Influence was the only child,
@@ -1533,7 +1543,11 @@ def _paint_timeline_onto(
         # to the entity base color via `family_color`'s `entity_color`
         # fallback path.
         category = key[0]
-        fill = family_color(category, seg.family)
+        fill = (
+            _light_state_color((seg.meta or {}).get("color"))
+            if category == "Traffic Lights" and seg.family == "state"
+            else family_color(category, seg.family)
+        )
         shapes.append(
             {
                 "type": "rect",
@@ -1715,13 +1729,9 @@ def _paint_timeline_onto(
                     "size": 10,
                     "angle": angle_deg,
                     "color": _ARROW_COLORS[family],
-                    # Tailwind slate-900 outline — pops off any
-                    # same-hue target row (containment-green over
-                    # Env, action-target orange over Agents, etc.) on
-                    # the `plotly_white` background. Family color
-                    # stays as the fill so the head is still
-                    # identifiable by hue.
-                    "line": {"color": "#0f172a", "width": 1.5},
+                    # Keep both the fill and outline identical to the path so
+                    # the complete arrow reads as one causal-family color.
+                    "line": {"color": _ARROW_COLORS[family], "width": 1.5},
                 },
                 hoverinfo="text",
                 hovertext=(

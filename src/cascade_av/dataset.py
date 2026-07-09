@@ -592,6 +592,7 @@ class Sequence:
         height: int | None = None,
         width: int | None = None,
         show_inline_labels: bool = True,
+        show_containments: bool | None = None,
     ) -> Any:
         """Visualize this clip's video + timeline.
 
@@ -638,9 +639,9 @@ class Sequence:
             timestamps: zero to three explicit video timestamps for
                 ``mode="paper_figure"``. Frames render in ascending
                 chronological order from left to right regardless of input
-                order; duplicate timestamps remain separate. Values outside
-                the video's actual timestamp coverage raise instead of being
-                silently clamped.
+                order; duplicate timestamps remain separate. Values must be
+                non-negative and within the video's actual timestamp coverage;
+                invalid values raise instead of being silently clamped.
             fps: forwarded to ``ClipPlayer`` (scrub rate, frames /
                 second). Ignored in the static path.
             highlight: explicit highlight band passed through to
@@ -672,6 +673,9 @@ class Sequence:
             show_inline_labels: whether timeline bars include inline text.
                 Paper figures preserve complete labels on every visible box;
                 other timeline views retain their compact label policy.
+            show_containments: paper-mode switch for containment-family rows
+                and their connected arrows. ``None`` uses the paper default
+                (False); pass True to restore them. Invalid outside paper mode.
 
         Returns:
             ``PIL.Image.Image`` when ``static=True`` and ``t`` is a scalar;
@@ -727,6 +731,11 @@ class Sequence:
             raise ValueError(
                 "`timestamps` is only valid with mode='paper_figure'"
             )
+        if mode == "auto" and show_containments is not None:
+            raise ValueError(
+                "`show_containments` is only valid with "
+                "mode='paper_figure'"
+            )
 
         # 3. static=True only makes sense for a scalar `t`.
         scalar_t = isinstance(t, (int, float)) and not isinstance(t, bool)
@@ -765,6 +774,9 @@ class Sequence:
                 height=height,
                 width=1400 if width is None else width,
                 show_inline_labels=show_inline_labels,
+                show_containments=(
+                    False if show_containments is None else show_containments
+                ),
             )
 
         duration = float(self.duration_s) if self.duration_s else 0.0

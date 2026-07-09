@@ -1302,15 +1302,20 @@ def build_visualize() -> None:
         separate frames.
 
         `track_visibility` can switch a whole kind or individual
-        top-level entities by stable annotation ID. Here we hide up to
-        two Agent tracks while leaving every omitted entity visible.
-        Their child rows and any causal arrows connected to them
-        disappear too. The direct equivalent is
+        top-level entities by stable annotation ID. Here we hide the
+        Environment group and up to two Agent tracks while leaving every
+        other omitted entity visible. Their child rows and any causal
+        arrows connected to them disappear too. The direct equivalent is
         `viz.render_paper_figure(seq, ...)`.
 
         Unlike compact interactive timelines, paper figures keep the
         complete name on every visible box, including narrow boxes; no
         label is ellipsized or relegated to a hover-only tooltip.
+
+        Containment-family rows and arrows are hidden by default to keep the
+        publication layout focused; pass `show_containments=True` to restore
+        them. Sampled video timestamps are always actual frame timestamps at
+        or after zero.
         """),
         code("""
         # Use the match start, midpoint, and end, snapped to actual video
@@ -1321,10 +1326,18 @@ def build_visualize() -> None:
             float(m.interval.end),
         ]
         video_timestamps_us = seq.video.timestamps
+        nonnegative_video_timestamps_us = video_timestamps_us[
+            video_timestamps_us >= 0
+        ]
+        if nonnegative_video_timestamps_us.size == 0:
+            raise ValueError("paper figure requires a video frame at t >= 0")
         paper_timestamps = [
             float(
-                video_timestamps_us[
-                    abs(video_timestamps_us - int(round(t * 1_000_000))).argmin()
+                nonnegative_video_timestamps_us[
+                    abs(
+                        nonnegative_video_timestamps_us
+                        - int(round(t * 1_000_000))
+                    ).argmin()
                 ]
             ) / 1_000_000
             for t in requested_timestamps
@@ -1340,7 +1353,8 @@ def build_visualize() -> None:
             if agent_id and all_agent_ids.count(agent_id) == 1
         ]
         track_visibility = {
-            "agent": {agent_id: False for agent_id in hidden_agent_ids}
+            "agent": {agent_id: False for agent_id in hidden_agent_ids},
+            "env": False,
         }
 
         paper_figure = seq.visualize(

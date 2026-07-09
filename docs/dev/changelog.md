@@ -11,6 +11,7 @@ Types match the commit convention in [`CONTRIBUTING.md`](../../CONTRIBUTING.md):
 
 ## Entries
 
+- 2026-07-09 fix(viz): match arrow tips to path colors, color Traffic-Light states semantically, hide paper-figure containment rows by default with an opt-in, require nonnegative sampled frames, and omit Environment from the notebook paper composition (#14)
 - 2026-07-09 fix(viz): preserve complete labels on every visible paper-figure box while keeping compact timeline views unchanged (#12)
 - 2026-07-08 fix(viz): render paper-figure frames chronologically, omit Influence rows/arrows from shared DevKit timelines, and resolve `because_of` arrows to nested actions, states, properties, and other visible stable-ID targets (#7)
 - 2026-07-01 chore(deps): upgrade Bleach to 6.4.0 for the available sanitizer fixes; track the remaining EOL risk in #1 (#2)
