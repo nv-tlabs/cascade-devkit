@@ -148,6 +148,8 @@ The DSL composes over entities and their attributes. Full grammar in
 ```text
 agent(type = ped, action.type = "oxd:Walk (jaywalk)") and ego.action in (stop, yield, decel)
 light.color = yellow then(3) ego.action = stop
+light.color = yellow before(3) ego.action = stop
+agent.type = ped while_strict ego.action = decel
 within light.color = red: not ego.action = stop
 ego.action = stop because_of light.color = red
 ```
