@@ -84,6 +84,12 @@ on clean Docker 23+ installations, where BuildKit may otherwise keep the `FROM`
 image only in its private build cache. Use the exact pinned base digest from the
 challenge instructions.
 
+On constrained hosts with no working Docker bridge — rootless, or a daemon
+started without `iptables`/`nft` (e.g. inside an unprivileged container) —
+build-time `apt`/`pip`/weight downloads can fail DNS resolution. Pass
+`--network host` to build in the host network namespace and sidestep that. It
+affects only the build; evaluation always runs with the network disabled.
+
 The uploader deliberately does **not** create repositories or change their
 visibility: it requires the challenge frontend to have already created a
 **private model repo in the signed-in user's personal namespace**. It refuses

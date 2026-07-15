@@ -340,6 +340,25 @@ class DockerBuildCommandTest(unittest.TestCase):
         self.assertEqual(cmd[2:4], ["--platform", "linux/amd64"])
         self.assertEqual(cmd[-1], "/ctx")
 
+    def test_omits_network_by_default(self) -> None:
+        cmd = bs.docker_build_command(
+            context=Path("/ctx"),
+            dockerfile=Path("/ctx/Dockerfile"),
+            base_image="reg/base:tag",
+            image_tag="sub:local",
+        )
+        self.assertNotIn("--network", cmd)
+
+    def test_passes_network_when_set(self) -> None:
+        cmd = bs.docker_build_command(
+            context=Path("/ctx"),
+            dockerfile=Path("/ctx/Dockerfile"),
+            base_image="reg/base:tag",
+            image_tag="sub:local",
+            network="host",
+        )
+        self.assertEqual(cmd[-3:], ["--network", "host", "/ctx"])
+
     def test_pull_materializes_base_for_evaluation_platform(self) -> None:
         self.assertEqual(
             bs.docker_pull_command(image="reg/base@sha256:digest"),
