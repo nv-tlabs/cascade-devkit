@@ -320,15 +320,25 @@ def docker_build_command(
     base_image: str,
     image_tag: str,
     platform: str = DEFAULT_PLATFORM,
+    network: str | None = None,
 ) -> list[str]:
-    return [
+    command = [
         "docker", "build",
         "--platform", platform,
         "--build-arg", f"BASE_IMAGE={base_image}",
         "--tag", image_tag,
         "--file", str(dockerfile),
-        str(context),
     ]
+    # `--network` sets the network for RUN steps at build time. The default
+    # bridge is usually right, but constrained hosts (rootless, no-bridge, or
+    # daemons started without iptables/nft, e.g. inside an unprivileged
+    # container) have no working bridge, so build-time apt/pip/downloads fail
+    # DNS resolution. `--network=host` builds in the host namespace and
+    # sidesteps that.
+    if network is not None:
+        command += ["--network", network]
+    command.append(str(context))
+    return command
 
 
 def sha256_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
@@ -574,6 +584,7 @@ class BuildPlan:
     staging_dir: Path
     config: SubmissionConfig
     platform: str = DEFAULT_PLATFORM
+    network: str | None = None
 
     @property
     def layers_dir(self) -> Path:
@@ -594,6 +605,7 @@ def build_and_extract_delta(plan: BuildPlan, *, skip_build: bool = False) -> dic
             base_image=plan.base_image,
             image_tag=plan.image_tag,
             platform=plan.platform,
+            network=plan.network,
         ))
 
     submission_metadata = inspect_image(plan.image_tag)
@@ -752,6 +764,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=Path(".cascade-build"), help="Staging directory.")
     parser.add_argument("--config-name", default=DEFAULT_CONFIG_NAME, help="Submission config file name in context.")
     parser.add_argument(
+        "--network",
+        default=None,
+        help=(
+            "Pass through to `docker build --network` for build-time RUN steps "
+            "(e.g. `host`). Use on constrained hosts with no working Docker "
+            "bridge — rootless, or a daemon started without iptables/nft — where "
+            "build-time apt/pip/downloads would otherwise fail DNS. Does not "
+            "affect evaluation, which always runs with the network disabled."
+        ),
+    )
+    parser.add_argument(
         "--repo-id",
         default=None,
         help="Target HF repo id, e.g. your-hf-username/your-submission.",
@@ -803,6 +826,7 @@ def main(argv: list[str] | None = None) -> int:
         image_tag=args.image_tag,
         staging_dir=staging,
         config=config,
+        network=args.network,
     )
 
     if args.dry_run:
@@ -813,6 +837,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print("[dry-run] would build:", " ".join(docker_build_command(
             context=context, dockerfile=dockerfile, base_image=args.base_image, image_tag=args.image_tag,
+            network=args.network,
         )))
         print("[dry-run] would docker save, keep only the layers added on top of the base,")
         print(f"[dry-run] and write {plan.manifest_path} + {plan.layers_dir}/layer-*.tar")
