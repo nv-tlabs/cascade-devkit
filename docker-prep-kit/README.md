@@ -24,18 +24,28 @@ Because both sides share one pinned base, your environment is reproduced exactly
 
 ## GPU / CUDA
 
+Official evaluations run on one **NVIDIA A100 80 GB** GPU. The A100 has CUDA
+compute capability **8.0**, so your framework wheels and every compiled CUDA
+extension must include **`sm_80`** kernels.
+
 There is **no CUDA base image**. Your GPU stack comes from your framework's pip
 wheels — e.g. `pip install torch` pulls the matching CUDA + cuDNN — plus the GPU
-**driver** provided by the evaluation host (recent; supports CUDA 13.0). If you
-compile custom CUDA, install the toolkit yourself in your Dockerfile (`apt` or the
-`nvidia-*` pip packages); the base already includes `git`/`gcc`/`make`/`curl`.
+**driver** provided by the evaluation host. A CUDA version label by itself does
+not prove GPU compatibility: the framework runtime must be supported by the host
+driver **and** its binaries must target `sm_80`. Being below a maximum CUDA
+version is not, by itself, a compatibility test.
+
+If you compile custom CUDA, install the toolkit yourself in your Dockerfile
+(`apt` or the `nvidia-*` pip packages) and compile for `sm_80`. For PyTorch CUDA
+extensions, set `TORCH_CUDA_ARCH_LIST="8.0"` during the build. The base already
+includes `git`/`gcc`/`make`/`curl`.
 
 ## Two rules that make or break a submission
 
 1. **Download everything at build time** (dependencies *and* model weights). The
    inference phase has **no network**.
-2. Target a **single GPU** (multi-GPU/NCCL may be blocked by the no-network
-   sandbox) and keep your framework's CUDA build compatible with the host driver.
+2. Target the evaluation's **single A100 80 GB (`sm_80`)**. Multi-GPU/NCCL may
+   be blocked by the no-network sandbox.
 
 For private or gated weights, use the cached `hf auth login` on the host to
 download them into the submission build context, then `COPY` those weight files
@@ -124,6 +134,40 @@ uv run --project ../.. --extra hf python ../reconstruct_submission.py \
 ```
 
 For a scored local run against a CASCADE split, use the `self-evaluation-kit`.
+
+### PyTorch GPU preflight
+
+After `build_submission.py --no-push`, run this against the exact local image
+(the default tag is `cascade-submission:local`):
+
+```bash
+docker run --rm -i --gpus all --network none \
+  --entrypoint /opt/app/.venv/bin/python \
+  cascade-submission:local - <<'PY'
+import torch
+
+required_arch = "sm_80"
+arches = set(torch.cuda.get_arch_list())
+if required_arch not in arches:
+    raise SystemExit(f"PyTorch wheel is missing {required_arch}; compiled for {sorted(arches)}")
+if not torch.cuda.is_available():
+    raise SystemExit("CUDA is not available inside the submission image")
+
+name = torch.cuda.get_device_name(0)
+capability = torch.cuda.get_device_capability(0)
+x = torch.tensor([1.0, 2.0, 3.0], device="cuda")
+torch.testing.assert_close((x.square() + 1).cpu(), torch.tensor([2.0, 5.0, 10.0]))
+torch.cuda.synchronize()
+print({"device": name, "capability": capability, "torch_cuda": torch.version.cuda,
+       "compiled_arches": sorted(arches), "kernel": "ok"})
+PY
+```
+
+On an A100, `capability` must print `(8, 0)`. On another local GPU, the kernel
+checks that GPU while `get_arch_list()` separately confirms that the installed
+PyTorch library contains `sm_80`. This does not inspect third-party or custom
+CUDA extensions; build those for `sm_80` and exercise their real inference path
+on an A100 before publishing.
 
 ## What gets published to the model repo
 

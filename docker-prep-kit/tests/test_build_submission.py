@@ -97,6 +97,11 @@ class ParseConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(bs.SubmissionError, "evaluator-owned"):
             bs.parse_submission_config('entrypoint: ["python"]\nenv:\n  TOP_K: "5"\n')
 
+    def test_shipped_template_records_a100_architecture(self) -> None:
+        cfg = bs.load_submission_config(ROOT / "template")
+
+        self.assertIn("sm_80", cfg.cuda or "")
+
 
 class ComputeDeltaTest(unittest.TestCase):
     def test_returns_layers_added_on_top_of_base(self) -> None:

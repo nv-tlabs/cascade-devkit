@@ -7,7 +7,10 @@ publishes them as a portable artifact. The artifact is `manifest.json` plus
 `layers/layer-*.tar`; the Docker image itself is never uploaded.
 
 GPU/CUDA comes from your framework's pip wheels (e.g. `pip install torch` pulls
-CUDA + cuDNN) plus the host driver — there is no CUDA base image.
+CUDA + cuDNN) plus the host driver — there is no CUDA base image. Official
+evaluation uses one **NVIDIA A100 80 GB**, compute capability **8.0**
+(`sm_80`). Your framework wheel and all compiled CUDA extensions must include
+`sm_80` kernels; a CUDA version string alone does not establish compatibility.
 
 ## Files
 
@@ -26,9 +29,43 @@ CUDA + cuDNN) plus the host driver — there is no CUDA base image.
    required prefix.
 2. **Download weights at build time.** The evaluator runs your system with the
    network **disabled**; do not fetch anything at run time.
-3. **CUDA toolkit ≤ host driver.** Target CUDA 13.0 or older for the current
-   evaluation host.
-4. **Single GPU.** Multi-GPU/NCCL may be blocked by the no-network sandbox.
+3. **Include `sm_80` kernels.** For PyTorch CUDA extensions, build with
+   `TORCH_CUDA_ARCH_LIST="8.0"`. A maximum CUDA version is not, by itself, a
+   compatibility test.
+4. **Single A100 80 GB.** Multi-GPU/NCCL may be blocked by the no-network
+   sandbox.
+
+## PyTorch GPU preflight
+
+Build locally with `build_submission.py --no-push`, then test the exact image
+before publishing. The default local image tag is `cascade-submission:local`.
+
+```bash
+docker run --rm -i --gpus all --network none \
+  --entrypoint /opt/app/.venv/bin/python \
+  cascade-submission:local - <<'PY'
+import torch
+
+arches = set(torch.cuda.get_arch_list())
+if "sm_80" not in arches:
+    raise SystemExit(f"PyTorch wheel is missing sm_80; compiled for {sorted(arches)}")
+if not torch.cuda.is_available():
+    raise SystemExit("CUDA is not available inside the submission image")
+
+capability = torch.cuda.get_device_capability(0)
+x = torch.tensor([1.0, 2.0, 3.0], device="cuda")
+torch.testing.assert_close((x.square() + 1).cpu(), torch.tensor([2.0, 5.0, 10.0]))
+torch.cuda.synchronize()
+print({"device": torch.cuda.get_device_name(0), "capability": capability,
+       "torch_cuda": torch.version.cuda, "compiled_arches": sorted(arches),
+       "kernel": "ok"})
+PY
+```
+
+On an A100, `capability` must be `(8, 0)`. On another local GPU, this still
+confirms that PyTorch advertises `sm_80` and that a CUDA kernel runs locally.
+It does not inspect third-party or custom extensions, so build those for
+`sm_80` and exercise their inference path on an A100 too.
 
 ## Runtime contract
 

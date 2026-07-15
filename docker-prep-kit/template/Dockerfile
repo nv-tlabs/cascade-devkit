@@ -10,8 +10,9 @@
 # Two rules still matter:
 #   1. Download EVERYTHING at build time (deps + weights). The evaluator runs your
 #      system with the network DISABLED.
-#   2. Target a single GPU and keep your framework's CUDA build compatible with
-#      the evaluation host driver (recent; supports CUDA 13.0).
+#   2. Target the single NVIDIA A100 80 GB evaluation GPU. Its compute capability
+#      is 8.0, so framework wheels and compiled CUDA extensions must include
+#      sm_80 kernels. A CUDA version string alone does not prove compatibility.
 #
 # The build tool passes the pinned base via --build-arg BASE_IMAGE=...
 ARG BASE_IMAGE=python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146
@@ -23,6 +24,8 @@ ENV PATH=/opt/app/.venv/bin:$PATH
 
 # Install your dependencies. Your GPU framework brings its own CUDA, e.g. add
 # `torch` to requirements.txt (it pulls the matching CUDA + cuDNN wheels).
+# If this step builds PyTorch CUDA extensions, compile them for the evaluation GPU:
+#   ENV TORCH_CUDA_ARCH_LIST="8.0"
 COPY requirements.txt /opt/app/requirements.txt
 RUN /opt/app/.venv/bin/pip install --no-cache-dir -r /opt/app/requirements.txt
 

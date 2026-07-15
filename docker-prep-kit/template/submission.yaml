@@ -12,10 +12,11 @@ entrypoint: ["/opt/app/.venv/bin/python", "/opt/app/run.py"]
 # must not be overridden here.
 env: {}
 
-# CUDA line your framework's wheels target (e.g. torch +cu130). Must be
-# compatible with the evaluation host driver (recent; supports CUDA 13.0).
-# Informational.
-cuda: "13.0"
+# Informational description of your framework CUDA runtime and architecture.
+# Evaluation uses one NVIDIA A100 80 GB (compute capability 8.0); your wheel and
+# compiled extensions must include sm_80 kernels. A runtime version alone is not
+# sufficient evidence of compatibility.
+cuda: "framework CUDA runtime with sm_80"
 
 # Optional free-form note shown to organizers.
 notes: "baseline submission"

@@ -1,1 +1,3 @@
-# Add your model dependencies here.
+# Add your model dependencies here. CUDA-enabled framework wheels must include
+# sm_80 kernels for the NVIDIA A100 80 GB evaluation GPU. For PyTorch, verify the
+# exact installed wheel with `torch.cuda.get_arch_list()` as shown in README.md.
