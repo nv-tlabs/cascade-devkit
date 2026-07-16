@@ -86,7 +86,7 @@ Single Python package: `cascade_av`. Sub-packages mirror the data flow.
   - `entities.py` — DSL entity descriptors.
   - `dsl.py` — lexer + parser → AST (`And` / `Or` / `Not` /
     `EntityClause` / `AttrPredicate` / `BecauseOf` / `Within` /
-    `Then` / `While`).
+    `Then` / `Before` / `While` / `WhileStrict`).
   - `engine.py` — AST evaluator → `MatchSet` (`Match` rows hold the
     bound subjects, the time window, and a weakref to the source
     dataset for re-hydration).
