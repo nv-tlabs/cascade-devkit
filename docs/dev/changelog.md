@@ -11,6 +11,7 @@ Types match the commit convention in [`CONTRIBUTING.md`](../../CONTRIBUTING.md):
 
 ## Entries
 
+- 2026-07-16 docs(data): link the published CASCADE dataset from the README, annotator getting-started guide, and self-evaluation requirements (#19)
 - 2026-07-09 feat(query): add strict temporal operators and identity-transparent matching — introduces bounded/unbounded `before` for strictly positive gaps and `while_strict` for positive-duration intersections without changing legacy `then`/`while`; exposes `Match.record_ids` with an explicit `None` marker for id-less records and adds default-off `strict_identity` evaluation across bundle, dataset, sequence, and aggregation APIs; updates the grammar, operator tours, and synthetic compatibility/acceptance coverage, with notebook 02 regenerated and re-executed (0 error cells) (#18)
 - 2026-07-09 fix(viz): match arrow tips to path colors, color Traffic-Light states semantically, hide paper-figure containment rows by default with an opt-in, require nonnegative sampled frames, and omit Environment from the notebook paper composition (#14)
 - 2026-07-09 fix(viz): preserve complete labels on every visible paper-figure box while keeping compact timeline views unchanged (#12)
