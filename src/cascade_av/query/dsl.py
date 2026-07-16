@@ -9,7 +9,7 @@ message)`.
 
 Grammar precedence (low → high):
 
-    within > or > and > {while, then, because_of} > not > primary
+    within > or > and > {while, while_strict, then, before, because_of} > not > primary
 
 Temporal operators are left-associative.
 """
@@ -103,10 +103,23 @@ class While:
 
 
 @dataclass(frozen=True)
+class WhileStrict:
+    left: "Expr"
+    right: "Expr"
+
+
+@dataclass(frozen=True)
 class Then:
     left: "Expr"
     right: "Expr"
     k: float
+
+
+@dataclass(frozen=True)
+class Before:
+    left: "Expr"
+    right: "Expr"
+    k: float | None = None
 
 
 @dataclass(frozen=True)
@@ -143,8 +156,8 @@ class Within:
 
 
 Expr = Union[
-    AttrPredicate, EntityClause, EntityRef, And, Or, Not, While, Then,
-    BecauseOf, InfluencedBy, Within,
+    AttrPredicate, EntityClause, EntityRef, And, Or, Not, While, WhileStrict,
+    Then, Before, BecauseOf, InfluencedBy, Within,
 ]
 
 
@@ -154,8 +167,8 @@ Expr = Union[
 
 
 _KEYWORDS = frozenset({
-    "and", "or", "not", "in", "while", "then", "because_of", "influenced_by",
-    "within", "true", "false",
+    "and", "or", "not", "in", "while", "while_strict", "then", "before",
+    "because_of", "influenced_by", "within", "true", "false",
 })
 
 # Single-character punctuation tokens.
@@ -253,7 +266,7 @@ def _tokenize(src: str) -> list[Token]:
             while j < n and (src[j].isdigit() or src[j] == "."):
                 j += 1
             num_str = src[i:j]
-            # Optional trailing "s" (seconds suffix in then(5s)).
+            # Optional trailing "s" (seconds suffix in then(5s) / before(5s)).
             # Don't consume "s" if it's followed by an identifier char —
             # that would be the start of a name.
             had_suffix = False
@@ -420,6 +433,9 @@ class _Parser:
             if self._match("WHILE"):
                 right = self.parse_unary()
                 left = While(left, right)
+            elif self._match("WHILE_STRICT"):
+                right = self.parse_unary()
+                left = WhileStrict(left, right)
             elif self._check("THEN"):
                 self._advance()
                 k = 0.0
@@ -429,6 +445,19 @@ class _Parser:
                     self._expect("RPAREN", "')' after then(K)")
                 right = self.parse_unary()
                 left = Then(left, right, k)
+            elif self._match("BEFORE"):
+                k: float | None = None
+                # A parenthesized right operand is valid in the unbounded
+                # form (`A before (B)`). Treat `(` as a bound only when the
+                # complete `(NUMBER)` shape is present, so the two forms are
+                # unambiguous without making whitespace significant.
+                if self._check("LPAREN") and self._peek(1).kind == "NUMBER":
+                    self._advance()  # '('
+                    num = self._expect("NUMBER", "number")
+                    k = float(num.value)
+                    self._expect("RPAREN", "')' after before(K)")
+                right = self.parse_unary()
+                left = Before(left, right, k)
             elif self._match("BECAUSE_OF"):
                 right = self.parse_unary()
                 left = BecauseOf(left, right)
@@ -802,7 +831,7 @@ class _Parser:
         if tok.kind == "BOOL":
             self._advance()
             return tok.value.lower() == "true"
-        if tok.kind in ("IDENT", "TRUE", "FALSE"):
+        if tok.kind in ("IDENT", "TRUE", "FALSE", "BEFORE", "WHILE_STRICT"):
             self._advance()
             v = tok.value
             if v.lower() == "true":
@@ -839,7 +868,9 @@ __all__ = [
     "Or",
     "Not",
     "While",
+    "WhileStrict",
     "Then",
+    "Before",
     "BecauseOf",
     "InfluencedBy",
     "Within",

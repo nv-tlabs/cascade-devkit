@@ -116,13 +116,21 @@ def main() -> None:
         '"oxd:Run (erratic)", "oxd:Run (jaywalk, erratic)")',
     )
 
-    section("Temporal: 'A while B' — co-occurring intervals")
+    section("Temporal: 'A while B' — any intersection, including endpoint touch")
     show(ds, "agent.type = ped while ego.action = decel")
     show(ds, "light.color = red while ego.action = stop")
 
-    section("Temporal: 'A then(K) B' — B starts during A or within K seconds after")
+    section("Temporal: 'A while_strict B' — positive-duration intersection")
+    show(ds, "agent.type = ped while_strict ego.action = decel")
+    show(ds, "light.color = red while_strict ego.action = stop")
+
+    section("Temporal: 'A then(K) B' — permissive overlap, touch, or bounded gap")
     show(ds, "light.color = yellow then(3) ego.action = stop")
     show(ds, "light.color = green then ego.action = drive")  # K defaults to 0
+
+    section("Temporal: 'A before(K) B' — A ends strictly before B starts")
+    show(ds, "light.color = yellow before(3) ego.action = stop")
+    show(ds, "light.color = yellow before ego.action = stop")  # no gap limit
 
     section("Relational: 'A because_of B' — A's because_of edge points to B")
     # `because_of` walks the schema's `action.because_of` list. The list holds
@@ -144,9 +152,9 @@ def main() -> None:
     # distinct from action-rooted `because_of`: it reads "this entity *was
     # under the influence of* B", regardless of a specific action. The LHS is a
     # bare entity (`ego` / `agent(...)`); the match interval is the influence
-    # window, so it composes with `while` / `then`. A LightStates RHS is scoped
-    # to that window (a head cycling green→red matches `light.color = red` only
-    # while the influence window overlaps the red phase).
+    # window, so it composes with all four temporal operators. A LightStates RHS
+    # is scoped to that window (a head cycling green→red matches
+    # `light.color = red` only while the influence window overlaps the red phase).
     show(ds, "ego influenced_by light.color = red")
     show(ds, "agent(type = vehicle) influenced_by light.color = red")
     show(ds, "ego influenced_by (obj.type = stop_sign or light.color = red)")

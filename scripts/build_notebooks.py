@@ -306,8 +306,10 @@ def build_dsl_tour() -> None:
         | `<entity>.<attr> <cmp> <value>` | basic attribute predicate |
         | `<entity>(<expr>, …)` | same-entity grouping |
         | `and`, `or`, `not` | boolean composition |
-        | `A while B` | A and B with intersecting intervals |
-        | `A then(K) B` | B starts during A or within K seconds after |
+        | `A while B` | A and B intersect, including endpoint-only touch |
+        | `A while_strict B` | A and B overlap for positive duration |
+        | `A then(K) B` | B starts during A or at most K seconds after A |
+        | `A before(K) B` | A ends strictly before B; optional maximum gap K |
         | `A because_of B` | A's `because_of` edge points at a B |
         | `A influenced_by B` | A's `Influence` side-channel points at a B |
         | `within W: E` | restrict E's time window to W's intervals |
@@ -478,7 +480,7 @@ def build_dsl_tour() -> None:
         ## Temporal — `while`
 
         `A while B` keeps only pairs of matches whose intervals
-        intersect.
+        intersect. Intervals are closed, so endpoint-only touch counts.
         """),
         code("""
         run([
@@ -487,16 +489,43 @@ def build_dsl_tour() -> None:
         ])
         """),
         md("""
+        ## Temporal — `while_strict`
+
+        `A while_strict B` requires a positive-duration intersection.
+        Unlike `while`, two intervals that only touch at one endpoint
+        do not match.
+        """),
+        code("""
+        run([
+            "agent.type = ped while_strict ego.action = decel",
+            "light.color = red while_strict ego.action = stop",
+        ])
+        """),
+        md("""
         ## Temporal — `then(K)`
 
-        `A then(K) B` keeps pairs where B starts during A or within
-        K seconds after A ends. Bare `then` (no parens) defaults to
-        K = 0 — touch or overlap only.
+        `A then(K) B` is the permissive sequence operator: B may start
+        during A, touch A's endpoint, or start within K seconds after A.
+        Bare `then` (no parens) defaults to K = 0 — overlap or touch only.
         """),
         code("""
         run([
             "light.color = yellow then(3) ego.action = stop",
             "light.color = green then ego.action = drive",
+        ])
+        """),
+        md("""
+        ## Temporal — `before(K)`
+
+        `A before(K) B` is strict: A must end before B starts, with a
+        positive gap no larger than K. Overlap and endpoint touch do not
+        match. Bare `before` omits the upper bound and accepts any
+        positive gap.
+        """),
+        code("""
+        run([
+            "light.color = yellow before(3) ego.action = stop",
+            "light.color = yellow before ego.action = stop",
         ])
         """),
         md("""
@@ -522,7 +551,8 @@ def build_dsl_tour() -> None:
         from action-rooted `because_of`): "this entity *was under the
         influence of* B". The LHS is a bare entity (`ego` / `agent(...)`)
         and the match interval is the influence window, so it composes
-        with `while` / `then`. A `light.color` RHS is scoped to that window.
+        with `while`, `while_strict`, `then`, and `before`. A
+        `light.color` RHS is scoped to that window.
         """),
         code("""
         run([
