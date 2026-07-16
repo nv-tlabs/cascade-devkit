@@ -66,9 +66,12 @@ Either is enough. Don't do both with different tokens — pick one.
 
 ## 3. Launch the annotator
 
-You need a directory of annotation JSONs to edit. If you don't have
-one yet, the annotator can also start against a directory of videos
-(it'll create empty annotation bundles for each clip on first open).
+You need a directory of annotation JSONs to edit. Published bundles are
+available in the [CASCADE dataset on Hugging Face](https://huggingface.co/datasets/nvidia/cascade);
+the [`README.md` data guide](../../README.md#getting-the-data) covers the
+streaming and local-directory workflows. If you don't have annotations yet,
+the annotator can also start against a directory of videos (it'll create empty
+annotation bundles for each clip on first open).
 
 ```bash
 make annotator-dev DATA=/path/to/your/json_annotations

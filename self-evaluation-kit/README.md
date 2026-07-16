@@ -30,7 +30,8 @@ Docker must also be available on the machine.
 
 ## Dataset Requirements
 
-`--dataset-root` must point at a CASCADE-shaped checkout:
+`--dataset-root` must point at a checkout of the
+[CASCADE dataset](https://huggingface.co/datasets/nvidia/cascade) with this layout:
 
 ```text
 dataset-root/

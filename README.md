@@ -1,7 +1,7 @@
 # CASCADE DevKit
 
-Python DevKit for the **CASCADE dataset**: Causal Spatio-Temporal
-Analysis of Driving Environments. It parses the annotation JSON
+Python DevKit for the [**CASCADE dataset**](https://huggingface.co/datasets/nvidia/cascade):
+Causal Spatio-Temporal Analysis of Driving Environments. It parses the annotation JSON
 into a typed Pydantic tree, exposes a small query language for
 searching by entity, attribute, time, and cause, and renders any
 clip or query result as a video frame paired with its annotation
@@ -83,9 +83,10 @@ annotation JSONs, pick one of the two paths below.
 
 ### Option A: stream from HuggingFace
 
-The JSONs live in a HuggingFace dataset repo. The `[hf]` extra ships
-with `make install` (i.e. both install paths above); pull either the
-whole corpus or a named, versioned split:
+The JSONs live in the
+[`nvidia/cascade` dataset repository](https://huggingface.co/datasets/nvidia/cascade)
+on Hugging Face. The `[hf]` extra ships with `make install` (i.e. both
+install paths above); pull either the whole corpus or a named, versioned split:
 
 ```python
 from cascade_av.io.hf import CausalAnnotationsHfRepo
