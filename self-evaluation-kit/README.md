@@ -42,12 +42,14 @@ dataset-root/
     └── retrieval/
         ├── retrieval_split.yaml
         └── batch_00001/
-            ├── train_queries.json
-            └── val_queries.json
+            ├── train_queries_0817.json
+            └── val_queries_0817.json
 ```
 
-`--split-name` must match an entry in
-`tasks/retrieval/retrieval_split.yaml`, for example `cascade-v0.1`.
+The base corpus under `data/` is not split. Each task owns its split manifest;
+for retrieval, `--split-name` must match an entry in
+`tasks/retrieval/retrieval_split.yaml`, such as `cascade-v1.0`. Query filenames
+are resolved from that manifest rather than inferred from the split name.
 
 `--video-root` must contain real video files. By default the runner expects
 `<video-root>/<clip_id>.mp4` for every clip in `data/batch_*/*.json`. If your
@@ -84,7 +86,7 @@ python self-evaluation-kit/self_eval.py \
   --base-image python:3.12@sha256:2575347025c314e37d89d4b353904edbe1824a6117b8eeffe52254879e4f6146 \
   --dataset-root /path/to/cascade \
   --video-root /path/to/videos \
-  --split-name cascade-v0.1 \
+  --split-name cascade-v1.0 \
   --split val \
   --out evaluation.json
 # add --gpus all to use the GPU (requires the NVIDIA Container Toolkit)
@@ -138,7 +140,7 @@ file:
 python self-evaluation-kit/self_eval.py \
   --dataset-root /path/to/cascade \
   --video-root /path/to/videos \
-  --split-name cascade-v0.1 \
+  --split-name cascade-v1.0 \
   --split val \
   --predictions /tmp/predictions.jsonl \
   --out evaluation.json
@@ -147,7 +149,7 @@ python self-evaluation-kit/self_eval.py \
 Predictions must contain one JSON object per query:
 
 ```json
-{"query_id": "cascade-v0.1_val_batch_00001_00001", "video_ids": ["clip-id"]}
+{"query_id": "cascade-v1.0_val_batch_00001_00001", "video_ids": ["clip-id"]}
 ```
 
 `video_ids` should contain only videos your system predicts match the query,

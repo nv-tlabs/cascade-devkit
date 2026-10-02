@@ -14,7 +14,6 @@ dependencies = [
 [project.optional-dependencies]
 hf = [
     "physical-ai-av>=0.2.2",
-    "pyyaml>=6",
 ]
 annotator = [
     "cascade-annotator",

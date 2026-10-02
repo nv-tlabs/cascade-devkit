@@ -194,6 +194,32 @@ Record significant choices here as short ADR-style entries. Newest first.
 When adding a new entry, copy the [ADR template](#adr-template) at the
 bottom of this file.
 
+### 2026-10-02 — Dataset splits are owned by tasks, not the base corpus
+
+- **Context:** The base `nvidia/cascade` repository is the canonical collection
+  of annotation bundles and no longer publishes `data/dataset_split.yaml`.
+  Train, validation, and test membership has task-specific meaning; for
+  example, retrieval publishes its manifest and query artifacts under
+  `tasks/retrieval/`. The HF annotation adapter still modeled splits as subsets
+  of bundles, so its documented live flow requested a file that does not exist.
+- **Decision:** Treat `CausalAnnotationsHfRepo` exclusively as a whole-corpus
+  annotation loader. Remove its `available_splits()`, `iter_split()`, and
+  `load_split()` APIs and the direct PyYAML dependency they required. Each task
+  owns the format, versioning, and interpretation of manifests below
+  `tasks/<task>/`; task tooling, rather than the base I/O adapter, consumes
+  them.
+- **Alternatives considered:** Keeping deprecated methods that raise an
+  explanatory error was rejected because their presence would continue to
+  advertise a dataset-level split abstraction and there is no correct generic
+  result they could return for task artifacts. Teaching the annotation loader
+  every task manifest format was rejected because it couples base I/O to
+  independently evolving evaluation contracts.
+- **Consequences:** Whole-corpus methods (`download_all()`,
+  `iter_annotations()`, `load_all()`, and `load_annotation()`) remain
+  unchanged. Callers of the removed split methods must migrate to the relevant
+  task tooling. Future tasks can define different split structures without
+  changing the base annotation loader.
+
 ### 2026-07-09 — Paper figures use semantic colors and focused defaults
 
 - **Context:** Publication renders exposed four visual inconsistencies: arrow

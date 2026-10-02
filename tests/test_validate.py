@@ -369,6 +369,36 @@ def test_timestamps_in_video_range_clean_passes() -> None:
     assert timestamps_in_video_range(bundle) == []
 
 
+def test_timestamps_in_video_range_allows_rounding_and_frame_drift() -> None:
+    bundle = _clean_bundle()
+    bundle.video.duration_s = 9.9
+    bundle.annotation.environments.append(
+        Environment(
+            id="Env1",
+            type="Road",
+            start_timestamp="0.0",
+            end_timestamp="10.0",
+        )
+    )
+    assert timestamps_in_video_range(bundle) == []
+
+
+def test_timestamps_in_video_range_rejects_overshoot_beyond_tolerance() -> None:
+    bundle = _clean_bundle()
+    bundle.video.duration_s = 9.899
+    bundle.annotation.environments.append(
+        Environment(
+            id="Env1",
+            type="Road",
+            start_timestamp="0.0",
+            end_timestamp="10.0",
+        )
+    )
+    issues = timestamps_in_video_range(bundle)
+    assert len(issues) == 1
+    assert issues[0].field == "end_timestamp"
+
+
 def test_timestamps_in_video_range_zero_duration_skips_upper_bound() -> None:
     """`duration_s <= 0.0` (failed/missing ffprobe) disables the upper bound.
 

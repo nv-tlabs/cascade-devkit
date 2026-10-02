@@ -37,6 +37,9 @@ def test_parse_timestamp_happy_cases() -> None:
     assert parse_timestamp("1:30.0") == 90.0
     assert parse_timestamp("0:0.0") == 0.0
     assert parse_timestamp("0:20.166") == 20.166
+    assert parse_timestamp("0.000") == 0.0
+    assert parse_timestamp("20.167") == 20.167
+    assert parse_timestamp("20") == 20.0
 
 
 def test_parse_timestamp_returns_none_on_bad_input() -> None:
@@ -44,6 +47,8 @@ def test_parse_timestamp_returns_none_on_bad_input() -> None:
     assert parse_timestamp(None) is None
     assert parse_timestamp("garbage") is None
     assert parse_timestamp("1:") is None
+    assert parse_timestamp("-1.0") is None
+    assert parse_timestamp("+1.0") is None
 
 
 def test_parse_timestamp_is_anchored() -> None:
@@ -54,14 +59,22 @@ def test_parse_timestamp_is_anchored() -> None:
     assert parse_timestamp("foo 1:30.0") is None
     assert parse_timestamp("1:30.0 bar") is None
     assert parse_timestamp(" 1:30.0") is None
+    assert parse_timestamp("foo 20.167") is None
+    assert parse_timestamp("20.167 bar") is None
+    assert parse_timestamp("20.167 ") is None
+    assert parse_timestamp("20.167\n") is None
     assert parse_timestamp_or("foo 1:30.0", 0.0) == 0.0
     assert parse_timestamp_or("1:30.0 bar", 0.0) == 0.0
+    assert parse_timestamp_or("foo 20.167", 0.0) == 0.0
+    assert parse_timestamp_or("20.167 bar", 0.0) == 0.0
 
 
 def test_parse_timestamp_or_matches_parseTs_contract() -> None:
     # Locked TS-parity behaviour: empty / None / unparseable → default.
     assert parse_timestamp_or("0:5.4") == 5.4
     assert parse_timestamp_or("1:30.0") == 90.0
+    assert parse_timestamp_or("0.000") == 0.0
+    assert parse_timestamp_or("20.167") == 20.167
     assert parse_timestamp_or("") == 0.0
     assert parse_timestamp_or(None) == 0.0
     assert parse_timestamp_or("garbage") == 0.0
@@ -70,7 +83,7 @@ def test_parse_timestamp_or_matches_parseTs_contract() -> None:
     assert parse_timestamp_or("garbage", default=-1.0) == -1.0
     # And it stays the same parser as `parse_timestamp` — happy paths
     # produce identical numerics.
-    for ts in ("0:0.0", "0:5.4", "1:30.0", "0:20.166"):
+    for ts in ("0:0.0", "0:5.4", "1:30.0", "0:20.166", "0.000", "20.167"):
         assert parse_timestamp_or(ts) == parse_timestamp(ts)
 
 
