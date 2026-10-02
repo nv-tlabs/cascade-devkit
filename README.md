@@ -86,23 +86,22 @@ annotation JSONs, pick one of the two paths below.
 The JSONs live in the
 [`nvidia/cascade` dataset repository](https://huggingface.co/datasets/nvidia/cascade)
 on Hugging Face. The `[hf]` extra ships with `make install` (i.e. both
-install paths above); pull either the whole corpus or a named, versioned split:
+install paths above); stream the complete annotation corpus directly:
 
 ```python
 from cascade_av.io.hf import CausalAnnotationsHfRepo
 
 repo = CausalAnnotationsHfRepo("nvidia/cascade")   # path_in_repo auto-detected
 
-# Whole corpus
 for bundle in repo.iter_annotations():
     ...
-
-# Named, versioned splits — declared by `data/dataset_split.yaml`
-# in the repo and never rewritten once published, so a (name, split)
-# pair is a stable, citeable handle.
-repo.available_splits()                            # {"cascade-v0.1": ["train", "validation"]}
-train = repo.load_split("cascade-v0.1", "train")   # list[AnnotationBundle]
 ```
+
+The base annotation corpus has no train/validation/test split. Splits are
+owned by individual tasks and declared under `tasks/<task>/` in the dataset
+repository (for example, `tasks/retrieval/retrieval_split.yaml`). Use the
+corresponding task tooling to interpret those manifests; they are not subsets
+exposed by `CausalAnnotationsHfRepo`.
 
 Downloads land in the standard `huggingface_hub` cache; re-running
 hits the cache, not the network. Replace `"nvidia/cascade"` with your
