@@ -22,12 +22,12 @@ from cascade_av.spec import AnnotationBundle
 
 Severity = Literal["error", "warning"]
 
-# Small slack applied when comparing parsed timestamps to the video duration.
-# The on-disk format carries one-decimal `M:S.D` strings, so a clip whose true
-# duration rounds to e.g. `0:10.0` can carry annotations stamped right at
-# `0:10.0` against a probed `duration_s = 9.997…`. The epsilon prevents that
-# rounding from flagging perfectly aligned end-of-clip annotations.
-_DURATION_EPS = 0.001
+# Slack applied when comparing parsed timestamps to the video duration.
+# Annotation timestamps commonly round to one decimal (up to 0.05 s), while
+# probed duration metadata may stop at the preceding frame boundary (up to
+# another 0.05 s at 20+ fps). Their combined worst case is 0.10 s. This keeps
+# legitimate end-of-clip annotations valid without masking material overruns.
+_DURATION_TOLERANCE_S = 0.10
 
 
 @dataclass(frozen=True)
@@ -327,10 +327,10 @@ def _check_window(
     populated interval would block "Mark complete" on every clip with a
     failed probe, which is a real production scenario. Parseability and
     start ≤ end checks still run; the lower bound (``0``) is enforced by
-    the ``M:S.D`` regex (it rejects negative input at parse time).
+    the strict timestamp parser (it rejects negative input at parse time).
     """
     check_upper = duration_s > 0.0
-    max_t = duration_s + _DURATION_EPS
+    max_t = duration_s + _DURATION_TOLERANCE_S
 
     def _check_one(raw: str | None, field: str) -> float | None:
         # Treat empty / missing as "no constraint here" — many open intervals
@@ -350,10 +350,10 @@ def _check_window(
                 )
             )
             return None
-        # `parsed < 0` is unreachable: `_TS_RE` in cascade_av.query.time only
-        # matches `^\d+:\d+(?:\.\d+)?$`, i.e. non-negative integers/decimals.
-        # We rely on that rather than asserting it here so future regex
-        # tweaks would surface as a test failure rather than a silent gap.
+        # `parsed < 0` is unreachable: the timestamp parser accepts only
+        # non-negative integers/decimals, optionally prefixed by `M:`. We rely
+        # on that rather than asserting it here so future parser tweaks would
+        # surface as a test failure rather than a silent gap.
         if check_upper and parsed > max_t:
             issues.append(
                 Issue(
