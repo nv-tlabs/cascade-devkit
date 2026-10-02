@@ -163,10 +163,14 @@ def main() -> None:
         "--dataset-root",
         type=Path,
         required=True,
-        help="CASCADE dataset root containing data/ and tasks/.",
+        help="CASCADE dataset root containing the unsplit data/ corpus and task manifests.",
     )
     parser.add_argument("--video-root", type=Path, required=True, help="Root containing videos.")
-    parser.add_argument("--split-name", required=True, help="Named split, for example cascade-v0.1.")
+    parser.add_argument(
+        "--split-name",
+        required=True,
+        help="Name from tasks/retrieval/retrieval_split.yaml, for example cascade-v1.0.",
+    )
     parser.add_argument(
         "--split",
         default="val",
